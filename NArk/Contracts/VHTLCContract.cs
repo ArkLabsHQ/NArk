@@ -48,7 +48,7 @@ public class VHTLCContract : ArkContract
 
     public override IEnumerable<ScriptBuilder> GetScriptBuilders()
     {
-        // VHTLC is an Hashed Timelock Contract VtxoScript implementation
+        // VHTLC is a Hashed Timelock Contract VtxoScript implementation
         yield return CreateClaimScript();
         yield return CreateCooperativeScript();
         yield return CreateRefundWithoutReceiverScript();

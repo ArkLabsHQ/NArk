@@ -20,7 +20,7 @@ public static class AppExtensions
         var networkType  = DefaultConfiguration.GetNetworkType(pluginServiceCollection.BootstrapServices.GetRequiredService<IConfiguration>());
 
         var arkUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
-            ? "htps://mutinynet.arkade.sh"
+            ? "https://mutinynet.arkade.sh"
             : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
                 ? "https://signet.arkade.sh"
                 : networkType == ChainName.Regtest
