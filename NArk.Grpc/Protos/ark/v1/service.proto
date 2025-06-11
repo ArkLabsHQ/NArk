@@ -1,0 +1,204 @@
+syntax = "proto3";
+
+package ark.v1;
+
+import "google/api/annotations.proto";
+import "ark/v1/types.proto";
+
+service ArkService {
+  rpc GetInfo(GetInfoRequest) returns (GetInfoResponse) {
+    option (google.api.http) = {
+      get: "/v1/info"
+    };
+  }
+  rpc GetBoardingAddress(GetBoardingAddressRequest) returns (GetBoardingAddressResponse) {
+    option (google.api.http) = {
+      post: "/v1/boarding"
+      body: "*"
+    };
+  };
+
+  /* In-Round Transaction APIs */
+
+  rpc RegisterIntent(RegisterIntentRequest) returns (RegisterIntentResponse) {
+    option (google.api.http) = {
+      post: "/v1/round/registerIntent"
+      body: "*"
+    };
+  };
+  rpc RegisterInputsForNextRound(RegisterInputsForNextRoundRequest) returns (RegisterInputsForNextRoundResponse) {
+    option (google.api.http) = {
+      post: "/v1/round/registerInputs"
+      body: "*"
+    };
+  };
+  rpc RegisterOutputsForNextRound(RegisterOutputsForNextRoundRequest) returns (RegisterOutputsForNextRoundResponse) {
+    option (google.api.http) = {
+      post: "/v1/round/registerOutputs"
+      body: "*"
+    };
+  };
+  rpc SubmitTreeNonces(SubmitTreeNoncesRequest) returns (SubmitTreeNoncesResponse) {
+    option (google.api.http) = {
+      post: "/v1/round/tree/submitNonces"
+      body: "*"
+    };
+  }
+  rpc SubmitTreeSignatures(SubmitTreeSignaturesRequest) returns (SubmitTreeSignaturesResponse) {
+    option (google.api.http) = {
+      post: "/v1/round/tree/submitSignatures"
+      body: "*"
+    };
+  }
+  rpc SubmitSignedForfeitTxs(SubmitSignedForfeitTxsRequest) returns (SubmitSignedForfeitTxsResponse) {
+    option (google.api.http) = {
+      post: "/v1/round/submitForfeitTxs"
+      body: "*"
+    };
+  };
+  rpc GetEventStream(GetEventStreamRequest) returns (stream GetEventStreamResponse) {
+    option (google.api.http) = {
+      get: "/v1/events"
+    };
+  };
+  rpc Ping(PingRequest) returns (PingResponse) {
+    option (google.api.http) = {
+      get: "/v1/round/ping/{request_id}"
+    };
+  };
+
+  /* Out-of-Round Transaction APIs */
+
+  rpc SubmitRedeemTx(SubmitRedeemTxRequest) returns (SubmitRedeemTxResponse) {
+    option (google.api.http) = {
+      post: "/v1/redeem-tx"
+      body: "*"
+    };
+  }
+
+  rpc GetTransactionsStream(GetTransactionsStreamRequest) returns (stream GetTransactionsStreamResponse) {
+    option (google.api.http) = {
+      get: "/v1/transactions"
+    };
+  }
+}
+
+message GetInfoRequest {}
+message GetInfoResponse {
+  string pubkey = 1;
+  int64 vtxo_tree_expiry = 2;
+  int64 unilateral_exit_delay = 3;
+  int64 round_interval = 4;
+  string network = 5;
+  int64 dust = 6;
+  string boarding_descriptor_template = 7;
+  repeated string vtxo_descriptor_templates = 8;
+  string forfeit_address = 9;
+  MarketHour market_hour = 10;
+  string version = 11;
+  int64 utxo_min_amount = 12; // -1 means native dust limit (default)
+  int64 utxo_max_amount = 13; // -1 means no limit (default), 0 means boarding not allowed
+  int64 vtxo_min_amount = 14; // -1 means native dust limit (default)
+  int64 vtxo_max_amount = 15; // -1 means no limit (default)
+  int64 boarding_exit_delay = 16;
+}
+
+message GetBoardingAddressRequest {
+  string pubkey = 1;
+}
+message GetBoardingAddressResponse {
+  string address = 1;
+  oneof taproot_tree {
+    string descriptor = 2;
+    Tapscripts tapscripts = 3;
+  }
+}
+
+/* In-Round Transaction API messages */
+
+message RegisterIntentRequest {
+  // BIP322 signature embeds the outpoints and the proof of funds
+  Bip322Signature bip322_signature = 1;
+  repeated string notes = 2;
+}
+message RegisterIntentResponse {
+  string request_id = 1;
+}
+
+message RegisterInputsForNextRoundRequest {
+  repeated Input inputs = 1;
+  repeated string notes = 2;
+}
+message RegisterInputsForNextRoundResponse {
+  string request_id = 1;
+}
+
+message Musig2 {
+  repeated string cosigners_public_keys = 1;
+  bool signing_all = 2;
+}
+
+message RegisterOutputsForNextRoundRequest {
+  string request_id = 1;
+  // List of receivers for to convert to leaves in the next VTXO tree.
+  repeated Output outputs = 2;
+  optional Musig2 musig2 = 3;
+}
+message RegisterOutputsForNextRoundResponse {}
+
+message SubmitTreeNoncesRequest {
+  string round_id = 1;
+  string pubkey = 2;
+  string tree_nonces = 3;
+}
+message SubmitTreeNoncesResponse {}
+
+message SubmitTreeSignaturesRequest {
+  string round_id = 1;
+  string pubkey = 2;
+  string tree_signatures = 3;
+}
+message SubmitTreeSignaturesResponse {}
+
+message SubmitSignedForfeitTxsRequest {
+  // Forfeit txs signed by the user.
+  repeated string signed_forfeit_txs = 1;
+  // The user has to sign also the round tx if he registerd a boarding UTXO.
+  optional string signed_round_tx = 2;
+}
+message SubmitSignedForfeitTxsResponse {}
+
+message GetEventStreamRequest {}
+message GetEventStreamResponse {
+  oneof event {
+    RoundFinalizationEvent round_finalization = 1;
+    RoundFinalizedEvent round_finalized = 2;
+    RoundFailed round_failed = 3;
+    RoundSigningEvent round_signing = 4;
+    RoundSigningNoncesGeneratedEvent round_signing_nonces_generated = 5;
+  }
+}
+
+message PingRequest {
+  // The id used to register inputs and ouptuts.
+  string request_id = 1;
+}
+message PingResponse {}
+
+/* Out-of-Round Transaction API messages */
+
+message SubmitRedeemTxRequest {
+  string redeem_tx = 1;
+}
+message SubmitRedeemTxResponse {
+  string signed_redeem_tx = 1;
+  string txid = 2;
+}
+
+message GetTransactionsStreamRequest {}
+message GetTransactionsStreamResponse {
+  oneof tx {
+    RoundTransaction round = 1;
+    RedeemTransaction redeem = 2;
+  }
+}
