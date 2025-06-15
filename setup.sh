@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-if [ ! -v CI ]; then
+if [ -z "${CI:-}" ]; then
   # Initialize the server submodule
   git submodule init && git submodule update --recursive
 
@@ -11,7 +11,7 @@ fi
 # Create appsettings file to include app plugin when running the server
 appsettings="submodules/btcpayserver/BTCPayServer/appsettings.dev.json"
 if [ ! -f $appsettings ]; then
-    echo '{ "DEBUG_PLUGINS": "../../../BTCPayServer.Plugins.App/bin/Debug/net8.0/BTCPayServer.Plugins.ArkPayServer.dll" }' > $appsettings
+    echo '{ "DEBUG_PLUGINS": "../../../BTCPayServer.Plugins.ArkPayServer/bin/Debug/net8.0/BTCPayServer.Plugins.ArkPayServer.dll" }' > $appsettings
 fi
 
 # Publish plugin to share its dependencies with the server
