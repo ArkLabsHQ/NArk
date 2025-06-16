@@ -164,7 +164,7 @@ public class ArkService : IHostedService, IAsyncDisposable
         if (_cts != null)
         {
             await StopListening();
-            if( _cts.IsCancellationRequested)
+            if (!_cts.IsCancellationRequested)
                 await _cts.CancelAsync();
             _cts.Dispose();
         }
