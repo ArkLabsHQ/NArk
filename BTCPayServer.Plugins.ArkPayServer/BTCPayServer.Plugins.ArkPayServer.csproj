@@ -14,26 +14,21 @@
         <Version>1.0.0</Version>
     </PropertyGroup>
 
-
-
     <ItemDefinitionGroup>
         <ProjectReference>
             <Properties>StaticWebAssetsEnabled=false</Properties>
-            <Private>false</Private>
-            <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
         </ProjectReference>
     </ItemDefinitionGroup>
 
-
     <ItemGroup>
-    <ProjectReference Include="..\NArk\NArk.csproj" />
-    <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
-    <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Client\BTCPayServer.Client.csproj" />
-    <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Data\BTCPayServer.Data.csproj" />
-    <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Rating\BTCPayServer.Rating.csproj" />
-    <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
-    <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
-    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
+        <ProjectReference Include="..\NArk\NArk.csproj" />
+        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
+        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Client\BTCPayServer.Client.csproj" />
+        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Data\BTCPayServer.Data.csproj" />
+        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Rating\BTCPayServer.Rating.csproj" />
+        <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
+        <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
+        <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
         
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.16"/>
