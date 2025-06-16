@@ -1,4 +1,4 @@
-﻿namespace BTCPayServer.Plugins.ArkPayServer;
+﻿namespace BTCPayServer.Plugins.ArkPayServer.Data.Entities.Enums;
 
 public enum StoredTransactionState
 {

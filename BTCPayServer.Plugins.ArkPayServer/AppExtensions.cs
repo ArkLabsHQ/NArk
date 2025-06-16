@@ -4,11 +4,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NBitcoin;
 using AsyncKeyedLock;
+using BTCPayServer.Plugins.ArkPayServer.Data;
+using BTCPayServer.Plugins.ArkPayServer.Services;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
-
-
-
 
 public static class AppExtensions
 {
@@ -59,8 +58,8 @@ public static class AppExtensions
             {
                 options.Address = new Uri(arkUri);
             });
-        serviceCollection.AddHostedService<ArkService>();
-        
+        serviceCollection.AddTransient<ArkWalletService>();
+        serviceCollection.AddHostedService<ArkSubscriptionService>();
         return serviceCollection;
     }
 

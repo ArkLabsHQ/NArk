@@ -1,7 +1,7 @@
-﻿using System.Threading.Channels;
+using System.Threading.Channels;
 using Ark.V1;
 using AsyncKeyedLock;
-using BTCPayServer.Configuration;
+using BTCPayServer.Plugins.ArkPayServer.Data;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -10,18 +10,17 @@ using NArk;
 using NArk.Wallet;
 using NBitcoin;
 
-namespace BTCPayServer.Plugins.ArkPayServer;
+namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
-public class ArkService : IHostedService, IAsyncDisposable
+public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 {
     private ArkOperatorTerms _operatorTerms;
-    private readonly BTCPayServerOptions _btcPayServerOptions;
     private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
     private readonly AsyncKeyedLocker _asyncKeyedLocker;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
-    private readonly Ark.V1.ArkService.ArkServiceClient _arkClient;
+    private readonly ArkService.ArkServiceClient _arkClient;
     private readonly IndexerService.IndexerServiceClient _indexerClient;
-    private readonly ILogger<ArkService> _logger;
+    private readonly ILogger<ArkSubscriptionService> _logger;
 
     private Task _processingTask;
     private CancellationTokenSource? _cts;
@@ -33,13 +32,13 @@ public class ArkService : IHostedService, IAsyncDisposable
     private CancellationTokenSource _listeningCts;
     private readonly Network _network;
 
-    public ArkService(
+    public ArkSubscriptionService(
         BTCPayNetworkProvider btcPayNetworkProvider,
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         Ark.V1.ArkService.ArkServiceClient arkClient,
         IndexerService.IndexerServiceClient indexerClient,
-        ILogger<ArkService> logger)
+        ILogger<ArkSubscriptionService> logger)
     {
         _btcPayNetworkProvider = btcPayNetworkProvider;
         _asyncKeyedLocker = asyncKeyedLocker;
@@ -48,21 +47,19 @@ public class ArkService : IHostedService, IAsyncDisposable
         _indexerClient = indexerClient;
         _logger = logger;
         _network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
-
-
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _processingTask = ProcessingLoop(_cts.Token);
-        _logger.LogInformation("ArkService started.");
+        _logger.LogInformation("ArkSubscriptionService started.");
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("ArkService stopping.");
+        _logger.LogInformation("ArkSubscriptionService stopping.");
         if (_processingTask == null)
             return;
 
@@ -71,7 +68,7 @@ public class ArkService : IHostedService, IAsyncDisposable
             await _cts.CancelAsync();
 
         await Task.WhenAny(_processingTask, Task.Delay(Timeout.Infinite, cancellationToken));
-        _logger.LogInformation("ArkService stopped.");
+        _logger.LogInformation("ArkSubscriptionService stopped.");
     }
 
     public async ValueTask DisposeAsync()
@@ -85,46 +82,11 @@ public class ArkService : IHostedService, IAsyncDisposable
         }
     }
 
-    public async Task DeriveNewContract(string walletId, Func<ArkWallet,Task<ArkWalletContract?>> setup,CancellationToken cancellationToken)
-    {
-        using var keyLocker = await _asyncKeyedLocker.LockAsync($"DeriveNewContract{walletId}", cancellationToken);
-        await using var dbContext = _arkPluginDbContextFactory.CreateContext();
-        var wallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.DescriptorTemplate == walletId, cancellationToken);
-        if (wallet == null)
-        {
-            throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
-        }
-        // int newIndex = (int)(wallet.CurrentIndex + 1);
-        // wallet.CurrentIndex = newIndex;
-        // var descriptor = Miniscript.Parse(wallet.DescriptorTemplate,
-        //     new MiniscriptParsingSettings(_network, KeyType.Taproot));
-        // var descriptor = descriptor.Derive(AddressIntent.Deposit, newIndex).Miniscript;
-        //
-        // var contract = new ArkWalletContract
-        // {
-        //     DescriptorTemplate = wallet.DescriptorTemplate,
-        //     Descriptor = descriptor.ToString(true),
-        //     Active = true
-        // };
-        var contract = await setup(wallet);
-        if(contract == null)
-        {
-            return;
-        }
-        await  dbContext.WalletContracts.AddAsync(contract, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("New contract derived for wallet {WalletId}: {ContractScript}", walletId, contract.Script);
-
-        await  this.UpdateManualSubscriptionAsync(contract.Script, contract.Active, cancellationToken);
-
-    }
-    
-
     public void TriggerContractsCheck()
     {
         _checkContractsChannel.Writer.TryWrite(true);
     }
-    
+
     private async Task UpdateManualSubscriptionAsync(string contract, bool subscribe, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(contract))
@@ -181,15 +143,15 @@ public class ArkService : IHostedService, IAsyncDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in ArkService processing loop. Retrying in 1 minute.");
+                _logger.LogError(ex, "Error in ArkSubscriptionService processing loop. Retrying in 1 minute.");
                 await Task.Delay(TimeSpan.FromMinutes(1), cancellationToken);
             }
         }
     }
 
-    private async Task UpdateVTXOS(IndexerVtxo[] vtxos, CancellationToken cancellationToken)
+    private Task UpdateVTXOS(IndexerVtxo[] vtxos, CancellationToken cancellationToken)
     {
-        vtxo.
+        return Task.CompletedTask;
     }
 
     private async Task UpdateSubscriptionAndListen(CancellationToken cancellationToken)
@@ -273,9 +235,9 @@ public class ArkService : IHostedService, IAsyncDisposable
         _logger.LogInformation("Stopping stream listener.");
         if(_listeningCts is not null && !_listeningCts.IsCancellationRequested)
             _listeningCts.Cancel();
-        
+
         await Task.WhenAny(_listeningTask, Task.Delay(Timeout.Infinite, CancellationToken.None));
-        
+
         if(_listeningCts is not null)
             _listeningCts.Dispose();
         _listeningTask = null;
@@ -338,7 +300,7 @@ public class ArkService : IHostedService, IAsyncDisposable
 
         _logger.LogInformation("[Manual] Updating remote subscription with {Count} scripts.", _subscribedScripts.Count);
 
-        var req = new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId }; 
+        var req = new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId };
         req.Scripts.AddRange(_subscribedScripts);
 
         try
@@ -349,7 +311,7 @@ public class ArkService : IHostedService, IAsyncDisposable
             if (_subscriptionId != newSubscriptionId && !string.IsNullOrEmpty(_subscriptionId))
             {
                 _logger.LogWarning("Subscription ID changed from {OldSubscriptionId} to {NewSubscriptionId} during manual update. Listener will be restarted.", _subscriptionId, newSubscriptionId);
-                await StopListening(); 
+                await StopListening();
             }
             _subscriptionId = newSubscriptionId;
             _logger.LogInformation("[Manual] Successfully updated subscription with ID: {SubscriptionId}", _subscriptionId);
@@ -361,7 +323,7 @@ public class ArkService : IHostedService, IAsyncDisposable
             _logger.LogError(ex, "[Manual] Failed to update remote subscription.");
         }
     }
-    
+
     private async Task UpdateTerms(CancellationToken cancellationToken)
     {
         try
