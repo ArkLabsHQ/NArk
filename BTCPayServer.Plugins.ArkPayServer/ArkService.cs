@@ -1,133 +1,16 @@
-using System.ComponentModel.DataAnnotations.Schema;
+﻿using System.Threading.Channels;
 using Ark.V1;
 using AsyncKeyedLock;
-using Grpc.Core;
-using System.Threading.Channels;
 using BTCPayServer.Configuration;
-using Microsoft.Extensions.Logging;
+using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NArk;
 using NArk.Wallet;
 using NBitcoin;
-using NBitcoin.WalletPolicies;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
-
-public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : DbContext(options)
-{
-
-    public DbSet<ArkWallet> Wallets { get; set; }
-    public DbSet<ArkWalletContract> WalletContracts { get; set; }
-    
-    public DbSet<ArkStoredTransaction> Transactions { get; set; }
-    public DbSet<VTXO> Vtxos { get; set; }
-    
-    
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        base.OnModelCreating(modelBuilder);
-        modelBuilder.HasDefaultSchema("BTCPayServer.Plugins.Ark");
-
-        modelBuilder.Entity<ArkStoredTransaction>(entity =>
-        {
-            entity.HasKey(e => e.TransactionId);
-
-            entity.HasMany(e => e.CreatedVtxos)
-                .WithOne(v => v.CreatedByTransaction)
-                .HasForeignKey(v => v.TransactionId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasMany(e => e.SpentVtxos)
-                .WithOne(v => v.SpentByTransaction)
-                .HasForeignKey(v => v.SpentByTransactionId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
-
-        modelBuilder.Entity<VTXO>(entity =>
-        {
-            entity.HasKey(e => new { e.TransactionId, e.TransactionOutputIndex });
-        });
-
-        modelBuilder.Entity<ArkWallet>(entity =>
-        {
-            entity.HasKey(w => w.DescriptorTemplate);
-            entity.HasMany(w => w.Contracts)
-                .WithOne()
-                .HasForeignKey(c => c.DescriptorTemplate);
-        });
-
-        modelBuilder.Entity<ArkWalletContract>(entity =>
-        {
-            entity.HasKey(c => c.Script);
-        });
-    }
-}
-
-public enum StoredTransactionState
-{
-    Virtual,
-    Mempool,
-    Replaced,
-    Confirmed,
-    Invalidated
-}
-public class ArkStoredTransaction
-{
-    public string TransactionId { get; set; }
-    public string Psbt { get; set; }
-    public StoredTransactionState State { get; set; }
-    
-    public List<VTXO> CreatedVtxos { get; set; } = new List<VTXO>();
-    public List<VTXO> SpentVtxos { get; set; } = new List<VTXO>();
-}
-
-public class VTXO
-{
-    public string TransactionId { get; set; }
-    public int TransactionOutputIndex { get; set; }
-    
-    public string? SpentByTransactionId { get; set; }
-    public int? SpentByTransactionIdInputIndex { get; set; }
-    
-    public long Amount { get; set; }
-    public DateTimeOffset SeenAt { get; set; }
-    public DateTimeOffset? SpentAt { get; set; }
-    bool IsNote { get; set; }
-    bool Preconfirmed { get; set; }
-    
-    
-    public List<ArkWalletContract> WalletContracts { get; set; }
-    
-    public ArkStoredTransaction? SpentByTransaction { get; set; }
-    public ArkStoredTransaction CreatedByTransaction { get; set; }
-    
-}
-
-
-public class ArkWallet
-{
-    
-    public string DescriptorTemplate { get; set; }
-    public uint CurrentIndex { get; set; }
-
-    public List<ArkWalletContract> Contracts { get; set; } = new List<ArkWalletContract>();
-
-
-}
-
-public class ArkWalletContract
-{
-    public string Script { get; set; }
-    public string DescriptorTemplate { get; set; }
-    public bool Active { get; set; }
-    public string Type { get; set; }
-    
-    [Column(TypeName = "jsonb")]
-    public Dictionary<string, string> ContractData { get; set; }
-    
-}
-
 
 public class ArkService : IHostedService, IAsyncDisposable
 {
@@ -209,7 +92,7 @@ public class ArkService : IHostedService, IAsyncDisposable
         var wallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.DescriptorTemplate == walletId, cancellationToken);
         if (wallet == null)
         {
-           throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
+            throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
         }
         // int newIndex = (int)(wallet.CurrentIndex + 1);
         // wallet.CurrentIndex = newIndex;
@@ -226,9 +109,9 @@ public class ArkService : IHostedService, IAsyncDisposable
         var contract = await setup(wallet);
         if(contract == null)
         {
-         return;
+            return;
         }
-       await  dbContext.WalletContracts.AddAsync(contract, cancellationToken);
+        await  dbContext.WalletContracts.AddAsync(contract, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         _logger.LogInformation("New contract derived for wallet {WalletId}: {ContractScript}", walletId, contract.Script);
 
@@ -304,6 +187,11 @@ public class ArkService : IHostedService, IAsyncDisposable
         }
     }
 
+    private async Task UpdateVTXOS(IndexerVtxo[] vtxos, CancellationToken cancellationToken)
+    {
+        vtxo.
+    }
+
     private async Task UpdateSubscriptionAndListen(CancellationToken cancellationToken)
     {
         using var keyLocker = await _asyncKeyedLocker.LockAsync("UpdateSubscription", cancellationToken);
@@ -322,8 +210,8 @@ public class ArkService : IHostedService, IAsyncDisposable
             // Still check if listener is running
             if ((_listeningTask is null || _listeningTask.IsCompleted) && activeScripts.Any())
             {
-                 _logger.LogInformation("Listener was not running, but there are active contracts. Starting listener.");
-                 await StartListening(cancellationToken);
+                _logger.LogInformation("Listener was not running, but there are active contracts. Starting listener.");
+                await StartListening(cancellationToken);
             }
             return;
         }
