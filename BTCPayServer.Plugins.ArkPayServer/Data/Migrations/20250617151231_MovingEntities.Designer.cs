@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
 {
     [DbContext(typeof(ArkPluginDbContext))]
-    partial class ArkPluginDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250617151231_MovingEntities")]
+    partial class MovingEntities
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
