@@ -11,8 +11,8 @@ public class VTXO
     public long Amount { get; set; }
     public DateTimeOffset SeenAt { get; set; }
     public DateTimeOffset? SpentAt { get; set; }
-    bool IsNote { get; set; }
-    bool Preconfirmed { get; set; }
+    public bool IsNote { get; set; }
+    public bool Preconfirmed { get; set; }
     public List<ArkWalletContract> WalletContracts { get; set; }
     public ArkStoredTransaction? SpentByTransaction { get; set; }
     public ArkStoredTransaction CreatedByTransaction { get; set; }
