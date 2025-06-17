@@ -15,7 +15,9 @@ public static class ArkExtensions
         // If the server returns a standard compressed key (33 bytes),
         // remove the first byte (02 or 03) to get the 32-byte x-only key.
         if (bytes.Length == 33 && (bytes[0] == 0x02 || bytes[0] == 0x03))
+        {
             bytes = bytes[1..];
+        }
 
         return ECXOnlyPubKey.Create(bytes);
     }
