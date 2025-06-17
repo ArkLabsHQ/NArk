@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 
-namespace BTCPayServer.Plugins.ArkPayServer;
+namespace BTCPayServer.Plugins.ArkPayServer.Data;
 
 public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<ArkPluginDbContext>
 {

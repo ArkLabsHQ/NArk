@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
-namespace BTCPayServer.Plugins.ArkPayServer;
+namespace BTCPayServer.Plugins.ArkPayServer.Data;
 
 public class ArkPluginMigrationRunner(
     ILogger<ArkPluginMigrationRunner> logger,
