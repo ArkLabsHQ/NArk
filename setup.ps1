@@ -32,27 +32,37 @@ if (-not (Test-Path $appsettings -PathType Leaf)) {
     Set-Content -Path $appsettings -Value $content -Encoding UTF8
 }
 
-# Publish plugin to share its dependencies with the server
-$originalLocation = Get-Location
+# Publish each project so dependencies are shared
+$root = Get-Location
 $pluginDir = "BTCPayServer.Plugins.ArkPayServer"
+$publishDir = Join-Path $root "$pluginDir/bin/Debug/net8.0"
+$projects = @($pluginDir, "NArk", "NArk.Grpc")
 
-if (Test-Path $pluginDir) {
-    Write-Host "Changing directory to $pluginDir..."
-    Set-Location $pluginDir
+# Remove old build artifacts
+if (Test-Path $publishDir) {
+    Write-Host "Cleaning $publishDir..."
+    Remove-Item -Recurse -Force $publishDir
+}
 
-    Write-Host "Publishing plugin..."
-    dotnet publish -c Debug -o "bin/Debug/net8.0"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "dotnet publish failed."
-        Set-Location $originalLocation # Ensure we return to original location on error
+function Publish-Project($path) {
+    if (-not (Test-Path $path)) {
+        Write-Error "Project directory '$path' not found."
         exit 1
     }
 
-    Write-Host "Returning to original directory..."
-    Set-Location $originalLocation
-} else {
-    Write-Error "Plugin directory $pluginDir not found."
-    exit 1
+    Write-Host "Publishing $path..."
+    Push-Location $path
+    dotnet publish -c Debug -o $publishDir
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "dotnet publish failed for $path."
+        Pop-Location
+        exit 1
+    }
+    Pop-Location
+}
+
+foreach ($project in $projects) {
+    Publish-Project $project
 }
 
 Write-Host "Setup complete."
