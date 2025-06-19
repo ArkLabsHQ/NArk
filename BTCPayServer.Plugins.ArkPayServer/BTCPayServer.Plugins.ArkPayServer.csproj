@@ -5,34 +5,35 @@
         <LangVersion>preview</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
-        <PreserveCompilationContext>false</PreserveCompilationContext>
-        <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
-        
+
         <Product>Arkade Pay Server</Product>
         <Description>Programmable money for sovereign business</Description>
         <Version>1.0.0</Version>
     </PropertyGroup>
 
+    <!-- Plugin development properties -->
+    <PropertyGroup>
+        <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+        <PreserveCompilationContext>false</PreserveCompilationContext>
+        <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+
+    <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
     <ItemDefinitionGroup>
         <ProjectReference>
             <Properties>StaticWebAssetsEnabled=false</Properties>
+            <Private>false</Private>
+            <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
         </ProjectReference>
     </ItemDefinitionGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\NArk\NArk.csproj" />
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
-        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Client\BTCPayServer.Client.csproj" />
-        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Data\BTCPayServer.Data.csproj" />
-        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer.Rating\BTCPayServer.Rating.csproj" />
         <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
-        <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
         <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
-        
-        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
-        <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.16"/>
-        <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+
         <EmbeddedResource Include="Resources\**" />
     </ItemGroup>
 </Project>

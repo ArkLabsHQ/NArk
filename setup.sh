@@ -1,20 +1,40 @@
 #!/usr/bin/env bash
 
-if [ -z "${CI:-}" ]; then
-  # Initialize the server submodule
-  git submodule init && git submodule update --recursive
+ROOT_DIR=$(pwd)
+PLUGIN_DIR="BTCPayServer.Plugins.ArkPayServer"
+OUTPUT_DIR="$ROOT_DIR/$PLUGIN_DIR/bin/Debug/net8.0"
+PROJECTS=("NArk" "NArk.Grpc")
 
-  # Install the workloads
+# Remove old build artifacts
+if [ -d "$OUTPUT_DIR" ]; then
+  echo "Cleaning $OUTPUT_DIR"
+  rm -rf "$OUTPUT_DIR"
+fi
+
+if [ -z "${CI:-}" ]; then
+  echo "Initializing and updating submodules..."
+  git submodule init
+  git submodule update --recursive
+
+  echo "Restoring workloads..."
   dotnet workload restore
 fi
 
-# Create appsettings file to include app plugin when running the server
-appsettings="submodules/btcpayserver/BTCPayServer/appsettings.dev.json"
-if [ ! -f $appsettings ]; then
-    echo '{ "DEBUG_PLUGINS": "../../../BTCPayServer.Plugins.ArkPayServer/bin/Debug/net8.0/BTCPayServer.Plugins.ArkPayServer.dll" }' > $appsettings
+APPSETTINGS="submodules/btcpayserver/BTCPayServer/appsettings.dev.json"
+if [ ! -f "$APPSETTINGS" ]; then
+  echo "Creating $APPSETTINGS"
+  echo '{ "DEBUG_PLUGINS": "../../../BTCPayServer.Plugins.ArkPayServer/bin/Debug/net8.0/BTCPayServer.Plugins.ArkPayServer.dll" }' > "$APPSETTINGS"
 fi
 
-# Publish plugin to share its dependencies with the server
-cd BTCPayServer.Plugins.ArkPayServer
-dotnet publish -c Debug -o bin/Debug/net8.0
-cd -
+publish_project() {
+  local dir="$1"
+  echo "Publishing $dir..."
+  dotnet publish "$dir" -c Debug -o "$OUTPUT_DIR"
+}
+
+publish_project "$PLUGIN_DIR"
+for project in "${PROJECTS[@]}"; do
+  publish_project "$project"
+done
+
+echo "✅ Setup complete."
