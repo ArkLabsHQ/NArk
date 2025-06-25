@@ -1,5 +1,4 @@
 using Microsoft.AspNetCore.Mvc;
-using NBitcoin;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Plugins.ArkPayServer.Models;
