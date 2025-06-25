@@ -6,7 +6,12 @@
 
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Wallet Details</h1>
-    <a asp-action="Index" class="btn btn-secondary">Back to Wallets</a>
+    <div>
+        <a asp-action="BoardingAddresses" asp-route-walletId="@Model.Id" class="btn btn-primary me-2">
+            <i class="fa fa-ship"></i> Boarding Addresses
+        </a>
+        <a asp-action="Index" class="btn btn-secondary">Back to Wallets</a>
+    </div>
 </div>
 
 @if (TempData["StatusMessage"] != null)

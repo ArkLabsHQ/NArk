@@ -76,4 +76,45 @@ public class ArkController : Controller
         ViewData["Title"] = "Wallet Details";
         return View(wallet);
     }
+
+    [HttpGet("wallet/{walletId:guid}/boarding-addresses")]
+    public async Task<IActionResult> BoardingAddresses(Guid walletId)
+    {
+        var wallet = await _arkWalletService.GetWalletAsync(walletId);
+        if (wallet == null)
+        {
+            return NotFound();
+        }
+
+        var boardingAddresses = await _arkWalletService.GetBoardingAddressesAsync(walletId);
+        
+        ViewData["Title"] = "Boarding Addresses";
+        ViewData["WalletId"] = walletId;
+        ViewData["WalletName"] = $"Wallet {wallet.Id:N}";
+        
+        return View(boardingAddresses);
+    }
+
+    [HttpPost("wallet/{walletId:guid}/create-boarding-address")]
+    public async Task<IActionResult> CreateBoardingAddress(Guid walletId)
+    {
+        var wallet = await _arkWalletService.GetWalletAsync(walletId);
+        if (wallet == null)
+        {
+            return NotFound();
+        }
+
+        try
+        {
+            var boardingAddress = await _arkWalletService.DeriveNewBoardingAddress(walletId);
+                
+            TempData["StatusMessage"] = $"Boarding address created successfully: {boardingAddress.OnchainAddress}";
+            return RedirectToAction(nameof(BoardingAddresses), new { walletId });
+        }
+        catch (Exception ex)
+        {
+            TempData["ErrorMessage"] = $"Failed to create boarding address: {ex.Message}";
+            return RedirectToAction(nameof(BoardingAddresses), new { walletId });
+        }
+    }
 }
