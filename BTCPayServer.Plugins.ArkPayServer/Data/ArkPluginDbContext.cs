@@ -9,7 +9,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
     public DbSet<ArkWallet> Wallets { get; set; }
     public DbSet<ArkWalletContract> WalletContracts { get; set; }
     
-    public DbSet<ArkStoredTransaction> Transactions { get; set; }
+    // public DbSet<ArkStoredTransaction> Transactions { get; set; }
     public DbSet<VTXO> Vtxos { get; set; }
     
     
@@ -18,20 +18,20 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
         base.OnModelCreating(modelBuilder);
         modelBuilder.HasDefaultSchema("BTCPayServer.Plugins.Ark");
 
-        modelBuilder.Entity<ArkStoredTransaction>(entity =>
-        {
-            entity.HasKey(e => e.TransactionId);
-
-            entity.HasMany(e => e.CreatedVtxos)
-                .WithOne(v => v.CreatedByTransaction)
-                .HasForeignKey(v => v.TransactionId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            entity.HasMany(e => e.SpentVtxos)
-                .WithOne(v => v.SpentByTransaction)
-                .HasForeignKey(v => v.SpentByTransactionId)
-                .OnDelete(DeleteBehavior.Restrict);
-        });
+        // modelBuilder.Entity<ArkStoredTransaction>(entity =>
+        // {
+        //     entity.HasKey(e => e.TransactionId);
+        //
+        //     entity.HasMany(e => e.CreatedVtxos)
+        //         .WithOne(v => v.CreatedByTransaction)
+        //         .HasForeignKey(v => v.TransactionId)
+        //         .OnDelete(DeleteBehavior.Restrict);
+        //
+        //     entity.HasMany(e => e.SpentVtxos)
+        //         .WithOne(v => v.SpentByTransaction)
+        //         .HasForeignKey(v => v.SpentByTransactionId)
+        //         .OnDelete(DeleteBehavior.Restrict);
+        // });
 
         modelBuilder.Entity<VTXO>(entity =>
         {
@@ -40,10 +40,10 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
 
         modelBuilder.Entity<ArkWallet>(entity =>
         {
-            entity.HasKey(w => w.DescriptorTemplate);
+            entity.HasKey(w => w.WalletId);
             entity.HasMany(w => w.Contracts)
                 .WithOne()
-                .HasForeignKey(c => c.DescriptorTemplate);
+                .HasForeignKey(c => c.WalletId);
         });
 
         modelBuilder.Entity<ArkWalletContract>(entity =>

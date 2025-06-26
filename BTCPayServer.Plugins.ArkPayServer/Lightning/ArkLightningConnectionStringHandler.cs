@@ -9,6 +9,9 @@ public class ArkLightningConnectionStringHandler: ILightningConnectionStringHand
     public ILightningClient Create(string connectionString, Network network, [UnscopedRef] out string error)
     {
         throw new NotImplementedException();
+        
+        //type=ark;wallet-id
     }
 }
+
 

@@ -39,6 +39,11 @@ public class ArkAddress: TaprootPubKey
     }
 
     public ECXOnlyPubKey ServerKey { get; }
+
+    public override string ToString()
+    {
+        throw new NotImplementedException();
+    }
     
     public string ToString(bool mainnet)
     {

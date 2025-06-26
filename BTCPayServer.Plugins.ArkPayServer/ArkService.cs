@@ -1,7 +1,13 @@
-﻿using System.Threading.Channels;
+using System.Text;
+using System.Threading.Channels;
 using Ark.V1;
 using AsyncKeyedLock;
 using BTCPayServer.Configuration;
+using BTCPayServer.Data;
+using BTCPayServer.Events;
+using BTCPayServer.Payments;
+using BTCPayServer.Plugins.Cashu.PaymentHandlers;
+using BTCPayServer.Services.Invoices;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -9,6 +15,9 @@ using Microsoft.Extensions.Logging;
 using NArk;
 using NArk.Wallet;
 using NBitcoin;
+using NBitcoin.DataEncoders;
+using NBitcoin.Secp256k1;
+using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 
@@ -22,6 +31,10 @@ public class ArkService : IHostedService, IAsyncDisposable
     private readonly Ark.V1.ArkService.ArkServiceClient _arkClient;
     private readonly IndexerService.IndexerServiceClient _indexerClient;
     private readonly ILogger<ArkService> _logger;
+    private readonly InvoiceRepository _invoiceRepository;
+    private readonly PaymentService _paymentService;
+    private readonly EventAggregator _eventAggregator;
+    private readonly PaymentMethodHandlerDictionary _paymentMethodHandlerDictionary;
 
     private Task _processingTask;
     private CancellationTokenSource? _cts;
@@ -32,6 +45,7 @@ public class ArkService : IHostedService, IAsyncDisposable
     private Task? _listeningTask;
     private CancellationTokenSource _listeningCts;
     private readonly Network _network;
+    private readonly DerivationSchemeParser _derivationSchemeParser;
 
     public ArkService(
         BTCPayNetworkProvider btcPayNetworkProvider,
@@ -39,7 +53,11 @@ public class ArkService : IHostedService, IAsyncDisposable
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         Ark.V1.ArkService.ArkServiceClient arkClient,
         IndexerService.IndexerServiceClient indexerClient,
-        ILogger<ArkService> logger)
+        ILogger<ArkService> logger,
+        InvoiceRepository invoiceRepository,
+        PaymentService paymentService,
+        EventAggregator eventAggregator,
+        PaymentMethodHandlerDictionary paymentMethodHandlerDictionary)
     {
         _btcPayNetworkProvider = btcPayNetworkProvider;
         _asyncKeyedLocker = asyncKeyedLocker;
@@ -47,6 +65,11 @@ public class ArkService : IHostedService, IAsyncDisposable
         _arkClient = arkClient;
         _indexerClient = indexerClient;
         _logger = logger;
+        _invoiceRepository = invoiceRepository;
+        _paymentService = paymentService;
+        _eventAggregator = eventAggregator;
+        _paymentMethodHandlerDictionary = paymentMethodHandlerDictionary;
+        _derivationSchemeParser = _btcPayNetworkProvider.BTC.GetDerivationSchemeParser();
         _network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
 
 
@@ -85,38 +108,88 @@ public class ArkService : IHostedService, IAsyncDisposable
         }
     }
 
-    public async Task DeriveNewContract(string walletId, Func<ArkWallet,Task<ArkWalletContract?>> setup,CancellationToken cancellationToken)
+    public async Task<ArkContract> DerivePaymentContract(string walletId, CancellationToken cancellationToken)
+    {
+        return await DeriveNewContract(walletId, async (ArkWallet wallet) =>
+        {
+            // var newIndex = wallet.CurrentIndex + 1;
+            // wallet.CurrentIndex = newIndex;
+            // var descriptor = _derivationSchemeParser.ParseOD(wallet.DescriptorTemplate);
+            //
+            // var derivation = descriptor.AccountDerivation.GetDerivation(newIndex);
+            //
+            // var xOnlyKey = ECXOnlyPubKey.Create(derivation.ScriptPubKey.ToBytes().AsSpan()[2..]);
+            // ECPubKey xx;
+            // ECXOnlyPubKey xxx;
+            // xxx.A
+            
+            // var descriptor = Miniscript.Parse(wallet.DescriptorTemplate,
+            //     new MiniscriptParsingSettings(_network, KeyType.Taproot));
+            // var derivation = descriptor.Derive(AddressIntent.Deposit, (int)newIndex);
+            // var key = derivation.DerivedKeys.First().Key.Key.GetPublicKey().TaprootInternalKey;
+            // var xOnlyKey = ECXOnlyPubKey.Create(key.ToBytes());
+            var tweak = RandomUtils.GetBytes(32);
+            if (tweak is null)
+            {
+                throw new Exception("Could not derive preimage randomly");
+            }
+
+
+            var encoder = Bech32Encoder.ExtractEncoderFromString(wallet.Wallet);
+            encoder.StrictLength = false;
+            encoder.SquashBytes = true;
+            ECXOnlyPubKey? pubKey = null; 
+            var keyData = encoder.DecodeDataRaw(wallet.Wallet, out _);
+            switch (Encoding.UTF8.GetString(encoder.HumanReadablePart))
+            {
+                case "nsec":
+                    pubKey = ECPrivKey.Create(keyData).CreateXOnlyPubKey();
+                    break;
+                case "npub":
+                    pubKey = ECXOnlyPubKey.Create(keyData);
+                    break;
+            }
+            
+            
+            var paymentContract =
+                new TweakedArkPaymentContract(_operatorTerms.SignerKey, _operatorTerms.UnilateralExit, pubKey, tweak);
+            
+            var contract = new ArkWalletContract
+            {
+                WalletId = wallet.Wallet,
+                Active = true,
+                ContractData = paymentContract.GetContractData()
+            };
+
+            return (contract, paymentContract);
+        }, cancellationToken);
+    }
+
+    
+    
+    
+    public async Task<ArkContract?> DeriveNewContract(string walletId, Func<ArkWallet,Task<(ArkWalletContract, ArkContract)?>> setup,CancellationToken cancellationToken)
     {
         using var keyLocker = await _asyncKeyedLocker.LockAsync($"DeriveNewContract{walletId}", cancellationToken);
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();
-        var wallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.DescriptorTemplate == walletId, cancellationToken);
+        var wallet = await dbContext.Wallets.FindAsync(walletId, cancellationToken);
         if (wallet == null)
         {
             throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
         }
-        // int newIndex = (int)(wallet.CurrentIndex + 1);
-        // wallet.CurrentIndex = newIndex;
-        // var descriptor = Miniscript.Parse(wallet.DescriptorTemplate,
-        //     new MiniscriptParsingSettings(_network, KeyType.Taproot));
-        // var descriptor = descriptor.Derive(AddressIntent.Deposit, newIndex).Miniscript;
-        //
-        // var contract = new ArkWalletContract
-        // {
-        //     DescriptorTemplate = wallet.DescriptorTemplate,
-        //     Descriptor = descriptor.ToString(true),
-        //     Active = true
-        // };
+      
         var contract = await setup(wallet);
         if(contract == null)
         {
-            return;
+            throw new InvalidOperationException($"Could not derive contract for wallet {walletId}");
         }
-        await  dbContext.WalletContracts.AddAsync(contract, cancellationToken);
+        await  dbContext.WalletContracts.AddAsync(contract.Value.Item1, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("New contract derived for wallet {WalletId}: {ContractScript}", walletId, contract.Script);
+        _logger.LogInformation("New contract derived for wallet {WalletId}: {ContractScript}", walletId, contract.Value.Item1.Script);
 
-        await  this.UpdateManualSubscriptionAsync(contract.Script, contract.Active, cancellationToken);
+        await  this.UpdateManualSubscriptionAsync(contract.Value.Item1.Script, contract.Value.Item1.Active, cancellationToken);
 
+        return contract.Value.Item2;
     }
     
 
@@ -187,10 +260,10 @@ public class ArkService : IHostedService, IAsyncDisposable
         }
     }
 
-    private async Task UpdateVTXOS(IndexerVtxo[] vtxos, CancellationToken cancellationToken)
-    {
-        vtxo.
-    }
+    // private async Task UpdateVTXOS(IndexerVtxo[] vtxos, CancellationToken cancellationToken)
+    // {
+    //     vtxo.
+    // }
 
     private async Task UpdateSubscriptionAndListen(CancellationToken cancellationToken)
     {
@@ -314,16 +387,82 @@ public class ArkService : IHostedService, IAsyncDisposable
         }
     }
 
-    private Task ProcessUpdates(GetSubscriptionResponse scripts, CancellationToken cancellationToken)
+    private async Task ProcessUpdates(GetSubscriptionResponse scripts, CancellationToken cancellationToken)
     {
-        // TODO: Implement logic to process the script updates.
-        // For example, you might want to fetch transaction details for these scripts.
         _logger.LogInformation("Processing updates for {Count} scripts.", scripts.Scripts.Count);
-        foreach (var script in scripts.Scripts)
+        
+        var handler = (ArkadePaymentMethodHandler)_paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId];
+        var request = new GetVtxosRequest();
+        request.Addresses.AddRange(scripts.Scripts);
+        var vtxos = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);
+
+        var outpoints = vtxos.Vtxos.Select(v => v.Outpoint).ToArray();
+        await using var dbContext = _arkPluginDbContextFactory.CreateContext();
+       
+
+        foreach (var vtxo in vtxos.Vtxos)
         {
-            _logger.LogDebug("Updated script: {Script}", script);
+           
+            var invoice = await _invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, vtxo.Script);
+            if (invoice is null)
+            {
+                continue;
+            }
+
+            await HandlePaymentData(vtxo, invoice, handler, cancellationToken);
         }
-        return Task.CompletedTask;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task ReceivedPayment(InvoiceEntity invoice, PaymentEntity payment)
+    {
+        _logger.LogInformation(
+            $"Invoice {invoice.Id} received payment {payment.Value} {payment.Currency} {payment.Id}");
+
+        _eventAggregator.Publish(
+            new InvoiceEvent(invoice, InvoiceEvent.ReceivedPayment) { Payment = payment });
+    }
+
+    private async Task HandlePaymentData(Vtxo vtxo, InvoiceEntity invoice, ArkadePaymentMethodHandler handler, CancellationToken cancellationToken)
+    {
+        var pmi = ArkadePlugin.ArkadePaymentMethodId;
+        var details = new ArkadePaymentData()
+        {
+            Outpoint = $"{vtxo.Outpoint.Txid}:{vtxo.Outpoint.Vout}"
+        };
+        var paymentData = new PaymentData()
+        {
+            Status = PaymentStatus.Settled,
+            Amount = Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC),
+            Created = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt),
+            Id = details.Outpoint,
+            Currency = "BTC",
+        }.Set(invoice, handler, details);
+
+
+        //check if this tx exists as a payment to this invoice already
+        var alreadyExistingPaymentThatMatches = invoice.GetPayments(false).SingleOrDefault(c =>
+            c.Id == paymentData.Id && c.PaymentMethodId == pmi);
+
+        //if it doesnt, add it and assign a new monerolike address to the system if a balance is still due
+        if (alreadyExistingPaymentThatMatches == null)
+        {
+            var payment = await _paymentService.AddPayment(paymentData, [vtxo.Txid]);
+            if (payment != null)
+            {
+                await ReceivedPayment(invoice, payment);
+            }
+        }
+        else
+        {
+            //else update it with the new data
+            alreadyExistingPaymentThatMatches.Status = status;
+            alreadyExistingPaymentThatMatches.Details = JToken.FromObject(details, handler.Serializer);
+            await _paymentService.UpdatePayments([alreadyExistingPaymentThatMatches]);
+        }
+
+        _eventAggregator.Publish(new InvoiceNeedUpdateEvent(invoice.Id));
     }
 
     private async Task SynchronizeSubscriptionWithIndexerAsync(CancellationToken cancellationToken)

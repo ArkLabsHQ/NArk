@@ -46,6 +46,13 @@ public abstract class ArkContract:IArkContractParser
     
     public ArkAddress GetArkAddress()
     {
+       var spendInfo = GetTaprootSpendInfo();
+        
+        return new ArkAddress(ECXOnlyPubKey.Create(spendInfo.OutputPubKey.ToBytes()), Server);
+    }
+    
+    public TaprootSpendInfo GetTaprootSpendInfo()
+    {
         var leaves = GetScriptBuilders().ToArray();
         if (!leaves.OfType<CollaborativePathArkTapScript>().Any())
             throw new ArgumentException("At least one collaborative path is required");
@@ -57,9 +64,6 @@ public abstract class ArkContract:IArkContractParser
         var spendInfo = TaprootSpendInfo.WithHuffmanTree(
             new TaprootInternalPubKey(TaprootConstants.UnspendableKey), 
             leaves.Select(x => ((uint)0, x.Build())).ToArray());
-        
-        return new ArkAddress(ECXOnlyPubKey.Create(spendInfo.OutputPubKey.ToBytes()), Server);
-    }
 
 
 
@@ -73,7 +77,7 @@ public abstract class ArkContract:IArkContractParser
         return $"arkcontract={Type}&{dataString}";
     }
     
-    protected abstract Dictionary<string, string> GetContractData();
+    public abstract Dictionary<string, string> GetContractData();
     
     
 }

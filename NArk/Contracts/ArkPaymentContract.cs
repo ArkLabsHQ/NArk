@@ -28,7 +28,7 @@ public class ArkPaymentContract : ArkContract
         ];
     }
 
-    protected override Dictionary<string, string> GetContractData()
+    public override Dictionary<string, string> GetContractData()
     {
         var data = new Dictionary<string, string>();
         data["exit_delay"] = ExitDelay.Value.ToString();

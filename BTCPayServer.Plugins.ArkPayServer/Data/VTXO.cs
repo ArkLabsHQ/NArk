@@ -16,8 +16,8 @@ public class VTXO
     
     
     public List<ArkWalletContract> WalletContracts { get; set; }
-    
-    public ArkStoredTransaction? SpentByTransaction { get; set; }
-    public ArkStoredTransaction CreatedByTransaction { get; set; }
+    //
+    // public ArkStoredTransaction? SpentByTransaction { get; set; }
+    // public ArkStoredTransaction CreatedByTransaction { get; set; }
     
 }

@@ -19,8 +19,8 @@ public class TweakedArkPaymentContract : ArkPaymentContract
     public override ECXOnlyPubKey User => OriginalUser.AddTweak(Tweak).ToXOnlyPubKey();
     
     public override string Type => "TweakedPayment";
-    
-    protected override Dictionary<string, string> GetContractData()
+
+    public override Dictionary<string, string> GetContractData()
     {
         var data = new Dictionary<string, string>();
         data["exit_delay"] = ExitDelay.Value.ToString();
