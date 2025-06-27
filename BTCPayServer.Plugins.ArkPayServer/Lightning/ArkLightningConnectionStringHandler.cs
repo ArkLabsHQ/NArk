@@ -2,7 +2,7 @@
 using BTCPayServer.Lightning;
 using NBitcoin;
 
-namespace BTCPayServer.Plugins.ArkPayServer;
+namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
 public class ArkLightningConnectionStringHandler: ILightningConnectionStringHandler
 {

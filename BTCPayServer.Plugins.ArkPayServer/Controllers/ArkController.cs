@@ -47,15 +47,10 @@ public class ArkController : Controller
 
         try
         {
-            var request = new WalletCreationRequest(model.Password);
+            var request = new WalletCreationRequest(model.PubKey);
             var wallet = await _arkWalletService.CreateNewWalletAsync(request);
             TempData["StatusMessage"] = "Ark wallet created successfully!";
             return RedirectToAction(nameof(WalletDetails), new { walletId = wallet.Id });
-        }
-        catch (ArgumentException ex)
-        {
-            ModelState.AddModelError(nameof(model.Password), ex.Message);
-            return View(model);
         }
         catch (Exception ex)
         {
