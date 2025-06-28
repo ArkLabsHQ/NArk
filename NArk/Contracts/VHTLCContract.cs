@@ -57,7 +57,7 @@ public class VHTLCContract : ArkContract
         yield return CreateUnilateralRefundWithoutReceiverScript();
     }
 
-    protected override Dictionary<string, string> GetContractData()
+    public override Dictionary<string, string> GetContractData()
     {
         return new Dictionary<string, string>
         {

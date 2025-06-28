@@ -1,25 +1,30 @@
 using System.Threading.Channels;
 using Ark.V1;
 using AsyncKeyedLock;
+using BTCPayServer.Data;
+using BTCPayServer.Events;
 using BTCPayServer.Plugins.ArkPayServer.Data;
+using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
+using BTCPayServer.Services.Invoices;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using NArk;
-using NArk.Wallet;
 using NBitcoin;
+using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 {
-    private ArkOperatorTerms _operatorTerms;
     private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
     private readonly AsyncKeyedLocker _asyncKeyedLocker;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
-    private readonly ArkService.ArkServiceClient _arkClient;
     private readonly IndexerService.IndexerServiceClient _indexerClient;
+    private readonly PaymentMethodHandlerDictionary _paymentMethodHandlerDictionary;
+    private readonly InvoiceRepository _invoiceRepository;
+    private readonly EventAggregator _eventAggregator;
+    private readonly PaymentService _paymentService;
     private readonly ILogger<ArkSubscriptionService> _logger;
 
     private Task _processingTask;
@@ -36,15 +41,21 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         BTCPayNetworkProvider btcPayNetworkProvider,
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
-        Ark.V1.ArkService.ArkServiceClient arkClient,
         IndexerService.IndexerServiceClient indexerClient,
+        PaymentMethodHandlerDictionary paymentMethodHandlerDictionary,
+        InvoiceRepository invoiceRepository,
+        PaymentService paymentService,
+        EventAggregator eventAggregator,
         ILogger<ArkSubscriptionService> logger)
     {
         _btcPayNetworkProvider = btcPayNetworkProvider;
         _asyncKeyedLocker = asyncKeyedLocker;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
-        _arkClient = arkClient;
         _indexerClient = indexerClient;
+        _paymentMethodHandlerDictionary = paymentMethodHandlerDictionary;
+        _invoiceRepository = invoiceRepository;
+        _paymentService = paymentService;
+        _eventAggregator = eventAggregator;
         _logger = logger;
         _network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
     }
@@ -87,7 +98,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         _checkContractsChannel.Writer.TryWrite(true);
     }
 
-    private async Task UpdateManualSubscriptionAsync(string contract, bool subscribe, CancellationToken cancellationToken)
+    public async Task UpdateManualSubscriptionAsync(string contract, bool subscribe, CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(contract))
         {
@@ -126,7 +137,6 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
     private async Task ProcessingLoop(CancellationToken cancellationToken)
     {
-        await UpdateTerms(cancellationToken);
         TriggerContractsCheck(); // Initial check
 
         while (!cancellationToken.IsCancellationRequested)
@@ -276,16 +286,76 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         }
     }
 
-    private Task ProcessUpdates(GetSubscriptionResponse scripts, CancellationToken cancellationToken)
+    private async Task ProcessUpdates(GetSubscriptionResponse scripts, CancellationToken cancellationToken)
     {
-        // TODO: Implement logic to process the script updates.
-        // For example, you might want to fetch transaction details for these scripts.
-        _logger.LogInformation("Processing updates for {Count} scripts.", scripts.Scripts.Count);
-        foreach (var script in scripts.Scripts)
+        var handler = (ArkadePaymentMethodHandler)_paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId];
+        var request = new GetVtxosRequest();
+        request.Addresses.AddRange(scripts.Scripts);
+        var vtxos = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);
+
+        var outpoints = vtxos.Vtxos.Select(v => v.Outpoint).ToArray();
+        await using var dbContext = _arkPluginDbContextFactory.CreateContext();
+
+        foreach (var vtxo in vtxos.Vtxos)
         {
-            _logger.LogDebug("Updated script: {Script}", script);
+
+            var invoice = await _invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, vtxo.Script);
+            if (invoice is null)
+            {
+                continue;
+            }
+
+            // FIXME: Commented out due to compile error. Needs to be fixed
+            //await HandlePaymentData(vtxo, invoice, handler, cancellationToken);
+            await HandlePaymentData(new Vtxo(), invoice, handler, cancellationToken);
         }
-        return Task.CompletedTask;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+    
+    private async Task ReceivedPayment(InvoiceEntity invoice, PaymentEntity payment)
+    {
+        _logger.LogInformation(
+            $"Invoice {invoice.Id} received payment {payment.Value} {payment.Currency} {payment.Id}");
+
+        _eventAggregator.Publish(
+            new InvoiceEvent(invoice, InvoiceEvent.ReceivedPayment) { Payment = payment });
+    }
+    
+    private async Task HandlePaymentData(Vtxo vtxo, InvoiceEntity invoice, ArkadePaymentMethodHandler handler, CancellationToken cancellationToken)
+    {
+        var pmi = ArkadePlugin.ArkadePaymentMethodId;
+        var details = new ArkadePaymentData($"{vtxo.Outpoint.Txid}:{vtxo.Outpoint.Vout}");
+        var paymentData = new PaymentData
+        {
+            Status = PaymentStatus.Settled,
+            Amount = Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC),
+            Created = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt),
+            Id = details.Outpoint,
+            Currency = "BTC",
+        }.Set(invoice, handler, details);
+
+
+        var alreadyExistingPaymentThatMatches = invoice.GetPayments(false).SingleOrDefault(c =>
+            c.Id == paymentData.Id && c.PaymentMethodId == pmi);
+
+        if (alreadyExistingPaymentThatMatches == null)
+        {
+            var payment = await _paymentService.AddPayment(paymentData, [vtxo.RoundTxid]);
+            if (payment != null)
+            {
+                await ReceivedPayment(invoice, payment);
+            }
+        }
+        else
+        {
+            //else update it with the new data
+            alreadyExistingPaymentThatMatches.Status = PaymentStatus.Settled;
+            alreadyExistingPaymentThatMatches.Details = JToken.FromObject(details, handler.Serializer);
+            await _paymentService.UpdatePayments([alreadyExistingPaymentThatMatches]);
+        }
+
+        _eventAggregator.Publish(new InvoiceNeedUpdateEvent(invoice.Id));
     }
 
     private async Task SynchronizeSubscriptionWithIndexerAsync(CancellationToken cancellationToken)
@@ -321,20 +391,6 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         catch (RpcException ex)
         {
             _logger.LogError(ex, "[Manual] Failed to update remote subscription.");
-        }
-    }
-
-    private async Task UpdateTerms(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var info = await _arkClient.GetInfoAsync(new GetInfoRequest(), cancellationToken: cancellationToken);
-            var terms = info.ArkOperatorTerms();
-            _operatorTerms = terms;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to update operator terms.");
         }
     }
 }
