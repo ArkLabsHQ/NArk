@@ -37,7 +37,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
                 ? "https://signet.arkade.sh"
                 : networkType == ChainName.Regtest
-                    ? "https://localhost:7070"
+                    ? "http://localhost:7070"
                     : null;
 
         if (arkUri is null)
@@ -73,7 +73,9 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             {
                 options.Address = new Uri(arkUri);
             });
-        serviceCollection.AddSingleton<ArkWalletService>();
+        serviceCollection.AddSingleton<ArkOperatorTermsService>();
+        serviceCollection.AddTransient<ArkWalletService>();
+        serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
     }
 

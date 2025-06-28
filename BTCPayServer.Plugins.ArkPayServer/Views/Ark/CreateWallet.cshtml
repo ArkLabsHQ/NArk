@@ -21,6 +21,15 @@
                 </div>
 
                 <form asp-action="CreateWallet" method="post">
+                    <div class="form-group mb-3">
+                        <label asp-for="PubKey" class="form-label">Publice Key</label>
+                        <input asp-for="PubKey" class="form-control" placeholder="Enter a public key" />
+                        <span asp-validation-for="PubKey" class="text-danger"></span>
+                        <div class="form-text">
+                            Choose a public key to use for your Ark wallet.
+                        </div>
+                    </div>
+                    
                     <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                         <a asp-action="Index" class="btn btn-secondary me-md-2">Cancel</a>
                         <button type="submit" class="btn btn-primary">Create Wallet</button>
