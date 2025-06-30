@@ -8,6 +8,8 @@ using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Models;
 using NArk;
+using NArk.Services;
+using NArk.Services.Models;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
 using SHA256 = System.Security.Cryptography.SHA256;
@@ -21,34 +23,12 @@ public class ArkWalletService(
     ArkPluginDbContextFactory dbContextFactory,
     ArkService.ArkServiceClient arkClient,
     ArkSubscriptionService arkSubscriptionService,
-    ArkOperatorTermsService arkOperatorTermsService,
+    IArkWalletService arkWalletService,
     ILogger<ArkWalletService> logger)
 {
     private readonly DerivationSchemeParser _derivationSchemeParser =
         btcPayNetworkProvider.BTC.GetDerivationSchemeParser();
-
-
-    public static ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet)
-    {
-        ECXOnlyPubKey? pubKey = null;
-        
-        var encoder = Bech32Encoder.ExtractEncoderFromString(wallet);
-        encoder.StrictLength = false;
-        encoder.SquashBytes = true;
-        var keyData = encoder.DecodeDataRaw(wallet, out _);
-        switch (Encoding.UTF8.GetString(encoder.HumanReadablePart))
-        {
-            case "nsec":
-                pubKey = ECPrivKey.Create(keyData).CreateXOnlyPubKey();
-                break;
-            case "npub":
-                pubKey = ECXOnlyPubKey.Create(keyData);
-                break;
-            default:
-                throw new NotSupportedException();
-        }
-        return pubKey;
-    }
+    
     
     public async Task<ArkContract> DerivePaymentContract(string walletId, CancellationToken cancellationToken)
     {
@@ -70,19 +50,7 @@ public class ArkWalletService(
             // var derivation = descriptor.Derive(AddressIntent.Deposit, (int)newIndex);
             // var key = derivation.DerivedKeys.First().Key.Key.GetPublicKey().TaprootInternalKey;
             // var xOnlyKey = ECXOnlyPubKey.Create(key.ToBytes());
-            var tweak = RandomUtils.GetBytes(32);
-            if (tweak is null)
-            {
-                throw new Exception("Could not derive preimage randomly");
-            }
-
-
-            var pubKey = GetXOnlyPubKeyFromWallet(wallet.Wallet);
-
-
-            var operatorTerms = await arkOperatorTermsService.GetOperatorTerms(cancellationToken);
-            var paymentContract =
-                new TweakedArkPaymentContract(operatorTerms.SignerKey, operatorTerms.UnilateralExit, pubKey, tweak);
+            var paymentContract = await arkWalletService.DerivePaymentContractAsync(new DeriveContractRequest(wallet.Wallet), cancellationToken);
             var address = paymentContract.GetArkAddress();
             var contract = new ArkWalletContract
             {
@@ -125,12 +93,10 @@ public class ArkWalletService(
     {
         logger.LogInformation("Creating new Ark wallet");
 
-        var key = GetXOnlyPubKeyFromWallet(wallet);
+        var key = arkWalletService.GetXOnlyPubKeyFromWallet(wallet);
         
         try
         {
-            
-            
             var arkWallet = new ArkWallet
             {
                 Id = SHA256.HashData(key.ToBytes()).ToHex(),
@@ -155,25 +121,6 @@ public class ArkWalletService(
         {
             logger.LogError(ex, "Unexpected error occurred while creating wallet");
             throw;
-        }
-    }
-
-    private static ExtKey GeneratePrivateKey(string? mnemonic, string? passphrase)
-    {
-        if (string.IsNullOrWhiteSpace(mnemonic))
-        {
-            return new ExtKey();
-        }
-
-        try
-        {
-            var mnemonicObj = new Mnemonic(mnemonic);
-            var extKey = mnemonicObj.DeriveExtKey(passphrase);
-            return extKey;
-        }
-        catch (Exception ex)
-        {
-            throw new ArgumentException("Invalid mnemonic format.", nameof(mnemonic), ex);
         }
     }
 
