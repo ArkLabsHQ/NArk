@@ -1,12 +1,11 @@
 using Ark.V1;
 using Microsoft.Extensions.Logging;
-using NArk;
 using NArk.Wallet;
 
-namespace BTCPayServer.Plugins.ArkPayServer.Services;
+namespace NArk.Services;
 
-public class ArkOperatorTermsService(ArkService.ArkServiceClient arkClient,
-    ILogger<ArkOperatorTermsService> logger)
+public class ArkOperatorTermsService(ArkService.ArkServiceClient arkClient, ILogger<ArkOperatorTermsService> logger)
+    : IArkOperatorTermsService
 {
     private ArkOperatorTerms? _operatorTerms;
 

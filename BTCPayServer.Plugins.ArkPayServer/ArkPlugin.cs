@@ -10,6 +10,7 @@ using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using NArk;
 using NBitcoin;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
@@ -73,14 +74,18 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             {
                 options.Address = new Uri(arkUri);
             });
-        serviceCollection.AddSingleton<ArkOperatorTermsService>();
         serviceCollection.AddTransient<ArkWalletService>();
         serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
         
         serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
 
-         }
+        // Use NArk SDK Services
+        serviceCollection.AddArkServices(new ArkConfiguration 
+        { 
+            ArkUri = arkUri 
+        });
+    }
 
     public override void Execute(IApplicationBuilder applicationBuilder, IServiceProvider provider)
     {
