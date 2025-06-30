@@ -1,84 +1,84 @@
-@model List<BTCPayServer.Plugins.ArkPayServer.Data.Entities.BoardingAddress>
-
-<div class="container">
-    <div class="row">
-        <div class="col-md-12">
-            <div class="d-flex justify-content-between align-items-center mb-4">
-                <h2>Boarding Addresses</h2>
-                <div>
-                    <form method="post" action="@Url.Action("CreateBoardingAddress", new { walletId = ViewData["WalletId"] })" style="display: inline-block;">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fa fa-plus"></i> Create New Boarding Address
-                        </button>
-                    </form>
-                    <a href="@Url.Action("WalletDetails", new { walletId = ViewData["WalletId"] })" 
-                       class="btn btn-secondary">
-                        <i class="fa fa-arrow-left"></i> Back to Wallet
-                    </a>
-                </div>
-            </div>
-
-            @if (TempData["StatusMessage"] != null)
-            {
-                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                    @TempData["StatusMessage"]
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            }
-
-            @if (TempData["ErrorMessage"] != null)
-            {
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    @TempData["ErrorMessage"]
-                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                </div>
-            }
-
-            @if (!Model.Any())
-            {
-                <div class="card">
-                    <div class="card-body text-center">
-                        <i class="fa fa-inbox fa-3x text-muted mb-3"></i>
-                        <h5>No Boarding Addresses</h5>
-                    </div>
-                </div>
-            }
-            else
-            {
-                <div class="row">
-                    @foreach (var address in Model)
-                    {
-                        <div class="col-md-6 mb-4">
-                            <div class="card">
-                                <div class="card-header d-flex justify-content-between align-items-center">
-                                    <label class="form-label fw-bold">Bitcoin Address:</label>
-                                    <div class="input-group">
-                                        <input type="text" class="form-control"
-                                               value="@address.OnchainAddress" readonly>
-                                        <button class="btn btn-outline-secondary" type="button"
-                                                onclick="copyToClipboard('@address.OnchainAddress')">
-                                            <i class="fa fa-copy"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="card-body">
-                                    <small class="text-muted">
-                                        Created @address.CreatedAt.ToString("MMM dd, yyyy")
-                                    </small>
-                                </div>
-                                <div class="card-footer">
-                                    <button class="btn btn-sm btn-outline-primary">
-                                        <i class="fa fa-qrcode"></i> QR Code
-                                    </button>
-                                    <button class="btn btn-sm btn-outline-info">
-                                        <i class="fa fa-info-circle"></i> Contract Details
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
-        </div>
-    </div>
-</div>
+@* @model List<BTCPayServer.Plugins.ArkPayServer.Data.Entities.BoardingAddress> *@
+@* *@
+@* <div class="container"> *@
+@*     <div class="row"> *@
+@*         <div class="col-md-12"> *@
+@*             <div class="d-flex justify-content-between align-items-center mb-4"> *@
+@*                 <h2>Boarding Addresses</h2> *@
+@*                 <div> *@
+@*                     <form method="post" action="@Url.Action("CreateBoardingAddress", new { walletId = ViewData["WalletId"] })" style="display: inline-block;"> *@
+@*                         <button type="submit" class="btn btn-primary"> *@
+@*                             <i class="fa fa-plus"></i> Create New Boarding Address *@
+@*                         </button> *@
+@*                     </form> *@
+@*                     <a href="@Url.Action("WalletDetails", new { walletId = ViewData["WalletId"] })"  *@
+@*                        class="btn btn-secondary"> *@
+@*                         <i class="fa fa-arrow-left"></i> Back to Wallet *@
+@*                     </a> *@
+@*                 </div> *@
+@*             </div> *@
+@* *@
+@*             @if (TempData["StatusMessage"] != null) *@
+@*             { *@
+@*                 <div class="alert alert-success alert-dismissible fade show" role="alert"> *@
+@*                     @TempData["StatusMessage"] *@
+@*                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button> *@
+@*                 </div> *@
+@*             } *@
+@* *@
+@*             @if (TempData["ErrorMessage"] != null) *@
+@*             { *@
+@*                 <div class="alert alert-danger alert-dismissible fade show" role="alert"> *@
+@*                     @TempData["ErrorMessage"] *@
+@*                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button> *@
+@*                 </div> *@
+@*             } *@
+@* *@
+@*             @if (!Model.Any()) *@
+@*             { *@
+@*                 <div class="card"> *@
+@*                     <div class="card-body text-center"> *@
+@*                         <i class="fa fa-inbox fa-3x text-muted mb-3"></i> *@
+@*                         <h5>No Boarding Addresses</h5> *@
+@*                     </div> *@
+@*                 </div> *@
+@*             } *@
+@*             else *@
+@*             { *@
+@*                 <div class="row"> *@
+@*                     @foreach (var address in Model) *@
+@*                     { *@
+@*                         <div class="col-md-6 mb-4"> *@
+@*                             <div class="card"> *@
+@*                                 <div class="card-header d-flex justify-content-between align-items-center"> *@
+@*                                     <label class="form-label fw-bold">Bitcoin Address:</label> *@
+@*                                     <div class="input-group"> *@
+@*                                         <input type="text" class="form-control" *@
+@*                                                value="@address.OnchainAddress" readonly> *@
+@*                                         <button class="btn btn-outline-secondary" type="button" *@
+@*                                                 onclick="copyToClipboard('@address.OnchainAddress')"> *@
+@*                                             <i class="fa fa-copy"></i> *@
+@*                                         </button> *@
+@*                                     </div> *@
+@*                                 </div> *@
+@*                                 <div class="card-body"> *@
+@*                                     <small class="text-muted"> *@
+@*                                         Created @address.CreatedAt.ToString("MMM dd, yyyy") *@
+@*                                     </small> *@
+@*                                 </div> *@
+@*                                 <div class="card-footer"> *@
+@*                                     <button class="btn btn-sm btn-outline-primary"> *@
+@*                                         <i class="fa fa-qrcode"></i> QR Code *@
+@*                                     </button> *@
+@*                                     <button class="btn btn-sm btn-outline-info"> *@
+@*                                         <i class="fa fa-info-circle"></i> Contract Details *@
+@*                                     </button> *@
+@*                                 </div> *@
+@*                             </div> *@
+@*                         </div> *@
+@*                     } *@
+@*                 </div> *@
+@*             } *@
+@*         </div> *@
+@*     </div> *@
+@* </div> *@

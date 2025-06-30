@@ -1,3 +1,3 @@
 namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 
-public record ArkadePaymentMethodConfig(Guid WalletId);
+public record ArkadePaymentMethodConfig(string WalletId);

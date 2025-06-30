@@ -4,10 +4,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 
 public class ArkWallet
 {
-    public Guid Id { get; set; }
-    
-    public string PubKey { get; set; }
-    
+    public string Id { get; set; }
     public string Wallet { get; set; }
     public List<ArkWalletContract> Contracts { get; set; } = new();
 
@@ -15,6 +12,7 @@ public class ArkWallet
     {
         var entity = builder.Entity<ArkWallet>();
         entity.HasKey(w => w.Id);
+        entity.HasIndex(w => w.Wallet).IsUnique();
         entity.HasMany(w => w.Contracts)
             .WithOne()
             .HasForeignKey(c => c.WalletId);

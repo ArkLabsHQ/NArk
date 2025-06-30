@@ -77,7 +77,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddTransient<ArkWalletService>();
         serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
-    }
+        
+        serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
+
+         }
 
     public override void Execute(IApplicationBuilder applicationBuilder, IServiceProvider provider)
     {

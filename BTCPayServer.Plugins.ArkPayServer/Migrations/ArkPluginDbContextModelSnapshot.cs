@@ -4,20 +4,17 @@ using System.Collections.Generic;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
+namespace BTCPayServer.Plugins.ArkPayServer.Migrations
 {
     [DbContext(typeof(ArkPluginDbContext))]
-    [Migration("20250617151231_MovingEntities")]
-    partial class MovingEntities
+    partial class ArkPluginDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -46,13 +43,17 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
 
             modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWallet", b =>
                 {
-                    b.Property<string>("DescriptorTemplate")
+                    b.Property<string>("Id")
                         .HasColumnType("text");
 
-                    b.Property<long>("CurrentIndex")
-                        .HasColumnType("bigint");
+                    b.Property<string>("Wallet")
+                        .IsRequired()
+                        .HasColumnType("text");
 
-                    b.HasKey("DescriptorTemplate");
+                    b.HasKey("Id");
+
+                    b.HasIndex("Wallet")
+                        .IsUnique();
 
                     b.ToTable("Wallets", "BTCPayServer.Plugins.Ark");
                 });
@@ -69,10 +70,6 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
-                    b.Property<string>("DescriptorTemplate")
-                        .IsRequired()
-                        .HasColumnType("text");
-
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasColumnType("text");
@@ -83,9 +80,13 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                     b.Property<int?>("VTXOTransactionOutputIndex")
                         .HasColumnType("integer");
 
+                    b.Property<string>("WalletId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.HasKey("Script");
 
-                    b.HasIndex("DescriptorTemplate");
+                    b.HasIndex("WalletId");
 
                     b.HasIndex("VTXOTransactionId", "VTXOTransactionOutputIndex");
 
@@ -102,6 +103,12 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
 
                     b.Property<long>("Amount")
                         .HasColumnType("bigint");
+
+                    b.Property<bool>("IsNote")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("Preconfirmed")
+                        .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset>("SeenAt")
                         .HasColumnType("timestamp with time zone");
@@ -126,7 +133,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                 {
                     b.HasOne("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWallet", null)
                         .WithMany("Contracts")
-                        .HasForeignKey("DescriptorTemplate")
+                        .HasForeignKey("WalletId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 

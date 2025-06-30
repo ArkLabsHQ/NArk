@@ -9,24 +9,40 @@
         <Product>Arkade Pay Server</Product>
         <Description>Programmable money for sovereign business</Description>
         <Version>1.0.0</Version>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+        <GenerateRuntimeConfigDevFile>true</GenerateRuntimeConfigDevFile>
+
     </PropertyGroup>
 
-    <!-- Plugin development properties -->
     <PropertyGroup>
         <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
         <PreserveCompilationContext>false</PreserveCompilationContext>
         <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
-        <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    </PropertyGroup>
+    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+        <DebugSymbols Condition=" '$(DebugSymbols)' == '' ">true</DebugSymbols>
+        <Optimize Condition=" '$(Optimize)' == '' ">false</Optimize>
     </PropertyGroup>
 
     <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
-    <ItemDefinitionGroup>
-        <ProjectReference>
-            <Properties>StaticWebAssetsEnabled=false</Properties>
-            <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
-        </ProjectReference>
-    </ItemDefinitionGroup>
+<!--    <ItemDefinitionGroup>-->
+<!--        <ProjectReference>-->
+<!--            <Properties>StaticWebAssetsEnabled=false</Properties>-->
+<!--            <Private>false</Private>-->
+<!--            <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>-->
+<!--        </ProjectReference>-->
+<!--    </ItemDefinitionGroup>-->
 
+
+
+    <!-- Workaround for https://github.com/dotnet/roslyn/issues/41640 -->
+    <PropertyGroup>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+    </PropertyGroup>
+
+    
     <ItemGroup>
         <ProjectReference Include="..\NArk\NArk.csproj" />
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
@@ -39,4 +55,5 @@
 
         <EmbeddedResource Include="Resources\**" />
     </ItemGroup>
+
 </Project>

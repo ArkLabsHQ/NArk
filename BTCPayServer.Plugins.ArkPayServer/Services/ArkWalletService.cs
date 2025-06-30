@@ -10,6 +10,7 @@ using BTCPayServer.Plugins.ArkPayServer.Models;
 using NArk;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
+using SHA256 = System.Security.Cryptography.SHA256;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
@@ -26,9 +27,32 @@ public class ArkWalletService(
     private readonly DerivationSchemeParser _derivationSchemeParser =
         btcPayNetworkProvider.BTC.GetDerivationSchemeParser();
 
-    public async Task<ArkContract> DerivePaymentContract(Guid walletId, CancellationToken cancellationToken)
+
+    public static ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet)
     {
-        return await DeriveNewContract(walletId, async (ArkWallet wallet) =>
+        ECXOnlyPubKey? pubKey = null;
+        
+        var encoder = Bech32Encoder.ExtractEncoderFromString(wallet);
+        encoder.StrictLength = false;
+        encoder.SquashBytes = true;
+        var keyData = encoder.DecodeDataRaw(wallet, out _);
+        switch (Encoding.UTF8.GetString(encoder.HumanReadablePart))
+        {
+            case "nsec":
+                pubKey = ECPrivKey.Create(keyData).CreateXOnlyPubKey();
+                break;
+            case "npub":
+                pubKey = ECXOnlyPubKey.Create(keyData);
+                break;
+            default:
+                throw new NotSupportedException();
+        }
+        return pubKey;
+    }
+    
+    public async Task<ArkContract> DerivePaymentContract(string walletId, CancellationToken cancellationToken)
+    {
+        return (await DeriveNewContract(walletId, async wallet =>
         {
             // var newIndex = wallet.CurrentIndex + 1;
             // wallet.CurrentIndex = newIndex;
@@ -53,38 +77,26 @@ public class ArkWalletService(
             }
 
 
-            var encoder = Bech32Encoder.ExtractEncoderFromString(wallet.Wallet);
-            encoder.StrictLength = false;
-            encoder.SquashBytes = true;
-            ECXOnlyPubKey? pubKey = null;
-            var keyData = encoder.DecodeDataRaw(wallet.Wallet, out _);
-            switch (Encoding.UTF8.GetString(encoder.HumanReadablePart))
-            {
-                case "nsec":
-                    pubKey = ECPrivKey.Create(keyData).CreateXOnlyPubKey();
-                    break;
-                case "npub":
-                    pubKey = ECXOnlyPubKey.Create(keyData);
-                    break;
-            }
+            var pubKey = GetXOnlyPubKeyFromWallet(wallet.Wallet);
 
 
             var operatorTerms = await arkOperatorTermsService.GetOperatorTerms(cancellationToken);
             var paymentContract =
                 new TweakedArkPaymentContract(operatorTerms.SignerKey, operatorTerms.UnilateralExit, pubKey, tweak);
-
+            var address = paymentContract.GetArkAddress();
             var contract = new ArkWalletContract
             {
                 WalletId = wallet.Id,
                 Active = true,
-                ContractData = paymentContract.GetContractData()
+                ContractData = paymentContract.GetContractData(),
+                Script = address.ScriptPubKey.ToHex(),
             };
 
             return (contract, paymentContract);
-        }, cancellationToken);
+        }, cancellationToken))!;
     }
 
-    public async Task<ArkContract?> DeriveNewContract(Guid walletId,
+    public async Task<ArkContract?> DeriveNewContract(string walletId,
         Func<ArkWallet, Task<(ArkWalletContract, ArkContract)?>> setup, CancellationToken cancellationToken)
     {
         using var locker = await asyncKeyedLocker.LockAsync($"DeriveNewContract{walletId}", cancellationToken);
@@ -108,17 +120,21 @@ public class ArkWalletService(
         return contract.Value.Item2;
     }
 
-    public async Task<ArkWallet> CreateNewWalletAsync(WalletCreationRequest request,
+    public async Task<ArkWallet> CreateNewWalletAsync(string wallet,
         CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Creating new Ark wallet");
 
+        var key = GetXOnlyPubKeyFromWallet(wallet);
+        
         try
         {
+            
+            
             var arkWallet = new ArkWallet
             {
-                Id = Guid.NewGuid(),
-                PubKey = request.PubKey.ToHex(),
+                Id = SHA256.HashData(key.ToBytes()).ToHex(),
+                Wallet = wallet
             };
 
             await using var dbContext = dbContextFactory.CreateContext();
@@ -161,7 +177,7 @@ public class ArkWalletService(
         }
     }
 
-    public async Task<ArkWallet?> GetWalletAsync(Guid walletId, CancellationToken cancellationToken = default)
+    public async Task<ArkWallet?> GetWalletAsync(string walletId, CancellationToken cancellationToken = default)
     {
         await using var dbContext = dbContextFactory.CreateContext();
         return await dbContext.Wallets
@@ -176,84 +192,86 @@ public class ArkWalletService(
             .Include(w => w.Contracts)
             .ToListAsync(cancellationToken);
     }
-
-    /// <summary>
-    /// Creates a new boarding address for the specified wallet using the Ark operator's GetBoardingAddress gRPC call
-    /// </summary>
-    /// <param name="walletId">The wallet ID to create the boarding address for</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    /// <returns>The created boarding address information</returns>
-    public async Task<BoardingAddress> DeriveNewBoardingAddress(
-        Guid walletId,
-        CancellationToken cancellationToken = default)
-    {
-        await using var dbContext = dbContextFactory.CreateContext();
-
-        var wallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken);
-        if (wallet is null)
-        {
-            throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
-        }
-
-        var latestBoardingAddress = await dbContext.BoardingAddresses.Where(w => w.WalletId == walletId)
-            .OrderByDescending(w => w.DerivationIndex)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        var newDerivationIndex = latestBoardingAddress is null ? 0 : latestBoardingAddress.DerivationIndex + 1;
-
-        var xPub = ExtPubKey.Parse(wallet.PubKey, networkProvider.BTC.NBitcoinNetwork);
-
-        // TODO: We should probably pick some more deliberate derivation path
-        var derivedPubKey = xPub.Derive(newDerivationIndex).PubKey.ToHex();
-
-        var response = await arkClient.GetBoardingAddressAsync(new GetBoardingAddressRequest
-        {
-            Pubkey = derivedPubKey
-        }, cancellationToken: cancellationToken);
-
-        // Get operator info for additional metadata
-        var operatorInfo = await arkClient.GetInfoAsync(new GetInfoRequest(), cancellationToken: cancellationToken);
-
-        try
-        {
-            var boardingAddressEntity = new BoardingAddress
-            {
-                OnchainAddress = response.Address,
-                WalletId = walletId,
-                DerivationIndex = newDerivationIndex,
-                BoardingExitDelay = (uint)operatorInfo.BoardingExitDelay,
-                ContractData = response.HasDescriptor_ ? response.Descriptor_ : response.Tapscripts?.ToString() ?? "",
-                CreatedAt = DateTimeOffset.UtcNow,
-            };
-
-            await dbContext.BoardingAddresses.AddAsync(boardingAddressEntity, cancellationToken);
-            await dbContext.SaveChangesAsync(cancellationToken);
-
-            logger.LogInformation("New boarding address created for wallet {WalletId}: {Address}",
-                walletId, response.Address);
-
-            return boardingAddressEntity;
-        }
-        catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true ||
-                                           ex.InnerException?.Message?.Contains("duplicate key") == true)
-        {
-            logger.LogError("Failed to create boarding address due to unique constraint violation: {Error}",
-                ex.Message);
-            throw new InvalidOperationException(
-                "A boarding address with this address already exists. Please try again.");
-        }
-    }
-
-    /// <summary>
-    /// Gets all boarding addresses for a wallet
-    /// </summary>
-    public async Task<List<BoardingAddress>> GetBoardingAddressesAsync(Guid walletId,
-        CancellationToken cancellationToken = default)
-    {
-        await using var dbContext = dbContextFactory.CreateContext();
-        return await dbContext.BoardingAddresses
-            .Where(b => b.WalletId == walletId)
-            .OrderByDescending(b => b.CreatedAt)
-            .ToListAsync(cancellationToken);
-    }
+    //
+    // /// <summary>
+    // /// Creates a new boarding address for the specified wallet using the Ark operator's GetBoardingAddress gRPC call
+    // /// </summary>
+    // /// <param name="walletId">The wallet ID to create the boarding address for</param>
+    // /// <param name="cancellationToken">Cancellation token</param>
+    // /// <returns>The created boarding address information</returns>
+    // public async Task<BoardingAddress> DeriveNewBoardingAddress(
+    //     Guid walletId,
+    //     CancellationToken cancellationToken = default)
+    // {
+    //     //TODO: Since this is onchain, we need to listen on nbx to this and a bunch of other things
+    //     
+    //     await using var dbContext = dbContextFactory.CreateContext();
+    //
+    //     var wallet = await dbContext.Wallets.FindAsync(walletId, cancellationToken);
+    //     if (wallet is null)
+    //     {
+    //         throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
+    //     }
+    //
+    //     var latestBoardingAddress = await dbContext.BoardingAddresses.Where(w => w.WalletId == walletId)
+    //         .OrderByDescending(w => w.DerivationIndex)
+    //         .FirstOrDefaultAsync(cancellationToken);
+    //
+    //     var newDerivationIndex = latestBoardingAddress is null ? 0 : latestBoardingAddress.DerivationIndex + 1;
+    //
+    //     var xPub = ExtPubKey.Parse(wallet.Wallet, networkProvider.BTC.NBitcoinNetwork);
+    //
+    //     // TODO: We should probably pick some more deliberate derivation path
+    //     var derivedPubKey = xPub.Derive(newDerivationIndex).PubKey.ToHex();
+    //
+    //     var response = await arkClient.GetBoardingAddressAsync(new GetBoardingAddressRequest
+    //     {
+    //         Pubkey = derivedPubKey
+    //     }, cancellationToken: cancellationToken);
+    //
+    //     // Get operator info for additional metadata
+    //     var operatorInfo = await arkClient.GetInfoAsync(new GetInfoRequest(), cancellationToken: cancellationToken);
+    //
+    //     try
+    //     {
+    //         var boardingAddressEntity = new BoardingAddress
+    //         {
+    //             OnchainAddress = response.Address,
+    //             WalletId = walletId,
+    //             DerivationIndex = newDerivationIndex,
+    //             BoardingExitDelay = (uint)operatorInfo.BoardingExitDelay,
+    //             ContractData = response.HasDescriptor_ ? response.Descriptor_ : response.Tapscripts?.ToString() ?? "",
+    //             CreatedAt = DateTimeOffset.UtcNow,
+    //         };
+    //
+    //         await dbContext.BoardingAddresses.AddAsync(boardingAddressEntity, cancellationToken);
+    //         await dbContext.SaveChangesAsync(cancellationToken);
+    //
+    //         logger.LogInformation("New boarding address created for wallet {WalletId}: {Address}",
+    //             walletId, response.Address);
+    //
+    //         return boardingAddressEntity;
+    //     }
+    //     catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true ||
+    //                                        ex.InnerException?.Message?.Contains("duplicate key") == true)
+    //     {
+    //         logger.LogError("Failed to create boarding address due to unique constraint violation: {Error}",
+    //             ex.Message);
+    //         throw new InvalidOperationException(
+    //             "A boarding address with this address already exists. Please try again.");
+    //     }
+    // }
+    //
+    // /// <summary>
+    // /// Gets all boarding addresses for a wallet
+    // /// </summary>
+    // public async Task<List<BoardingAddress>> GetBoardingAddressesAsync(Guid walletId,
+    //     CancellationToken cancellationToken = default)
+    // {
+    //     await using var dbContext = dbContextFactory.CreateContext();
+    //     return await dbContext.BoardingAddresses
+    //         .Where(b => b.WalletId == walletId)
+    //         .OrderByDescending(b => b.CreatedAt)
+    //         .ToListAsync(cancellationToken);
+    // }
 }

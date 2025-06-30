@@ -1,0 +1,18 @@
+﻿
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Views.Stores
+@model BTCPayServer.Components.MainNav.MainNavViewModel
+
+@{
+    var enabled = false;
+}
+
+<li class="nav-item">
+    <a asp-area="" asp-controller="Ark" asp-action="SetupStore"
+       asp-route-storeId="@Model.Store.Id"
+       class="nav-link @ViewData.ActivePageClass("Ark", nameof(StoreNavPages))"
+       id="StoreNav-Ark">
+        <span class="me-2 btcpay-status btcpay-status--@(enabled ? "enabled" : "pending")"></span>
+        <span>Ark</span>
+    </a>
+</li>

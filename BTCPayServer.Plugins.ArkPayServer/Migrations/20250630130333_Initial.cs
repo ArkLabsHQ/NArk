@@ -4,10 +4,10 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
+namespace BTCPayServer.Plugins.ArkPayServer.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialMigration : Migration
+    public partial class Initial : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -34,12 +34,12 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                 schema: "BTCPayServer.Plugins.Ark",
                 columns: table => new
                 {
-                    DescriptorTemplate = table.Column<string>(type: "text", nullable: false),
-                    CurrentIndex = table.Column<long>(type: "bigint", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    Wallet = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
-                    table.PrimaryKey("PK_Wallets", x => x.DescriptorTemplate);
+                    table.PrimaryKey("PK_Wallets", x => x.Id);
                 });
 
             migrationBuilder.CreateTable(
@@ -53,7 +53,9 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                     SpentByTransactionIdInputIndex = table.Column<int>(type: "integer", nullable: true),
                     Amount = table.Column<long>(type: "bigint", nullable: false),
                     SeenAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    SpentAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    SpentAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    IsNote = table.Column<bool>(type: "boolean", nullable: false),
+                    Preconfirmed = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -80,10 +82,10 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                 columns: table => new
                 {
                     Script = table.Column<string>(type: "text", nullable: false),
-                    DescriptorTemplate = table.Column<string>(type: "text", nullable: false),
                     Active = table.Column<bool>(type: "boolean", nullable: false),
                     Type = table.Column<string>(type: "text", nullable: false),
                     ContractData = table.Column<Dictionary<string, string>>(type: "jsonb", nullable: false),
+                    WalletId = table.Column<string>(type: "text", nullable: false),
                     VTXOTransactionId = table.Column<string>(type: "text", nullable: true),
                     VTXOTransactionOutputIndex = table.Column<int>(type: "integer", nullable: true)
                 },
@@ -97,11 +99,11 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                         principalTable: "Vtxos",
                         principalColumns: new[] { "TransactionId", "TransactionOutputIndex" });
                     table.ForeignKey(
-                        name: "FK_WalletContracts_Wallets_DescriptorTemplate",
-                        column: x => x.DescriptorTemplate,
+                        name: "FK_WalletContracts_Wallets_WalletId",
+                        column: x => x.WalletId,
                         principalSchema: "BTCPayServer.Plugins.Ark",
                         principalTable: "Wallets",
-                        principalColumn: "DescriptorTemplate",
+                        principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
 
@@ -112,16 +114,23 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                 column: "SpentByTransactionId");
 
             migrationBuilder.CreateIndex(
-                name: "IX_WalletContracts_DescriptorTemplate",
-                schema: "BTCPayServer.Plugins.Ark",
-                table: "WalletContracts",
-                column: "DescriptorTemplate");
-
-            migrationBuilder.CreateIndex(
                 name: "IX_WalletContracts_VTXOTransactionId_VTXOTransactionOutputIndex",
                 schema: "BTCPayServer.Plugins.Ark",
                 table: "WalletContracts",
                 columns: new[] { "VTXOTransactionId", "VTXOTransactionOutputIndex" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WalletContracts_WalletId",
+                schema: "BTCPayServer.Plugins.Ark",
+                table: "WalletContracts",
+                column: "WalletId");
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Wallets_Wallet",
+                schema: "BTCPayServer.Plugins.Ark",
+                table: "Wallets",
+                column: "Wallet",
+                unique: true);
         }
 
         /// <inheritdoc />

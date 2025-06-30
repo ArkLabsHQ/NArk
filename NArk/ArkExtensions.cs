@@ -36,5 +36,10 @@ public static class ArkExtensions
             UnilateralExit = response.UnilateralExitSequence()
         };
     }
+
+    public static string ToHex(this byte[] value)
+    {
+        return Convert.ToHexString(value).ToLowerInvariant();
+    }
 }
 
