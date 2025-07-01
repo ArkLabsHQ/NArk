@@ -1,6 +1,7 @@
 using Ark.V1;
 using Microsoft.Extensions.DependencyInjection;
 using NArk.Services;
+using WalletService = NArk.Services.WalletService;
 
 namespace NArk;
 
@@ -31,8 +32,8 @@ public static class ArkStartup
         });
 
         // Register Ark services
-        services.AddSingleton<IArkOperatorTermsService, ArkOperatorTermsService>();
-        services.AddTransient<IArkWalletService, ArkWalletService>();
+        services.AddSingleton<IOperatorTermsService, OperatorTermsService>();
+        services.AddTransient<IWalletService, WalletService>();
         return services;
     }
 }

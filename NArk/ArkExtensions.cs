@@ -1,4 +1,5 @@
 ﻿using Ark.V1;
+using NArk.Services.Models;
 using NArk.Wallet;
 using NBitcoin;
 using NBitcoin.Secp256k1;
@@ -29,12 +30,10 @@ public static class ArkExtensions
 
     public static ArkOperatorTerms ArkOperatorTerms(this GetInfoResponse response)
     {
-        return new ArkOperatorTerms()
-        {
-            Network = Network.GetNetwork(response.Network),
-            SignerKey = response.ServerKey(),
-            UnilateralExit = response.UnilateralExitSequence()
-        };
+        return new ArkOperatorTerms(
+            SignerKey: response.ServerKey(),
+            Network: Network.GetNetwork(response.Network),
+            UnilateralExit: response.UnilateralExitSequence());
     }
 
     public static string ToHex(this byte[] value)
