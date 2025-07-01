@@ -6,13 +6,13 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
-        <Product>Arkade Pay Server</Product>
+        <Product>Arkade</Product>
         <Description>Programmable money for sovereign business</Description>
         <Version>1.0.0</Version>
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
         <GenerateRuntimeConfigDevFile>true</GenerateRuntimeConfigDevFile>
-
+        <MvcRazorCompileOnPublish>false</MvcRazorCompileOnPublish>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -20,35 +20,25 @@
         <PreserveCompilationContext>false</PreserveCompilationContext>
         <GenerateEmbeddedFilesManifest>true</GenerateEmbeddedFilesManifest>
     </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-        <DebugSymbols Condition=" '$(DebugSymbols)' == '' ">true</DebugSymbols>
-        <Optimize Condition=" '$(Optimize)' == '' ">false</Optimize>
-    </PropertyGroup>
-
-    <!-- This will make sure that referencing BTCPayServer doesn't put any artifact in the published directory -->
-<!--    <ItemDefinitionGroup>-->
-<!--        <ProjectReference>-->
-<!--            <Properties>StaticWebAssetsEnabled=false</Properties>-->
-<!--            <Private>false</Private>-->
-<!--            <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>-->
-<!--        </ProjectReference>-->
-<!--    </ItemDefinitionGroup>-->
-
-
-
-    <!-- Workaround for https://github.com/dotnet/roslyn/issues/41640 -->
-    <PropertyGroup>
-        <GenerateDocumentationFile>true</GenerateDocumentationFile>
-        <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
-    </PropertyGroup>
-
+    <ItemDefinitionGroup>
+        <ProjectReference>
+            <Properties>StaticWebAssetsEnabled=false</Properties>
+            <Private>false</Private>
+            <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
+        </ProjectReference>
+    </ItemDefinitionGroup>
     
     <ItemGroup>
-        <ProjectReference Include="..\NArk\NArk.csproj" />
-        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" />
+        <ProjectReference Include="..\NArk\NArk.csproj" >
+            <Properties>StaticWebAssetsEnabled=false</Properties>
+            <Private>true</Private>
+            <ExcludeAssets>runtime;contentFiles</ExcludeAssets>
+        </ProjectReference>
+        <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" >
+        </ProjectReference>
         <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
+        <PackageReference Include="Google.Protobuf" Version="3.31.1" />
         <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
-
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.16"/>
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />

@@ -49,7 +49,11 @@ public class ArkController : Controller
         
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
         var availableWallets = await _arkWalletService.GetAllWalletsAsync();
-        return View();
+        return View(new ArkStoreWalletViewModel()
+        {
+            SelectedWalletId = config?.WalletId,
+            Wallets = availableWallets.ToDictionary(x => x.Id, x => x.Wallet)
+        });
 
 
     }

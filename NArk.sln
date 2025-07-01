@@ -2,8 +2,6 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NArk", "NArk\NArk.csproj", "{D448C0A0-AA7E-4DBF-98D9-E028D8B43804}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NArk.Grpc", "NArk.Grpc\NArk.Grpc.csproj", "{CFD03D3B-6CD4-4620-B73D-16B55F08DBD8}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer.Plugins.ArkPayServer", "BTCPayServer.Plugins.ArkPayServer\BTCPayServer.Plugins.ArkPayServer.csproj", "{F2B300EB-E090-4CCB-B1D7-9B2B96B95C88}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer", "submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj", "{2464FC73-75E8-4254-A900-2090FB4D1EDD}"
@@ -31,10 +29,6 @@ Global
 		{D448C0A0-AA7E-4DBF-98D9-E028D8B43804}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D448C0A0-AA7E-4DBF-98D9-E028D8B43804}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D448C0A0-AA7E-4DBF-98D9-E028D8B43804}.Release|Any CPU.Build.0 = Release|Any CPU
-		{CFD03D3B-6CD4-4620-B73D-16B55F08DBD8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{CFD03D3B-6CD4-4620-B73D-16B55F08DBD8}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{CFD03D3B-6CD4-4620-B73D-16B55F08DBD8}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{CFD03D3B-6CD4-4620-B73D-16B55F08DBD8}.Release|Any CPU.Build.0 = Release|Any CPU
 		{F2B300EB-E090-4CCB-B1D7-9B2B96B95C88}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F2B300EB-E090-4CCB-B1D7-9B2B96B95C88}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F2B300EB-E090-4CCB-B1D7-9B2B96B95C88}.Release|Any CPU.ActiveCfg = Release|Any CPU
