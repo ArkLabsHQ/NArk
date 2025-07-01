@@ -1,25 +1,17 @@
-using System.Text;
 using AsyncKeyedLock;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using NBitcoin;
 using Ark.V1;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using BTCPayServer.Plugins.ArkPayServer.Models;
 using NArk;
 using NArk.Services;
 using NArk.Services.Models;
-using NBitcoin.DataEncoders;
-using NBitcoin.Secp256k1;
-using SHA256 = System.Security.Cryptography.SHA256;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkWalletService(
     AsyncKeyedLocker asyncKeyedLocker,
-    BTCPayNetworkProvider btcPayNetworkProvider,
-    BTCPayNetworkProvider networkProvider,
     ArkPluginDbContextFactory dbContextFactory,
     ArkService.ArkServiceClient arkClient,
     ArkSubscriptionService arkSubscriptionService,

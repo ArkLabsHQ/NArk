@@ -1,4 +1,4 @@
-﻿using Ark.V1;
+using Ark.V1;
 using AsyncKeyedLock;
 using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Extensions;
@@ -8,6 +8,7 @@ using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Lightning;
+using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
@@ -57,9 +58,9 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
                     ? "https://localhost:9001"
                     : null;
         
-        SetupBtcPayUiExtensions(serviceCollection);
         SetupBtcPayPluginServices(serviceCollection);
         
+        serviceCollection.AddSingleton<ArkadePaymentMethodHandler>();
         serviceCollection.AddSingleton<ArkPluginDbContextFactory>();
         serviceCollection.AddSingleton<AsyncKeyedLocker>();
         serviceCollection.AddDbContext<ArkPluginDbContext>((provider, o) =>
@@ -74,6 +75,14 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
 
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");
+        // Display Ark as a wallet type in navigation sidebar
+        serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
+        
+        // Display ARK instructions in the Lightning setup screen
+        serviceCollection.AddUIExtension(
+            location: "ln-payment-method-setup-custom",
+            partialViewName: "/Views/Lightning/SetupArkLightningNode.cshtml");
+        
         // Use NArk SDK Services
         serviceCollection.AddArkServices(new ArkConfiguration(
             ArkUri: arkUri,
@@ -86,19 +95,13 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         // Register ArkConnectionStringHandler so LightningClientFactoryService can create the client
         serviceCollection.AddSingleton<Func<BoltzClient, ILightningConnectionStringHandler>>(
             http => new ArkLightningConnectionStringHandler(http));
-    }
+        serviceCollection.AddSingleton<ArkadePaymentLinkExtension>();
+        serviceCollection.AddSingleton<IPaymentLinkExtension>(provider => provider.GetRequiredService<ArkadePaymentLinkExtension>());
+        serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
 
-    private static void SetupBtcPayUiExtensions(IServiceCollection serviceCollection)
-    {
-        // Display Ark as a wallet type in navigation sidebar
-        serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
         
-        // Display ARK instructions in the Lightning setup screen
-        serviceCollection.AddUIExtension(
-            location: "ln-payment-method-setup-custom",
-            partialViewName: "/Views/Lightning/SetupArkLightningNode.cshtml");
+        serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
     }
-
     public override void Execute(IApplicationBuilder applicationBuilder, IServiceProvider provider)
     {
         base.Execute(applicationBuilder, provider);

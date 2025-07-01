@@ -1,3 +1,4 @@
+using System.Text;
 using System.Xml;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
@@ -10,6 +11,9 @@ using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.AspNetCore.Authorization;
+using NBitcoin;
+using NBitcoin.DataEncoders;
+using NBitcoin.Secp256k1;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 
@@ -62,9 +66,22 @@ public class ArkController : Controller
     public async Task<IActionResult> SetupStore(string storeId, ArkStoreWalletViewModel model, string? action = null)
     {
         
+        
         var store = HttpContext.GetStoreData();
         if (store == null)
             return NotFound();
+
+        if (action == "create")
+        {
+            var key = RandomUtils.GetBytes(32)!;
+            var privKey = ECPrivKey.Create(key);
+            var pubKey = privKey.CreateXOnlyPubKey();
+            var encoder = Encoders.Bech32("npub");
+            encoder.SquashBytes = true;
+            encoder.StrictLength = false;
+            var npub = encoder.EncodeData(pubKey.ToBytes(), Bech32EncodingType.BECH32);
+            model.Wallet = npub;
+        }
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
         if (model.Wallet != config?.WalletId )
         {

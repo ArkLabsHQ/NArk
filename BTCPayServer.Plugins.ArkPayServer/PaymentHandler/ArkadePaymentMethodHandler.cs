@@ -2,22 +2,29 @@ using BTCPayServer.Data;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Plugins.ArkPayServer.Services;
+using BTCPayServer.Services;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 
-public class ArkadePaymentMethodHandler(
-    BTCPayNetworkProvider networkProvider,
-    ArkWalletService arkWalletService,
-    LinkGenerator linkGenerator)
-    : IPaymentMethodHandler, IHasNetwork
+public class ArkadePaymentMethodHandler : IPaymentMethodHandler
 {
-    public PaymentMethodId PaymentMethodId => ArkadePlugin.ArkadePaymentMethodId;
+    private readonly ChainName _networkType;
+    private readonly IServiceProvider _serviceProvider;
+    private  ArkWalletService _arkWalletService => _serviceProvider.GetRequiredService<ArkWalletService>();
 
-    public BTCPayNetwork Network { get; } = networkProvider.GetNetwork<BTCPayNetwork>("BTC");
+    public ArkadePaymentMethodHandler(BTCPayServerEnvironment btcPayServerEnvironment,
+        IServiceProvider serviceProvider)
+    {
+        _networkType = btcPayServerEnvironment.NetworkType;
+        _serviceProvider = serviceProvider;
+    }
+
+    public PaymentMethodId PaymentMethodId => ArkadePlugin.ArkadePaymentMethodId;
 
     public async Task ConfigurePrompt(PaymentMethodContext context)
     {
@@ -28,10 +35,11 @@ public class ArkadePaymentMethodHandler(
         {
             throw new PaymentMethodUnavailableException($"Arkade payment method not configured");
         }
-        var contract = await arkWalletService.DerivePaymentContract(arkadePaymentMethodConfig.WalletId, CancellationToken.None);
+        var contract = await _arkWalletService.DerivePaymentContract(arkadePaymentMethodConfig.WalletId, CancellationToken.None);
         var details = new ArkadePromptDetails(arkadePaymentMethodConfig.WalletId, contract);
         var address = contract.GetArkAddress();
-        context.Prompt.Destination = address.ToString(Network.NBitcoinNetwork.ChainName == ChainName.Mainnet);
+       
+        context.Prompt.Destination = address.ToString( _networkType == ChainName.Mainnet);
         context.Prompt.PaymentMethodFee = 0m;
 
         context.TrackedDestinations.Add(context.Prompt.Destination);

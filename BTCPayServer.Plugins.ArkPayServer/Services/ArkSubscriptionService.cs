@@ -21,7 +21,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
     private readonly AsyncKeyedLocker _asyncKeyedLocker;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
     private readonly IndexerService.IndexerServiceClient _indexerClient;
-    private readonly PaymentMethodHandlerDictionary _paymentMethodHandlerDictionary;
+    private readonly ArkadePaymentMethodHandler _arkadePaymentMethodHandler;
     private readonly InvoiceRepository _invoiceRepository;
     private readonly EventAggregator _eventAggregator;
     private readonly PaymentService _paymentService;
@@ -42,7 +42,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         IndexerService.IndexerServiceClient indexerClient,
-        PaymentMethodHandlerDictionary paymentMethodHandlerDictionary,
+        ArkadePaymentMethodHandler arkadePaymentMethodHandler,
         InvoiceRepository invoiceRepository,
         PaymentService paymentService,
         EventAggregator eventAggregator,
@@ -52,7 +52,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         _asyncKeyedLocker = asyncKeyedLocker;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
         _indexerClient = indexerClient;
-        _paymentMethodHandlerDictionary = paymentMethodHandlerDictionary;
+        _arkadePaymentMethodHandler = arkadePaymentMethodHandler;
         _invoiceRepository = invoiceRepository;
         _paymentService = paymentService;
         _eventAggregator = eventAggregator;
@@ -288,7 +288,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
     private async Task ProcessUpdates(GetSubscriptionResponse scripts, CancellationToken cancellationToken)
     {
-        var handler = (ArkadePaymentMethodHandler)_paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId];
+        var handler = _arkadePaymentMethodHandler;
         var request = new GetVtxosRequest();
         request.Addresses.AddRange(scripts.Scripts);
         var vtxos = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);

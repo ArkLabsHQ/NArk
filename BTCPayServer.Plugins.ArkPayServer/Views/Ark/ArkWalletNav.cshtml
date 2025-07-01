@@ -1,9 +1,13 @@
 ﻿
+@using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.PaymentHandler
+@using BTCPayServer.Services.Invoices
 @using BTCPayServer.Views.Stores
 @model BTCPayServer.Components.MainNav.MainNavViewModel
-
+@inject PaymentMethodHandlerDictionary HandlerDictionary 
 @{
-    var enabled = false;
+   var config =  Context.GetStoreData().GetPaymentMethodConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, HandlerDictionary, true);
+  var  enabled = !string.IsNullOrEmpty(config?.WalletId);
 }
 
 <li class="nav-item">
