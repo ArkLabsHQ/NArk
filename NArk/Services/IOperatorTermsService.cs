@@ -1,8 +1,8 @@
-using NArk.Wallet;
+using NArk.Services.Models;
 
 namespace NArk.Services;
 
-public interface IArkOperatorTermsService
+public interface IOperatorTermsService
 {
     Task<ArkOperatorTerms> GetOperatorTerms(CancellationToken cancellationToken = default);
 }

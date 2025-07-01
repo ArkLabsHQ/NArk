@@ -23,7 +23,7 @@ public class ArkWalletService(
     ArkPluginDbContextFactory dbContextFactory,
     ArkService.ArkServiceClient arkClient,
     ArkSubscriptionService arkSubscriptionService,
-    IArkWalletService arkWalletService,
+    IWalletService walletService,
     ILogger<ArkWalletService> logger)
 {
     private readonly DerivationSchemeParser _derivationSchemeParser =
@@ -50,7 +50,7 @@ public class ArkWalletService(
             // var derivation = descriptor.Derive(AddressIntent.Deposit, (int)newIndex);
             // var key = derivation.DerivedKeys.First().Key.Key.GetPublicKey().TaprootInternalKey;
             // var xOnlyKey = ECXOnlyPubKey.Create(key.ToBytes());
-            var paymentContract = await arkWalletService.DerivePaymentContractAsync(new DeriveContractRequest(wallet.Wallet), cancellationToken);
+            var paymentContract = await walletService.DerivePaymentContractAsync(new DeriveContractRequest(wallet.Wallet), cancellationToken);
             var address = paymentContract.GetArkAddress();
             var contract = new ArkWalletContract
             {
@@ -93,7 +93,7 @@ public class ArkWalletService(
     {
         logger.LogInformation("Creating new Ark wallet");
 
-        var key = arkWalletService.GetXOnlyPubKeyFromWallet(wallet);
+        var key = walletService.GetXOnlyPubKeyFromWallet(wallet);
         
         try
         {

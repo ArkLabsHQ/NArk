@@ -1,11 +1,12 @@
 using Ark.V1;
 using Microsoft.Extensions.Logging;
+using NArk.Services.Models;
 using NArk.Wallet;
 
 namespace NArk.Services;
 
-public class ArkOperatorTermsService(ArkService.ArkServiceClient arkClient, ILogger<ArkOperatorTermsService> logger)
-    : IArkOperatorTermsService
+public class OperatorTermsService(ArkService.ArkServiceClient arkClient, ILogger<OperatorTermsService> logger)
+    : IOperatorTermsService
 {
     private ArkOperatorTerms? _operatorTerms;
 

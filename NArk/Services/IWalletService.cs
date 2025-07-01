@@ -6,7 +6,7 @@ namespace NArk.Services;
 /// <summary>
 /// Core wallet operations for Ark
 /// </summary>
-public interface IArkWalletService
+public interface IWalletService
 {
     ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet);
     

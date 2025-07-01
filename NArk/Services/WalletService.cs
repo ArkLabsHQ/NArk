@@ -6,9 +6,9 @@ using NBitcoin.Secp256k1;
 
 namespace NArk.Services;
 
-public class ArkWalletService(
-    IArkOperatorTermsService operatorTermsService)
-    : IArkWalletService
+public class WalletService(
+    IOperatorTermsService operatorTermsService)
+    : IWalletService
 {
     public ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet)
     {
