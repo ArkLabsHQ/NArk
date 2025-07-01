@@ -152,7 +152,6 @@ public class BoltzWebsocketClient : IAsyncDisposable
     {
         _ = await SendRequest("subscribe", "swap.update", swapIds, cancellationToken);
     }
-
     
     /// <summary>
     /// Subscribes to WebSocket updates for specific swap IDs.
@@ -162,10 +161,6 @@ public class BoltzWebsocketClient : IAsyncDisposable
         _ = await SendRequest("subscribe", "swap.update", swapIds, cancellationToken);
     }
     
-    
-    
-    
-
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         var buffer = new ArraySegment<byte>(new byte[8192]);

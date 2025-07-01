@@ -1,0 +1,184 @@
+using System.Security.Cryptography;
+using NBitcoin;
+using NBitcoin.Crypto;
+using NBitcoin.DataEncoders;
+using NBitcoin.Secp256k1;
+using NArk.Services;
+using NArk.Wallet.Boltz;
+
+namespace NArk;
+
+public class ReverseSwapService
+{
+    private readonly BoltzClient _boltzClient;
+    private readonly BoltzWebsocketClient? _websocketClient;
+    private readonly IOperatorTermsService _operatorTermsService;
+
+    public ReverseSwapService(BoltzClient boltzClient, IOperatorTermsService operatorTermsService, BoltzWebsocketClient? websocketClient = null)
+    {
+        _boltzClient = boltzClient;
+        _operatorTermsService = operatorTermsService;
+        _websocketClient = websocketClient;
+        
+        // Subscribe to WebSocket events if available
+        if (_websocketClient != null)
+        {
+            _websocketClient.OnAnyEventReceived += OnSwapUpdateReceived;
+        }
+    }
+
+    public event Func<string, string, Task>? OnSwapStatusChanged;
+
+    private async Task OnSwapUpdateReceived(WebSocketResponse response)
+    {
+        if (response.Event == "update" && response.Args != null && response.Args.Count > 0)
+        {
+            var swapUpdate = response.Args[0];
+            var swapId = swapUpdate?["id"]?.GetValue<string>();
+            var status = swapUpdate?["status"]?.GetValue<string>();
+            
+            if (!string.IsNullOrEmpty(swapId) && !string.IsNullOrEmpty(status))
+            {
+                if (OnSwapStatusChanged != null)
+                {
+                    await OnSwapStatusChanged(swapId, status);
+                }
+            }
+        }
+    }
+
+    public async Task<ReverseSwapResult> CreateReverseSwapAsync(
+        long invoiceAmount,
+        ECXOnlyPubKey receiver,
+        string pairId = "LNBTC/BTC",
+        CancellationToken cancellationToken = default)
+    {
+        // Get operator terms 
+        var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        
+        // Generate preimage and compute preimage hash using SHA256 for Boltz
+        var preimage = RandomUtils.GetBytes(32);
+        var preimageHash = Hashes.SHA256(preimage);
+
+        // First make the Boltz request to get the swap details including timeout block heights
+        var request = new ReverseRequest
+        {
+            From = "BTC",
+            To = "ARK", 
+            InvoiceAmount = invoiceAmount,
+            ClaimPublicKey = Encoders.Hex.EncodeData(receiver.ToBytes()), // Receiver will claim the VTXO
+            PreimageHash = Encoders.Hex.EncodeData(preimageHash),
+            PairId = pairId,
+            AcceptZeroConf = true
+        };
+
+        var response = await _boltzClient.CreateReverseSwapAsync(request);
+
+        if (response == null)
+        {
+            throw new InvalidOperationException("Failed to create reverse swap");
+        }
+
+        // Extract the sender key from Boltz's response (refundPublicKey)
+        if (string.IsNullOrEmpty(response.RefundPublicKey))
+        {
+            throw new InvalidOperationException("Boltz did not provide refund public key");
+        }
+        
+        var senderKeyBytes = Encoders.Hex.DecodeData(response.RefundPublicKey);
+        var sender = ECXOnlyPubKey.Create(senderKeyBytes);
+
+        // Extract timeout block heights from Boltz response
+        // If Boltz provides Ark-specific timeout block heights, use those; otherwise calculate defaults
+        long unilateralClaim, unilateralRefund, unilateralRefundWithoutReceiver;
+        
+        if (response.TimeoutBlockHeights != null)
+        {
+            // Use Ark-specific timeout block heights from Boltz
+            unilateralClaim = response.TimeoutBlockHeights.UnilateralClaim;
+            unilateralRefund = response.TimeoutBlockHeights.UnilateralRefund;
+            unilateralRefundWithoutReceiver = response.TimeoutBlockHeights.UnilateralRefundWithoutReceiver;
+        }
+        else
+        {
+            // Fallback to single timeout value with calculated offsets
+            unilateralClaim = response.TimeoutBlockHeight;
+            unilateralRefund = unilateralClaim + 144; // Add ~24 hours (144 blocks)
+            unilateralRefundWithoutReceiver = unilateralRefund + 144; // Add another ~24 hours
+        }
+
+        // Now create VHTLC contract with the correct timeout values and using Hash160 like arkade
+        var vhtlcContract = new VHTLCContract(
+            server: operatorTerms.SignerKey,
+            sender: sender,
+            receiver: receiver,
+            hash: Hashes.Hash160(preimage), // Use Hash160 like arkade implementation
+            refundLocktime: new LockTime(80 * 600), // Use same refund locktime as arkade (80 * 600 seconds)
+            unilateralClaimDelay: new Sequence((uint)unilateralClaim),
+            unilateralRefundDelay: new Sequence((uint)unilateralRefund),
+            unilateralRefundWithoutReceiverDelay: new Sequence((uint)unilateralRefundWithoutReceiver)
+        );
+        
+        // Get the claim address and validate it matches Boltz's lockup address
+        var arkAddress = vhtlcContract.GetArkAddress();
+        var claimAddress = arkAddress.GetAddress(operatorTerms.Network).ToString();
+        
+        // Validate that our computed address matches what Boltz expects
+        if (claimAddress != response.LockupAddress)
+        {
+            throw new InvalidOperationException($"Address mismatch: computed {claimAddress}, Boltz expects {response.LockupAddress}");
+        }
+
+        // Subscribe to WebSocket updates if available
+        if (_websocketClient != null)
+        {
+            await _websocketClient.SubscribeAsync([response.Id], cancellationToken);
+        }
+
+        return new ReverseSwapResult
+        {
+            SwapId = response.Id,
+            Invoice = response.Invoice,
+            LockupAddress = response.LockupAddress,
+            OnchainAmount = response.OnchainAmount,
+            TimeoutBlockHeight = response.TimeoutBlockHeight,
+            ClaimAddress = claimAddress,
+            Preimage = preimage,
+            PreimageHash = preimageHash,
+            VHTLCContract = vhtlcContract
+        };
+    }
+
+    public async Task<SwapStatusResponse?> GetSwapStatusAsync(string swapId, CancellationToken cancellationToken = default)
+    {
+        return await _boltzClient.GetSwapStatusAsync(swapId);
+    }
+
+    public async Task<SubmarineClaimDetailsResponse?> GetClaimDetailsAsync(
+        string swapId,
+        string transactionHex,
+        string preimage,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new SubmarineClaimDetailsRequest
+        {
+            Transaction = transactionHex,
+            Preimage = preimage
+        };
+
+        return await _boltzClient.GetReverseSwapClaimDetailsAsync(swapId, request);
+    }
+}
+
+public class ReverseSwapResult
+{
+    public string SwapId { get; set; } = null!;
+    public string Invoice { get; set; } = null!;
+    public string LockupAddress { get; set; } = null!;
+    public long OnchainAmount { get; set; }
+    public long TimeoutBlockHeight { get; set; }
+    public string? ClaimAddress { get; set; }
+    public byte[] Preimage { get; set; } = null!;
+    public byte[] PreimageHash { get; set; } = null!;
+    public VHTLCContract VHTLCContract { get; set; } = null!;
+}

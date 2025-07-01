@@ -75,6 +75,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
 
         serviceCollection.AddSingleton<ArkWalletService>();
         serviceCollection.AddSingleton<IArkadeMultiWalletSigner>(provider => provider.GetRequiredService<ArkWalletService>());
+        serviceCollection.AddTransient<LightningSwapProcessor>();
         serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddSingleton<ArkContractInvoiceListener>();
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
@@ -101,14 +102,14 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     {
         // Register ArkConnectionStringHandler so LightningClientFactoryService can create the client
         serviceCollection.AddSingleton<Func<BoltzClient, ILightningConnectionStringHandler>>(
-            http => new ArkLightningConnectionStringHandler(http));
+            provider => boltzClient => new ArkLightningConnectionStringHandler(boltzClient, provider));
         serviceCollection.AddSingleton<ArkadePaymentLinkExtension>();
         serviceCollection.AddSingleton<IPaymentLinkExtension>(provider => provider.GetRequiredService<ArkadePaymentLinkExtension>());
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
-
         
         serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
     }
+    
     public override void Execute(IApplicationBuilder applicationBuilder, IServiceProvider provider)
     {
         base.Execute(applicationBuilder, provider);

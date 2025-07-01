@@ -22,6 +22,9 @@ public class ReverseResponse
     [JsonPropertyName("timeoutBlockHeight")]
     public long TimeoutBlockHeight { get; set; }
 
+    [JsonPropertyName("timeoutBlockHeights")]
+    public TimeoutBlockHeights? TimeoutBlockHeights { get; set; }
+
     [JsonPropertyName("blindingKey")]
     public string? BlindingKey { get; set; }
 
@@ -30,4 +33,7 @@ public class ReverseResponse
 
     [JsonPropertyName("claimAddress")]
     public string? ClaimAddress { get; set; } // For Taproot, user's address
+
+    [JsonPropertyName("refundPublicKey")]
+    public string? RefundPublicKey { get; set; } // Boltz's refund public key
 }
