@@ -1,6 +1,7 @@
 using Ark.V1;
 using Microsoft.Extensions.DependencyInjection;
 using NArk.Services;
+using NArk.Wallet.Boltz;
 using WalletService = NArk.Services.WalletService;
 
 namespace NArk;
@@ -34,11 +35,22 @@ public static class ArkStartup
         // Register Ark services
         services.AddSingleton<IOperatorTermsService, OperatorTermsService>();
         services.AddTransient<IWalletService, WalletService>();
+
+        if (!string.IsNullOrWhiteSpace(configuration.BoltzUri))
+        {
+            RegisterBoltz(services, configuration.BoltzUri);
+        }
+        
         return services;
+    }
+
+    private static void RegisterBoltz(IServiceCollection services, string boltzUri)
+    {
+        services.AddHttpClient<BoltzClient>();
     }
 }
 
-public class ArkConfiguration
-{
-    public required string ArkUri { get; set; }
-}
+public record ArkConfiguration(
+    string ArkUri,
+    string? BoltzUri
+    );
