@@ -4,13 +4,16 @@ using BTCPayServer.Abstractions.Contracts;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Configuration;
+using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
 using BTCPayServer.Plugins.ArkPayServer.Data;
+using BTCPayServer.Plugins.ArkPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NArk;
+using NArk.Wallet.Boltz;
 using NBitcoin;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
@@ -45,17 +48,18 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         {
             return;
         }
-        //
-        // var boltzUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
-        //     ? "https://mutinynet.boltz.exchange"
-        //     : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
-        //         ? "https://signet.boltz.exchange"
-        //         : networkType == ChainName.Regtest
-        //             ? "https://localhost:3001"
-        //             : null;
-        //
-        //
-        // serviceCollection.AddSingleton<ILightningConnectionStringHandler, ArkLightningConnectionStringHandler>();
+        
+        var boltzUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
+            ? "https://mutinynet.boltz.exchange"
+            : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
+                ? "https://signet.boltz.exchange"
+                : networkType == ChainName.Regtest
+                    ? "https://localhost:9001"
+                    : null;
+        
+        SetupBtcPayUiExtensions(serviceCollection);
+        SetupBtcPayPluginServices(serviceCollection);
+        
         serviceCollection.AddSingleton<ArkPluginDbContextFactory>();
         serviceCollection.AddSingleton<AsyncKeyedLocker>();
         serviceCollection.AddDbContext<ArkPluginDbContext>((provider, o) =>
@@ -64,27 +68,34 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             factory.ConfigureBuilder(o);
         });
         serviceCollection.AddStartupTask<ArkPluginMigrationRunner>();
-        serviceCollection.AddGrpcClient<ArkService.ArkServiceClient>(
-            options =>
-            {
-                options.Address = new Uri(arkUri);
-            });
-        serviceCollection.AddGrpcClient<IndexerService.IndexerServiceClient>(
-            options =>
-            {
-                options.Address = new Uri(arkUri);
-            });
+
         serviceCollection.AddTransient<ArkWalletService>();
         serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
-        
-        serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
 
         // Use NArk SDK Services
-        serviceCollection.AddArkServices(new ArkConfiguration 
-        { 
-            ArkUri = arkUri 
-        });
+        serviceCollection.AddArkServices(new ArkConfiguration(
+            ArkUri: arkUri,
+            BoltzUri: boltzUri
+            ));
+    }
+    
+    private static void SetupBtcPayPluginServices(IServiceCollection serviceCollection)
+    {
+        // Register ArkConnectionStringHandler so LightningClientFactoryService can create the client
+        serviceCollection.AddSingleton<Func<BoltzClient, ILightningConnectionStringHandler>>(
+            http => new ArkLightningConnectionStringHandler(http));
+    }
+
+    private static void SetupBtcPayUiExtensions(IServiceCollection serviceCollection)
+    {
+        // Display Ark as a wallet type in navigation sidebar
+        serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
+        
+        // Display ARK instructions in the Lightning setup screen
+        serviceCollection.AddUIExtension(
+            location: "ln-payment-method-setup-custom",
+            partialViewName: "/Views/Lightning/SetupArkLightningNode.cshtml");
     }
 
     public override void Execute(IApplicationBuilder applicationBuilder, IServiceProvider provider)
