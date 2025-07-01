@@ -46,7 +46,10 @@ public static class ArkStartup
 
     private static void RegisterBoltz(IServiceCollection services, string boltzUri)
     {
-        services.AddHttpClient<BoltzClient>();
+        services.AddHttpClient<BoltzClient>(client =>
+        {
+            client.BaseAddress = new Uri(boltzUri);
+        });
     }
 }
 
