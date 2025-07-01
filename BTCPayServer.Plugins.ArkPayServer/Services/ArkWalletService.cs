@@ -26,8 +26,8 @@ public class ArkWalletService(
     IWalletService walletService,
     ILogger<ArkWalletService> logger)
 {
-    private readonly DerivationSchemeParser _derivationSchemeParser =
-        btcPayNetworkProvider.BTC.GetDerivationSchemeParser();
+    // private readonly DerivationSchemeParser _derivationSchemeParser =
+    //     btcPayNetworkProvider.BTC.GetDerivationSchemeParser();
     
     
     public async Task<ArkContract> DerivePaymentContract(string walletId, CancellationToken cancellationToken)
@@ -99,7 +99,7 @@ public class ArkWalletService(
         {
             var arkWallet = new ArkWallet
             {
-                Id = SHA256.HashData(key.ToBytes()).ToHex(),
+                Id = walletService.GetWalletId(key),
                 Wallet = wallet
             };
 
@@ -139,6 +139,19 @@ public class ArkWalletService(
             .Include(w => w.Contracts)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<ArkWallet> Upsert(string wallet)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+        var res = await dbContext.Wallets.Upsert(new ArkWallet()
+        {
+            Id = walletService.GetWalletId(wallet),
+            Wallet = wallet,
+        }).RunAndReturnAsync();
+        
+        return res.First();
+    }
+    
     //
     // /// <summary>
     // /// Creates a new boarding address for the specified wallet using the Ark operator's GetBoardingAddress gRPC call

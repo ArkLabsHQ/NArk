@@ -15,8 +15,8 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 
 public class ArkStoreWalletViewModel
 {
-    public string? SelectedWalletId { get; set; }
-    public Dictionary<string, string> Wallets { get; set; }
+    public string? Wallet { get; set; }
+    // public Dictionary<string, string> Wallets { get; set; }
 }
 
 
@@ -48,17 +48,16 @@ public class ArkController : Controller
             return NotFound();
         
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
-        var availableWallets = await _arkWalletService.GetAllWalletsAsync();
+        // var availableWallets = await _arkWalletService.GetAllWalletsAsync();
         return View(new ArkStoreWalletViewModel()
         {
-            SelectedWalletId = config?.WalletId,
-            Wallets = availableWallets.ToDictionary(x => x.Id, x => x.Wallet)
+            Wallet = config?.WalletId,
         });
 
 
     }
 
-    [HttpGet("stores/{storeId}")]
+    [HttpPost("stores/{storeId}")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
     public async Task<IActionResult> SetupStore(string storeId, ArkStoreWalletViewModel model, string? action = null)
     {
@@ -67,27 +66,19 @@ public class ArkController : Controller
         if (store == null)
             return NotFound();
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
-        var availableWallets = await _arkWalletService.GetAllWalletsAsync();
-
-        if (action == "create")
+        if (model.Wallet != config?.WalletId )
         {
-            
-        }
-
-        if (model.SelectedWalletId != config?.WalletId )
-        {
-            if (string.IsNullOrEmpty(model.SelectedWalletId))
+            if (string.IsNullOrEmpty(model.Wallet))
             {
                 store.SetPaymentMethodConfig(ArkadePlugin.ArkadePaymentMethodId, null);
-            }else if (availableWallets.Any(x => x.Id == model.SelectedWalletId))
+            }else
             {
-                config = new ArkadePaymentMethodConfig(model.SelectedWalletId);
+                var wallet = await _arkWalletService.Upsert(model.Wallet);
+                config = new ArkadePaymentMethodConfig(wallet.Id);
                 store.SetPaymentMethodConfig(_paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], config);
             }
             
         }
-
-        
         await _storeRepository.UpdateStore(store);
         TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method successfully {(string.IsNullOrEmpty(config?.WalletId) ? "enabled" : "updated")}.";
 

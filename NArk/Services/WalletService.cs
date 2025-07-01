@@ -12,24 +12,17 @@ public class WalletService(
 {
     public ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet)
     {
-        ECXOnlyPubKey? pubKey;
-        
-        var encoder = Bech32Encoder.ExtractEncoderFromString(wallet);
-        encoder.StrictLength = false;
-        encoder.SquashBytes = true;
-        var keyData = encoder.DecodeDataRaw(wallet, out _);
-        switch (Encoding.UTF8.GetString(encoder.HumanReadablePart))
+        switch (wallet.ToLowerInvariant())
         {
-            case "nsec":
-                pubKey = ECPrivKey.Create(keyData).CreateXOnlyPubKey();
-                break;
-            case "npub":
-                pubKey = ECXOnlyPubKey.Create(keyData);
-                break;
+            case string s1 when s1.StartsWith("npub"):
+                var encoder = Bech32Encoder.ExtractEncoderFromString(wallet);
+                encoder.StrictLength = false;
+                encoder.SquashBytes = true;
+                var keyData = encoder.DecodeDataRaw(wallet, out _);
+                return ECXOnlyPubKey.Create(keyData);
             default:
                 throw new NotSupportedException();
         }
-        return pubKey;
     }
     
     public async Task<ArkContract> DerivePaymentContractAsync(DeriveContractRequest request, CancellationToken cancellationToken = default)

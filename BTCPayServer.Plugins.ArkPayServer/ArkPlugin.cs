@@ -80,6 +80,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         
         serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
 
+        serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");
         // Use NArk SDK Services
         serviceCollection.AddArkServices(new ArkConfiguration 
         { 

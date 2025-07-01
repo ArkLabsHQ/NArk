@@ -37,6 +37,7 @@
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" >
         </ProjectReference>
         <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
+        <PackageReference Include="FlexLabs.EntityFrameworkCore.Upsert" Version="8.1.2" />
         <PackageReference Include="Google.Protobuf" Version="3.31.1" />
         <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />

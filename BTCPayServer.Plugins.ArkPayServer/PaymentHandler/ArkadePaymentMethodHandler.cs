@@ -28,19 +28,16 @@ public class ArkadePaymentMethodHandler(
         {
             throw new PaymentMethodUnavailableException($"Arkade payment method not configured");
         }
-
-        var details = new ArkadePaymentMethodDetails(arkadePaymentMethodConfig.WalletId);
-
         var contract = await arkWalletService.DerivePaymentContract(arkadePaymentMethodConfig.WalletId, CancellationToken.None);
+        var details = new ArkadePromptDetails(arkadePaymentMethodConfig.WalletId, contract);
         var address = contract.GetArkAddress();
-        context.Prompt.Destination = address.ToString(Network.NBitcoinNetwork.ChainName == ChainName.Mainnet);;
+        context.Prompt.Destination = address.ToString(Network.NBitcoinNetwork.ChainName == ChainName.Mainnet);
         context.Prompt.PaymentMethodFee = 0m;
 
         context.TrackedDestinations.Add(context.Prompt.Destination);
+        context.TrackedDestinations.Add(address.ScriptPubKey.PaymentScript.ToHex());
         context.Prompt.Details = JObject.FromObject(details, Serializer);
-
     }
-
 
     public Task BeforeFetchingRates(PaymentMethodContext context)
     {
@@ -51,9 +48,9 @@ public class ArkadePaymentMethodHandler(
 
     public JsonSerializer Serializer { get; } = BlobSerializer.CreateSerializer().Serializer;
 
-    public ArkadePaymentMethodDetails ParsePaymentPromptDetails(JToken details)
+    public ArkadePromptDetails ParsePaymentPromptDetails(JToken details)
     {
-        return details.ToObject<ArkadePaymentMethodDetails>(Serializer);
+        return details.ToObject<ArkadePromptDetails>(Serializer);
     }
 
     object IPaymentMethodHandler.ParsePaymentPromptDetails(JToken details)

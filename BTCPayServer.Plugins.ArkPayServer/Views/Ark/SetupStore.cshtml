@@ -1,0 +1,34 @@
+@using BTCPayServer.Abstractions.Contracts
+@model BTCPayServer.Plugins.ArkPayServer.Controllers.ArkStoreWalletViewModel
+@inject IScopeProvider ScopeProvider
+@{
+    var storeId = ScopeProvider.GetCurrentStoreId()!;
+    ViewData.SetActivePage("Ark", "Configure Ark Payment method", "Ark");
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title mb-0">Configure Ark Payment Method</h2>
+            </div>
+            <div class="card-body">
+                <form asp-action="SetupStore" method="post" asp-route-storeId="@storeId">
+                    <div class="form-group mb-3">
+                        <label asp-for="Wallet" class="form-label">Public Key</label>
+                        <input asp-for="Wallet" class="form-control" placeholder="npub.." />
+                        <span asp-validation-for="Wallet" class="text-danger"></span>
+                        <div class="form-text">
+                            Choose a public key to use for your Ark wallet.
+                        </div>
+                    </div>
+                    
+                    <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                       
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
