@@ -4,6 +4,7 @@ using AsyncKeyedLock;
 using BTCPayServer.Data;
 using BTCPayServer.Events;
 using BTCPayServer.Plugins.ArkPayServer.Data;
+using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using Grpc.Core;
@@ -15,16 +16,21 @@ using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
+public class VTXOsUpdated
+{
+    public VTXO[] Vtxos { get; set; }
+}
+
 public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 {
     private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
     private readonly AsyncKeyedLocker _asyncKeyedLocker;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
     private readonly IndexerService.IndexerServiceClient _indexerClient;
-    private readonly ArkadePaymentMethodHandler _arkadePaymentMethodHandler;
-    private readonly InvoiceRepository _invoiceRepository;
+    // private readonly ArkadePaymentMethodHandler _arkadePaymentMethodHandler;
+    // private readonly InvoiceRepository _invoiceRepository;
     private readonly EventAggregator _eventAggregator;
-    private readonly PaymentService _paymentService;
+    // private readonly PaymentService _paymentService;
     private readonly ILogger<ArkSubscriptionService> _logger;
 
     private Task _processingTask;
@@ -42,8 +48,8 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         IndexerService.IndexerServiceClient indexerClient,
-        ArkadePaymentMethodHandler arkadePaymentMethodHandler,
-        InvoiceRepository invoiceRepository,
+        // ArkadePaymentMethodHandler arkadePaymentMethodHandler,
+        // InvoiceRepository invoiceRepository,
         PaymentService paymentService,
         EventAggregator eventAggregator,
         ILogger<ArkSubscriptionService> logger)
@@ -52,9 +58,9 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         _asyncKeyedLocker = asyncKeyedLocker;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
         _indexerClient = indexerClient;
-        _arkadePaymentMethodHandler = arkadePaymentMethodHandler;
-        _invoiceRepository = invoiceRepository;
-        _paymentService = paymentService;
+        // _arkadePaymentMethodHandler = arkadePaymentMethodHandler;
+        // _invoiceRepository = invoiceRepository;
+        // _paymentService = paymentService;
         _eventAggregator = eventAggregator;
         _logger = logger;
         _network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
@@ -115,6 +121,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             {
                 _logger.LogInformation("Manually subscribing to contract: {Contract}", contract);
                 await SynchronizeSubscriptionWithIndexerAsync(cancellationToken);
+                await ProcessUpdates([contract], cancellationToken);
             }
             else
             {
@@ -159,10 +166,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         }
     }
 
-    private Task UpdateVTXOS(IndexerVtxo[] vtxos, CancellationToken cancellationToken)
-    {
-        return Task.CompletedTask;
-    }
+    
 
     private async Task UpdateSubscriptionAndListen(CancellationToken cancellationToken)
     {
@@ -266,7 +270,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             {
                 if (response == null) continue;
                 _logger.LogDebug("Received update for {Count} scripts.", response.Scripts.Count);
-                await ProcessUpdates(response, cancellationToken);
+                await ProcessUpdates(response.Scripts.ToArray(), cancellationToken);
             }
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
@@ -286,77 +290,37 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         }
     }
 
-    private async Task ProcessUpdates(GetSubscriptionResponse scripts, CancellationToken cancellationToken)
+    public static VTXO Map(IndexerVtxo vtxo)
     {
-        var handler = _arkadePaymentMethodHandler;
+        return new VTXO()
+        {
+            TransactionId = vtxo.Outpoint.Txid,
+            TransactionOutputIndex = (int)vtxo.Outpoint.Vout,
+            Amount = (long)vtxo.Amount,
+            IsNote = vtxo.IsSwept,
+            SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt),
+            SpentByTransactionId = vtxo.SpentBy,
+            Script = vtxo.Script
+        };
+        
+    }
+
+    private async Task ProcessUpdates(string[] scripts, CancellationToken cancellationToken)
+    {
+        // var handler = _arkadePaymentMethodHandler;
         var request = new GetVtxosRequest();
-        request.Addresses.AddRange(scripts.Scripts);
+        request.Addresses.AddRange(scripts);
         var vtxos = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);
 
-        var outpoints = vtxos.Vtxos.Select(v => v.Outpoint).ToArray();
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();
 
-        foreach (var vtxo in vtxos.Vtxos)
-        {
-
-            var invoice = await _invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, vtxo.Script);
-            if (invoice is null)
-            {
-                continue;
-            }
-
-            // FIXME: Commented out due to compile error. Needs to be fixed
-            //await HandlePaymentData(vtxo, invoice, handler, cancellationToken);
-            await HandlePaymentData(new Vtxo(), invoice, handler, cancellationToken);
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
+       var results = await  dbContext.Vtxos.UpsertRange(vtxos.Vtxos.Select(Map)).RunAndReturnAsync();
+       _eventAggregator.Publish(new VTXOsUpdated()
+       {
+           Vtxos = results.ToArray()
+       });
     }
     
-    private async Task ReceivedPayment(InvoiceEntity invoice, PaymentEntity payment)
-    {
-        _logger.LogInformation(
-            $"Invoice {invoice.Id} received payment {payment.Value} {payment.Currency} {payment.Id}");
-
-        _eventAggregator.Publish(
-            new InvoiceEvent(invoice, InvoiceEvent.ReceivedPayment) { Payment = payment });
-    }
-    
-    private async Task HandlePaymentData(Vtxo vtxo, InvoiceEntity invoice, ArkadePaymentMethodHandler handler, CancellationToken cancellationToken)
-    {
-        var pmi = ArkadePlugin.ArkadePaymentMethodId;
-        var details = new ArkadePaymentData($"{vtxo.Outpoint.Txid}:{vtxo.Outpoint.Vout}");
-        var paymentData = new PaymentData
-        {
-            Status = PaymentStatus.Settled,
-            Amount = Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC),
-            Created = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt),
-            Id = details.Outpoint,
-            Currency = "BTC",
-        }.Set(invoice, handler, details);
-
-
-        var alreadyExistingPaymentThatMatches = invoice.GetPayments(false).SingleOrDefault(c =>
-            c.Id == paymentData.Id && c.PaymentMethodId == pmi);
-
-        if (alreadyExistingPaymentThatMatches == null)
-        {
-            var payment = await _paymentService.AddPayment(paymentData, [vtxo.RoundTxid]);
-            if (payment != null)
-            {
-                await ReceivedPayment(invoice, payment);
-            }
-        }
-        else
-        {
-            //else update it with the new data
-            alreadyExistingPaymentThatMatches.Status = PaymentStatus.Settled;
-            alreadyExistingPaymentThatMatches.Details = JToken.FromObject(details, handler.Serializer);
-            await _paymentService.UpdatePayments([alreadyExistingPaymentThatMatches]);
-        }
-
-        _eventAggregator.Publish(new InvoiceNeedUpdateEvent(invoice.Id));
-    }
 
     private async Task SynchronizeSubscriptionWithIndexerAsync(CancellationToken cancellationToken)
     {
@@ -393,4 +357,5 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             _logger.LogError(ex, "[Manual] Failed to update remote subscription.");
         }
     }
+
 }

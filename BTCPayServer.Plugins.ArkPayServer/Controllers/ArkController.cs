@@ -109,50 +109,50 @@ public class ArkController : Controller
         return store.GetPaymentMethodConfig<T>(paymentMethodId, _paymentMethodHandlerDictionary);
     }
     
-    [HttpGet("")]
-    public async Task<IActionResult> Index()
-    {
-        ViewData["Title"] = "Ark Pay Server";
-        
-        var wallets = await _arkWalletService.GetAllWalletsAsync();
-        var model = new ArkIndexViewModel
-        {
-            Wallets = wallets
-        };
-        
-        return View(model);
-    }
+    // [HttpGet("")]
+    // public async Task<IActionResult> Index()
+    // {
+    //     ViewData["Title"] = "Ark Pay Server";
+    //     
+    //     var wallets = await _arkWalletService.GetAllWalletsAsync();
+    //     var model = new ArkIndexViewModel
+    //     {
+    //         Wallets = wallets
+    //     };
+    //     
+    //     return View(model);
+    // }
 
-    [HttpGet("create-wallet")]
-    public async Task<IActionResult> CreateWallet()
-    {
-        ViewData["Title"] = "Create New Ark Wallet";
-        
-        return View(new CreateWalletViewModel());
-    }
-
-    [HttpPost("create-wallet")]
-    public async Task<IActionResult> CreateWallet(CreateWalletViewModel model)
-    {
-        
-        
-        if (!ModelState.IsValid)
-        {
-            return View(model);
-        }
-
-        try
-        {
-            var wallet = await _arkWalletService.CreateNewWalletAsync(model.Wallet);
-            TempData["StatusMessage"] = "Ark wallet created successfully!";
-            return RedirectToAction(nameof(WalletDetails), new { walletId = wallet.Id });
-        }
-        catch (Exception ex)
-        {
-            ModelState.AddModelError("", $"Failed to create wallet: {ex.Message}");
-            return View(model);
-        }
-    }
+    // [HttpGet("create-wallet")]
+    // public async Task<IActionResult> CreateWallet()
+    // {
+    //     ViewData["Title"] = "Create New Ark Wallet";
+    //     
+    //     return View(new CreateWalletViewModel());
+    // }
+    //
+    // [HttpPost("create-wallet")]
+    // public async Task<IActionResult> CreateWallet(CreateWalletViewModel model)
+    // {
+    //     
+    //     
+    //     if (!ModelState.IsValid)
+    //     {
+    //         return View(model);
+    //     }
+    //
+    //     try
+    //     {
+    //         var wallet = await _arkWalletService.CreateNewWalletAsync(model.Wallet);
+    //         TempData["StatusMessage"] = "Ark wallet created successfully!";
+    //         return RedirectToAction(nameof(WalletDetails), new { walletId = wallet.Id });
+    //     }
+    //     catch (Exception ex)
+    //     {
+    //         ModelState.AddModelError("", $"Failed to create wallet: {ex.Message}");
+    //         return View(model);
+    //     }
+    // }
 
     [HttpGet("wallet/{walletId}")]
     public async Task<IActionResult> WalletDetails(string walletId)

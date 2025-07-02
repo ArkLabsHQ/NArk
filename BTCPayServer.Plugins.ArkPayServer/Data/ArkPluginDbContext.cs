@@ -7,7 +7,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
 {
     public DbSet<ArkWallet> Wallets { get; set; }
     public DbSet<ArkWalletContract> WalletContracts { get; set; }
-    public DbSet<ArkStoredTransaction> Transactions { get; set; }
+    // public DbSet<ArkStoredTransaction> Transactions { get; set; }
     public DbSet<VTXO> Vtxos { get; set; }
     // public DbSet<BoardingAddress> BoardingAddresses { get; set; }
     
@@ -20,7 +20,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
 
     private static void SetupDbRelations(ModelBuilder modelBuilder)
     {
-        ArkStoredTransaction.OnModelCreating(modelBuilder);
+        // ArkStoredTransaction.OnModelCreating(modelBuilder);
         VTXO.OnModelCreating(modelBuilder);
         ArkWallet.OnModelCreating(modelBuilder);
         ArkWalletContract.OnModelCreating(modelBuilder);
