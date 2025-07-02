@@ -1,25 +1,16 @@
 using System.Threading.Channels;
 using Ark.V1;
 using AsyncKeyedLock;
-using BTCPayServer.Data;
-using BTCPayServer.Events;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
-using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
-
-public class VTXOsUpdated
-{
-    public VTXO[] Vtxos { get; set; }
-}
 
 public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 {

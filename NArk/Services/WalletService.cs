@@ -27,22 +27,21 @@ public class WalletService(
     
     public async Task<ArkContract> DerivePaymentContractAsync(DeriveContractRequest request, CancellationToken cancellationToken = default)
     {
-        // Use provided tweak or generate a random one
-        var tweak = request.Tweak ?? RandomUtils.GetBytes(32);
-        if (tweak is null)
-        {
-            throw new Exception("Could not derive preimage randomly");
-        }
-
+        
         var pubKey = GetXOnlyPubKeyFromWallet(request.Wallet);
 
         var operatorTerms = await operatorTermsService.GetOperatorTerms(cancellationToken);
-        var paymentContract = new TweakedArkPaymentContract(
+       
+        if (request.Tweak is null)
+        {
+            return new ArkPaymentContract(operatorTerms.SignerKey, operatorTerms.UnilateralExit, pubKey);
+        }
+      
+        return new TweakedArkPaymentContract(
             operatorTerms.SignerKey, 
             operatorTerms.UnilateralExit, 
             pubKey, 
-            tweak);
+            request.Tweak);
 
-        return paymentContract;
     }
 }

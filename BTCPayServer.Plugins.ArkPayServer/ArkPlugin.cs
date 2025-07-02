@@ -72,7 +72,9 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
 
         serviceCollection.AddTransient<ArkWalletService>();
         serviceCollection.AddSingleton<ArkSubscriptionService>();
+        serviceCollection.AddSingleton<ArkContractInvoiceListener>();
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
+        serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
 
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");
         // Display Ark as a wallet type in navigation sidebar
