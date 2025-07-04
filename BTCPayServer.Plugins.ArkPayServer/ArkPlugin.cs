@@ -63,6 +63,9 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<ArkadePaymentMethodHandler>();
         serviceCollection.AddSingleton<ArkPluginDbContextFactory>();
         serviceCollection.AddSingleton<AsyncKeyedLocker>();
+        
+        serviceCollection.AddSingleton<ArkadeWalletSignerProvider>();
+        serviceCollection.AddSingleton<ArkadeTweakedContractSweeper>();
         serviceCollection.AddDbContext<ArkPluginDbContext>((provider, o) =>
         {
             var factory = provider.GetRequiredService<ArkPluginDbContextFactory>();
@@ -70,10 +73,12 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         });
         serviceCollection.AddStartupTask<ArkPluginMigrationRunner>();
 
-        serviceCollection.AddTransient<ArkWalletService>();
+        serviceCollection.AddSingleton<ArkWalletService>();
+        serviceCollection.AddSingleton<IArkadeMultiWalletSigner>(provider => provider.GetRequiredService<ArkWalletService>());
         serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddSingleton<ArkContractInvoiceListener>();
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
+        serviceCollection.AddHostedService<ArkadeTweakedContractSweeper>(provider => provider.GetRequiredService<ArkadeTweakedContractSweeper>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
 
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");

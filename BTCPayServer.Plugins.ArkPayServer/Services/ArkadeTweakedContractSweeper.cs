@@ -16,26 +16,60 @@ using Ark.V1;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Services.Stores;
-using Google.Protobuf.Collections;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk;
 using NBitcoin;
-using NBitcoin.BIP370;
 using NBXplorer;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 
+public class ArkadeWalletSignerProvider
+{
+    private readonly IEnumerable<IArkadeMultiWalletSigner> _walletSigners;
 
+    ArkadeWalletSignerProvider(IEnumerable<IArkadeMultiWalletSigner> walletSigners)
+    {
+        _walletSigners = walletSigners;
+    }
+
+    public async Task<IArkadeWalletSigner> GetSigner(string walletId, CancellationToken cancellationToken = default)
+    {
+        var signers = await GetSigners([walletId],cancellationToken);
+        if (signers.TryGetValue(walletId, out var signer))
+        {
+            return signer;
+        }
+        throw new Exception($"Could not find a signer for wallet {walletId}");
+    }
+
+    public async Task<Dictionary<string, IArkadeWalletSigner>> GetSigners(string[] walletId, CancellationToken cancellationToken = default)
+    {
+        var result = new Dictionary<string, IArkadeWalletSigner>();
+        foreach (var signer in _walletSigners)
+        {
+            foreach (var id in walletId)
+            {
+                if (await signer.CanHandle(id, cancellationToken))
+                {
+                    result.Add(id, await signer.CreateSigner(id, cancellationToken));
+                }
+            }
+        }
+        return result;
+        
+    }
+
+}
 
 public class ArkadeTweakedContractSweeper:IHostedService
 {
     private readonly StoreRepository _storeRepository;
     private readonly ArkService.ArkServiceClient _arkServiceClient;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
-    private readonly IEnumerable<IArkadeWalletSigner> _walletSigners;
+    private readonly ArkadeWalletSignerProvider _walletSignerProvider;
     private readonly EventAggregator _eventAggregator;
     private readonly ILogger<ArkadeTweakedContractSweeper> _logger;
     private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
@@ -46,7 +80,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
         StoreRepository storeRepository, 
         ArkService.ArkServiceClient arkServiceClient,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
-        IEnumerable<IArkadeWalletSigner> walletSigners, 
+        ArkadeWalletSignerProvider walletSignerProvider,
         EventAggregator eventAggregator,
         ILogger<ArkadeTweakedContractSweeper> logger,
         
@@ -55,7 +89,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
         _storeRepository = storeRepository;
         _arkServiceClient = arkServiceClient;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
-        _walletSigners = walletSigners;
+        _walletSignerProvider = walletSignerProvider;
         _eventAggregator = eventAggregator;
         _logger = logger;
         _btcPayNetworkProvider = btcPayNetworkProvider;
@@ -99,12 +133,12 @@ public class ArkadeTweakedContractSweeper:IHostedService
                 )
                 .ToListAsync(cts.Token);
 
-            var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId);
+            var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
 
             var walletsToCheck = groupedByWallet.Select(g => g.Key);
-            //use _walletSigners.canhandle to check if the signer can handle the wallet and prune the list of wallets to check
             
-            Dictionary<string, IArkadeWalletSigner> walletSigners = new();
+            var walletSigners = await _walletSignerProvider.GetSigners(walletsToCheck.ToArray(), cts.Token);
+            
             foreach (var group in groupedByWallet)
             {
                 var signer = walletSigners.TryGet(group.Key);
@@ -118,8 +152,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
                 var contract = ArkContract.Parse(group.First().Contract.Type, group.First().Contract.ContractData);
        
                 var txout = new TxOut(total, contract.GetArkAddress());
-                var arkTx = await ConstructArkTransaction(arkCoins.Select(x => (signer, x, group.Key)).ToArray(), [txout], cts.Token);
-
+                var arkTx = await ConstructArkTransaction(arkCoins.Select(x => (signer, x)).ToArray(), [txout], cts.Token);
                 
                 var submitRequest = new SubmitTxRequest();
                 submitRequest.SignedArkTx = arkTx.arkTx.ToBase64();
@@ -141,6 +174,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
                 finalizeTxRequest.ArkTxid = response.ArkTxid;
                 finalizeTxRequest.FinalCheckpointTxs.AddRange(signedCheckpoints.Select(x => x.Value.checkpoint.ToBase64()).ToArray());
                 var finalizeTxResponse = await _arkServiceClient.FinalizeTxAsync(finalizeTxRequest);
+                // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
             }
             
             
@@ -150,7 +184,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
     }
     
     private async Task<(PSBT arkTx, (PSBT checkpoint, WitScript inputWitness)[])> ConstructArkTransaction((IArkadeWalletSigner signer, 
-        ArkCoin coin, string walletId)[]coins, 
+        ArkCoin coin)[]coins, 
         TxOut[] outputs,
         CancellationToken cancellationToken)
     {
@@ -158,7 +192,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
         var p2a = Script.FromHex("51024e73");
 
         List<(PSBT checkpoint, WitScript inputWitness)> checkpoints = new();
-        List<(ArkCoin coin ,IArkadeWalletSigner signer, string walletId)> checkpointCoins = new();
+        List<(ArkCoin coin ,IArkadeWalletSigner signer)> checkpointCoins = new();
         
         
         foreach (var coin in coins)
@@ -202,14 +236,14 @@ public class ArkadeTweakedContractSweeper:IHostedService
             var tapleaf = contract.CollaborativePath().Build().LeafHash;
             var hash = checkpointgtx.GetSignatureHashTaproot(checkpointPrecomputedTransactionData,
                 new TaprootExecutionData((int)input.Index, tapleaf));
-            var sig = await coin.signer.Sign(coin.walletId, hash,contract.Tweak, cancellationToken );
+            var sig = await coin.signer.Sign(hash,contract.Tweak, cancellationToken );
             var witness = contract.CollaborativePathWitness(sig);
             
             checkpoints.Add((checkpointTx, witness));
             var txout = checkpointTx.Outputs.Single(output =>
                 output.ScriptPubKey == checkpointContract.GetArkAddress().ScriptPubKey);
             var outpoint = new OutPoint(checkpointgtx, txout.Index);
-            checkpointCoins.Add((new ArkCoin(checkpointContract, outpoint, txout.GetTxOut()!), coin.signer, coin.walletId));
+            checkpointCoins.Add((new ArkCoin(checkpointContract, outpoint, txout.GetTxOut()!), coin.signer));
         }
         
         var arkTx = _network.CreateTransactionBuilder();
@@ -235,14 +269,15 @@ public class ArkadeTweakedContractSweeper:IHostedService
         {
             var contract = (GenericArkContract)coin.coin.Contract;
             var input = gtx.Inputs.FindIndexedInput(coin.coin.Outpoint);
-            var tapleaf = contract.CollaborativePath().Build().LeafHash;
+            var collabPath  = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
+            var tapleaf = collabPath.Build();
             var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
-                new TaprootExecutionData((int)input.Index, tapleaf));
-            var sig = await coin.signer.Sign(coin.walletId, hash,null, cancellationToken );
+                new TaprootExecutionData((int)input.Index, tapleaf.LeafHash));
+            var sig = await coin.signer.Sign(hash,null, cancellationToken );
             tx.Inputs[(int)input.Index].FinalScriptWitness =  new WitScript(
-                Op.GetPushOp(contract.ToBytes()), 
-                Op.GetPushOp(tapLeaf.Script.ToBytes()),
-                Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
+                Op.GetPushOp(sig.ToBytes()), 
+                Op.GetPushOp(tapleaf.Script.ToBytes()),
+                Op.GetPushOp(contract.GetTaprootSpendInfo().GetControlBlock(tapleaf).ToBytes()));
         }
         
         return (tx, checkpoints.ToArray());

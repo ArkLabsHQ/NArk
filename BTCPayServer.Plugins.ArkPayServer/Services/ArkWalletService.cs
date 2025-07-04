@@ -24,7 +24,7 @@ public class ArkWalletService(
     ArkService.ArkServiceClient arkClient,
     ArkSubscriptionService arkSubscriptionService,
     IWalletService walletService,
-    ILogger<ArkWalletService> logger):IHostedService, IArkadeWalletSigner
+    ILogger<ArkWalletService> logger):IHostedService, IArkadeMultiWalletSigner
 {
     
     
@@ -292,11 +292,24 @@ public class ArkWalletService(
         return Task.FromResult(walletSigners.ContainsKey(walletId));
     }
 
-    public Task<SecpSchnorrSignature> Sign(string walletId, uint256 data, byte[]? tweak = null,
-        CancellationToken cancellationToken = default)
+    public Task<IArkadeWalletSigner> CreateSigner(string walletId, CancellationToken cancellationToken = default)
     {
-        var signer = walletSigners[walletId];
-        signer = tweak is null ? signer : signer.TweakAdd(tweak);
-        return Task.FromResult(signer.SignBIP340(data.ToBytes()));
+        return Task.FromResult<IArkadeWalletSigner>(new WalletSigner(walletSigners[walletId]));
+        
+    }
+    
+    public class WalletSigner : IArkadeWalletSigner
+    {
+        private readonly ECPrivKey _key;
+
+        public WalletSigner(ECPrivKey key)
+        {
+            _key = key;
+        }
+        public Task<SecpSchnorrSignature> Sign(uint256 data, byte[]? tweak = null, CancellationToken cancellationToken = default)
+        {
+            var signer  = tweak is null ? _key : _key.TweakAdd(tweak);
+            return Task.FromResult(signer.SignBIP340(data.ToBytes()));
+        }
     }
 }
