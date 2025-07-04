@@ -185,11 +185,9 @@ public class ArkContractInvoiceListener : IHostedService
             foreach (var invoice in await _invoiceRepository.GetMonitoredInvoices(ArkadePlugin.ArkadePaymentMethodId,
                          cancellation))
             {
-                if (GetListenedArkadeInvoice(invoice) is not null)
-                {
-                    _CheckInvoices.Writer.TryWrite(invoice.Id);
-                    _memoryCache.Set(GetCacheKey(invoice.Id), invoice, GetExpiration(invoice));
-                }
+                if (GetListenedArkadeInvoice(invoice) is null) continue;
+                _CheckInvoices.Writer.TryWrite(invoice.Id);
+                _memoryCache.Set(GetCacheKey(invoice.Id), invoice, GetExpiration(invoice));
             }
 
             _logger.LogInformation("Checking if any payment arrived on Arkade while the server was offline... done.");

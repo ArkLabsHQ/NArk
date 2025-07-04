@@ -300,7 +300,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
     {
         // var handler = _arkadePaymentMethodHandler;
         var request = new GetVtxosRequest();
-        request.Addresses.AddRange(scripts);
+        request.Scripts.AddRange(scripts);
         var vtxos = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);
 
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();

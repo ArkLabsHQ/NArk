@@ -9,12 +9,15 @@ namespace NArk.Services;
 /// </summary>
 public interface IWalletService
 {
-    ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet);
-    string GetWalletId(ECXOnlyPubKey pubKey) => SHA256.HashData(pubKey.ToBytes()).ToHex();
-    string GetWalletId(string wallet) => GetWalletId(GetXOnlyPubKeyFromWallet(wallet));
+    // ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet);
+    // string GetWalletId(ECXOnlyPubKey pubKey) => SHA256.HashData(pubKey.ToBytes()).ToHex();
+    // string GetWalletId(string wallet) => GetWalletId(GetXOnlyPubKeyFromWallet(wallet));
     
     /// <summary>
     /// Derives a new payment contract for the wallet
     /// </summary>
     Task<ArkContract> DerivePaymentContractAsync(DeriveContractRequest request, CancellationToken cancellationToken = default);
+    
+    
+    
 }

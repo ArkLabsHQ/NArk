@@ -1,4 +1,7 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
+using NArk;
+using NBitcoin.Secp256k1;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 
@@ -6,7 +9,13 @@ public class ArkWallet
 {
     public string Id { get; set; }
     public string Wallet { get; set; }
-    public List<ArkWalletContract> Contracts { get; set; } = new();
+    public List<ArkWalletContract> Contracts { get; set; } = [];
+    
+    
+    [Column(TypeName = "jsonb")]
+    public Dictionary<string, string> WalletData { get; set; }
+
+    public ECXOnlyPubKey PublicKey => ArkExtensions.GetXOnlyPubKeyFromWallet(Wallet);
 
     internal static void OnModelCreating(ModelBuilder builder)
     {

@@ -1,71 +1,72 @@
-@model BTCPayServer.Plugins.ArkPayServer.Models.ArkIndexViewModel
-@using BTCPayServer.Abstractions.Extensions
-@{
-    ViewData.SetActivePage("ArkPayServer", "ArkPayServer", "ArkPayServer");
-}
-
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Ark Pay Server</h1>
-    <a asp-action="CreateWallet" class="btn btn-primary">Create New Wallet</a>
-</div>
-
-@if (TempData["StatusMessage"] != null)
-{
-    <div class="alert alert-success alert-dismissible" role="alert">
-        @TempData["StatusMessage"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-}
-
-@if (TempData["ErrorMessage"] != null)
-{
-    <div class="alert alert-danger alert-dismissible" role="alert">
-        @TempData["ErrorMessage"]
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-}
-
-@if (Model.Wallets.Any())
-{
-    <div class="row">
-        <div class="col-12">
-            <h2>Your Ark Wallets</h2>
-            <div class="table-responsive">
-                <table class="table table-hover">
-                    <thead>
-                        <tr>
-                            <th>Wallet ID</th>
-                            <th>Public Key</th>
-                            <th>Current Index</th>
-                            <th>Contracts</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var wallet in Model.Wallets)
-                        {
-                            <tr>
-                                <td>
-                                    <code class="text-break">@wallet.Id</code>
-                                </td>
-                                <td>
-                                    <code class="text-break">@wallet.Wallet</code>
-                                </td>
-                                <td>@wallet.Contracts.Count</td>
-                                <td>
-                                    <a asp-action="WalletDetails" asp-route-walletId="@wallet.Id" class="btn btn-sm btn-outline-primary">Details</a>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-}
-else
-{
-    <div class="text-center">
-        <h3>No Ark Wallets Found</h3>
-    </div>
-}
+@* @model BTCPayServer.Plugins.ArkPayServer.Models.ArkIndexViewModel *@
+@* @using BTCPayServer.Abstractions.Extensions *@
+@* @{ *@
+@*     ViewData.SetActivePage("ArkPayServer", "ArkPayServer", "ArkPayServer"); *@
+@* } *@
+@* *@
+@* <div class="d-flex justify-content-between align-items-center mb-4"> *@
+@*     <h1>Ark Pay Server</h1> *@
+@*     <a asp-action="CreateWallet" class="btn btn-primary">Create New Wallet</a> *@
+@* </div> *@
+@* *@
+@* @if (TempData["StatusMessage"] != null) *@
+@* { *@
+@*     <div class="alert alert-success alert-dismissible" role="alert"> *@
+@*         @TempData["StatusMessage"] *@
+@*         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> *@
+@*     </div> *@
+@* } *@
+@* *@
+@* @if (TempData["ErrorMessage"] != null) *@
+@* { *@
+@*     <div class="alert alert-danger alert-dismissible" role="alert"> *@
+@*         @TempData["ErrorMessage"] *@
+@*         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> *@
+@*     </div> *@
+@* } *@
+@* *@
+@* @if (Model.Wallets.Any()) *@
+@* { *@
+@*     <div class="row"> *@
+@*         <div class="col-12"> *@
+@*             <h2>Your Ark Wallets</h2> *@
+@*             <div class="table-responsive"> *@
+@*                 <table class="table table-hover"> *@
+@*                     <thead> *@
+@*                     <tr> *@
+@*                         <th>Wallet ID</th> *@
+@*                         <th>Public Key</th> *@
+@*                         <th>Current Index</th> *@
+@*                         <th>Contracts</th> *@
+@*                         <th>Actions</th> *@
+@*                     </tr> *@
+@*                     </thead> *@
+@*                     <tbody> *@
+@*                     @foreach (var wallet in Model.Wallets) *@
+@*                     { *@
+@*                         <tr> *@
+@*                             <td> *@
+@*                                 <code class="text-break">@wallet.Id</code> *@
+@*                             </td> *@
+@*                             <td> *@
+@*                                 <code class="text-break">@wallet.Wallet</code> *@
+@*                             </td> *@
+@*                             <td>@wallet.Contracts.Count</td> *@
+@*                             <td> *@
+@*                                 <a asp-action="WalletDetails" asp-route-walletId="@wallet.Id" *@
+@*                                    class="btn btn-sm btn-outline-primary">Details</a> *@
+@*                             </td> *@
+@*                         </tr> *@
+@*                     } *@
+@*                     </tbody> *@
+@*                 </table> *@
+@*             </div> *@
+@*         </div> *@
+@*     </div> *@
+@* } *@
+@* else *@
+@* { *@
+@*     <div class="text-center"> *@
+@*         <h3>No Ark Wallets Found</h3> *@
+@*     </div> *@
+@* } *@

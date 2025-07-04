@@ -20,7 +20,8 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 public class ArkStoreWalletViewModel
 {
     public string? Wallet { get; set; }
-    // public Dictionary<string, string> Wallets { get; set; }
+
+    public bool SignerAvailable { get; set; }
 }
 
 
@@ -52,21 +53,24 @@ public class ArkController : Controller
             return NotFound();
         
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
-        // var availableWallets = await _arkWalletService.GetAllWalletsAsync();
+        if (config?.WalletId == null)
+        {
+            return View(new ArkStoreWalletViewModel());
+        }
+        var walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
+        
+
         return View(new ArkStoreWalletViewModel()
         {
             Wallet = config?.WalletId,
+            
         });
-
-
     }
 
     [HttpPost("stores/{storeId}")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
     public async Task<IActionResult> SetupStore(string storeId, ArkStoreWalletViewModel model, string? action = null)
     {
-        
-        
         var store = HttpContext.GetStoreData();
         if (store == null)
             return NotFound();
@@ -74,12 +78,12 @@ public class ArkController : Controller
         if (action == "create")
         {
             var key = RandomUtils.GetBytes(32)!;
-            var privKey = ECPrivKey.Create(key);
-            var pubKey = privKey.CreateXOnlyPubKey();
-            var encoder = Encoders.Bech32("npub");
+            // var privKey = ECPrivKey.Create(key);
+            // var pubKey = privKey.CreateXOnlyPubKey();
+            var encoder = Encoders.Bech32("nsec");
             encoder.SquashBytes = true;
             encoder.StrictLength = false;
-            var npub = encoder.EncodeData(pubKey.ToBytes(), Bech32EncodingType.BECH32);
+            var npub = encoder.EncodeData(key, Bech32EncodingType.BECH32);
             model.Wallet = npub;
         }
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
@@ -153,19 +157,21 @@ public class ArkController : Controller
     //         return View(model);
     //     }
     // }
+    //
 
-    [HttpGet("wallet/{walletId}")]
-    public async Task<IActionResult> WalletDetails(string walletId)
-    {
-        var wallet = await _arkWalletService.GetWalletAsync(walletId);
-        if (wallet == null)
-        {
-            return NotFound();
-        }
-
-        ViewData["Title"] = "Wallet Details";
-        return View(wallet);
-    }
+    
+    // [HttpGet("wallet/{walletId}")]
+    // public async Task<IActionResult> WalletDetails(string walletId)
+    // {
+    //     var wallet = await _arkWalletService.GetWalletAsync(walletId);
+    //     if (wallet == null)
+    //     {
+    //         return NotFound();
+    //     }
+    //
+    //     ViewData["Title"] = "Wallet Details";
+    //     return View(wallet);
+    // }
 
     // [HttpGet("wallet/{walletId:guid}/boarding-addresses")]
     // public async Task<IActionResult> BoardingAddresses(Guid walletId)

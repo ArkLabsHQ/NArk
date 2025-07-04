@@ -9,7 +9,7 @@ namespace NArk;
 
 public class VHTLCContract : ArkContract
 {
-    public byte[] Preimage { get; }
+    public byte[]? Preimage { get; }
     public ECXOnlyPubKey Sender { get; }
     public ECXOnlyPubKey Receiver { get; }
     public uint160 Hash { get; }
@@ -43,7 +43,8 @@ public class VHTLCContract : ArkContract
         UnilateralRefundWithoutReceiverDelay = unilateralRefundWithoutReceiverDelay;
     }
 
-    public override string Type => "VHTLC";
+    public override string Type => ContractType;
+    public const string ContractType = "HTLC";
     
 
     public override IEnumerable<ScriptBuilder> GetScriptBuilders()
@@ -59,20 +60,23 @@ public class VHTLCContract : ArkContract
 
     public override Dictionary<string, string> GetContractData()
     {
-        return new Dictionary<string, string>
+        var data = new Dictionary<string, string>
         {
-            { "server", Server.ToString() },
-            { "sender", Sender.ToString() },
-            { "receiver", Receiver.ToString() },
+            { "server", Server.ToHex() },
+            { "sender", Sender.ToHex() },
+            { "receiver", Receiver.ToHex() },
             { "hash", Encoders.Hex.EncodeData(Hash.ToBytes()) },
             { "refundLocktime", RefundLocktime.ToString() },
-            { "unilateralClaimDelay", UnilateralClaimDelay.ToString() },
-            { "unilateralRefundDelay", UnilateralRefundDelay.ToString() },
-            { "unilateralRefundWithoutReceiverDelay", UnilateralRefundWithoutReceiverDelay.ToString() }
+            { "unilateralClaimDelay", UnilateralClaimDelay.Value.ToString() },
+            { "unilateralRefundDelay", UnilateralRefundDelay.Value.ToString() },
+            { "unilateralRefundWithoutReceiverDelay", UnilateralRefundWithoutReceiverDelay.Value.ToString() }
         };
+        if(Preimage is not null)
+            data.Add("preimage", Encoders.Hex.EncodeData(Preimage));
+        return data;
     }
     
-    public override ArkContract? Parse(Dictionary<string, string> contractData)
+    public static ArkContract? Parse(Dictionary<string, string> contractData)
     {
         var server = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["server"]));
         var sender = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["sender"]));

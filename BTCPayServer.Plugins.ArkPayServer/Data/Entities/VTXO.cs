@@ -5,7 +5,6 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 public class VTXO
 {
     public string Script { get; set; }
-    
     public string TransactionId { get; set; }
     public int TransactionOutputIndex { get; set; }
     public string? SpentByTransactionId { get; set; }
@@ -14,8 +13,6 @@ public class VTXO
     public DateTimeOffset SeenAt { get; set; }
     // public DateTimeOffset? SpentAt { get; set; }
     public bool IsNote { get; set; }
-    // public bool Preconfirmed { get; set; }
-    public List<ArkWalletContract> WalletContracts { get; set; }
     // public ArkStoredTransaction? SpentByTransaction { get; set; }
     // public ArkStoredTransaction CreatedByTransaction { get; set; }
     

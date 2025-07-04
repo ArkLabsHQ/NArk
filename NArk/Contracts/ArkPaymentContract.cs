@@ -5,8 +5,11 @@ namespace NArk;
 
 public class ArkPaymentContract : ArkContract
 {
+    
+    
     public Sequence ExitDelay { get; }
     public virtual ECXOnlyPubKey User { get; }
+    
 
     public ArkPaymentContract(ECXOnlyPubKey server, Sequence exitDelay, ECXOnlyPubKey user) 
         : base(server)
@@ -15,17 +18,51 @@ public class ArkPaymentContract : ArkContract
         User = user;
     }
 
-    public override string Type => "Payment";
+    public override string Type => ContractType;
+    public const string ContractType = "Payment";
     
 
     public override IEnumerable<ScriptBuilder> GetScriptBuilders()
     {
-        var ownerScript = new NofNMultisigTapScript( [User]);
-        
         return [
-            new CollaborativePathArkTapScript(Server, ownerScript),
-            new UnilateralPathArkTapScript(ExitDelay, ownerScript)
+            CollaborativePath(),
+            UnilateralPath()
         ];
+    }
+
+    public ScriptBuilder CollaborativePath()
+    {
+        var ownerScript = new NofNMultisigTapScript( [User]);
+        return new CollaborativePathArkTapScript(Server, ownerScript);
+    }
+    
+    
+    public WitScript CollaborativePathWitness(SecpSchnorrSignature user )
+    {
+        var tapLeaf = CollaborativePath().Build();
+        
+        
+        return new WitScript(
+            Op.GetPushOp(user.ToBytes()), 
+            Op.GetPushOp(tapLeaf.Script.ToBytes()),
+            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
+    }
+    
+    public ScriptBuilder UnilateralPath()
+    {
+        var ownerScript = new NofNMultisigTapScript( [User]);
+        return new UnilateralPathArkTapScript(ExitDelay, ownerScript);
+    }
+    
+    public WitScript UnilateralPathWitness(SecpSchnorrSignature user )
+    {
+        var tapLeaf = UnilateralPath().Build();
+        
+        
+        return new WitScript(
+            Op.GetPushOp(user.ToBytes()), 
+            Op.GetPushOp(tapLeaf.Script.ToBytes()),
+            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
 
     public override Dictionary<string, string> GetContractData()
@@ -37,7 +74,7 @@ public class ArkPaymentContract : ArkContract
         return data;
     }
     
-    public override ArkContract? Parse(Dictionary<string, string> contractData)
+    public static  ArkContract? Parse(Dictionary<string, string> contractData)
     {
         var server = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["server"]));
         var exitDelay = new Sequence(uint.Parse(contractData["exit_delay"]));

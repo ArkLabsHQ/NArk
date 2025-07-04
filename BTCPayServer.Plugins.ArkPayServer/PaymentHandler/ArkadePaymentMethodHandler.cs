@@ -1,11 +1,8 @@
 using BTCPayServer.Data;
 using BTCPayServer.Payments;
-using BTCPayServer.Payments.Bitcoin;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Services;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
-using NArk;
 using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
