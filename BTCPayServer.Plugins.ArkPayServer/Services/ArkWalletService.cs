@@ -161,11 +161,25 @@ public class ArkWalletService(
 
     }
 
-    public async Task<object> GetWalletInfo(string walletId)
+    public async Task<Dictionary<ArkWalletContract, VTXO[]>> GetWalletInfo(string walletId)
     {
         await using var dbContext = dbContextFactory.CreateContext();
-        var info = await dbContext.Wallets.Include(w => w.Contracts).FirstOrDefaultAsync(w => w.Id == walletId);
-        return info;
+        var wallet = await dbContext.Wallets.Include(w => w.Contracts).FirstOrDefaultAsync(w => w.Id == walletId);
+        if (wallet is null)
+        {
+            throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
+        }
+        var contractScripts = wallet.Contracts.Select(c => c.Script).ToArray();
+        var vtxos = await dbContext.Vtxos.Where(vtxo1 => contractScripts.Contains(vtxo1.Script)).ToListAsync();
+        
+        var result = new Dictionary<ArkWalletContract, VTXO[]>();
+        foreach (var contract in wallet.Contracts)
+        {
+            var filtered = vtxos.Where(vtxo1 => vtxo1.Script == contract.Script).ToArray();
+            result.Add(contract, filtered);
+        }
+        return result;
+
     }
     
     //

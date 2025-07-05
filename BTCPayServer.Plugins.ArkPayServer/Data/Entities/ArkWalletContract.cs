@@ -21,5 +21,10 @@ public class ArkWalletContract
     {
         var entity = builder.Entity<ArkWalletContract>();
         entity.HasKey(w => new {w.Script, w.WalletId});
+        
+        entity.HasOne(w => w.Wallet)
+            .WithMany(w => w.Contracts)
+            .HasForeignKey(w => w.WalletId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -30,19 +30,15 @@ public class ArkadeWalletSignerProvider
 {
     private readonly IEnumerable<IArkadeMultiWalletSigner> _walletSigners;
 
-    ArkadeWalletSignerProvider(IEnumerable<IArkadeMultiWalletSigner> walletSigners)
+    public ArkadeWalletSignerProvider(IEnumerable<IArkadeMultiWalletSigner> walletSigners)
     {
         _walletSigners = walletSigners;
     }
 
-    public async Task<IArkadeWalletSigner> GetSigner(string walletId, CancellationToken cancellationToken = default)
+    public async Task<IArkadeWalletSigner?> GetSigner(string walletId, CancellationToken cancellationToken = default)
     {
         var signers = await GetSigners([walletId],cancellationToken);
-        if (signers.TryGetValue(walletId, out var signer))
-        {
-            return signer;
-        }
-        throw new Exception($"Could not find a signer for wallet {walletId}");
+        return signers.TryGetValue(walletId, out var signer) ? signer : null;
     }
 
     public async Task<Dictionary<string, IArkadeWalletSigner>> GetSigners(string[] walletId, CancellationToken cancellationToken = default)

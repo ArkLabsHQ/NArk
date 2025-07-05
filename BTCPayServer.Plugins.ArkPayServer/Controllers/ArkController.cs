@@ -1,19 +1,16 @@
-using System.Text;
-using System.Xml;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Payments;
+using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using Microsoft.AspNetCore.Mvc;
 using BTCPayServer.Plugins.ArkPayServer.Services;
-using BTCPayServer.Plugins.ArkPayServer.Models;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.AspNetCore.Authorization;
 using NBitcoin;
 using NBitcoin.DataEncoders;
-using NBitcoin.Secp256k1;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 
@@ -22,6 +19,9 @@ public class ArkStoreWalletViewModel
     public string? Wallet { get; set; }
 
     public bool SignerAvailable { get; set; }
+    public Dictionary<ArkWalletContract, VTXO[]> Contracts { get; set; }
+    
+    
 }
 
 
@@ -32,15 +32,18 @@ public class ArkController : Controller
 {
     private readonly StoreRepository _storeRepository;
     private readonly ArkWalletService _arkWalletService;
+    private readonly ArkadeWalletSignerProvider _walletSignerProvider;
     private readonly PaymentMethodHandlerDictionary _paymentMethodHandlerDictionary;
 
     public ArkController(
         StoreRepository storeRepository,
         ArkWalletService arkWalletService, 
+        ArkadeWalletSignerProvider walletSignerProvider,
         PaymentMethodHandlerDictionary paymentMethodHandlerDictionary)
     {
         _storeRepository = storeRepository;
         _arkWalletService = arkWalletService;
+        _walletSignerProvider = walletSignerProvider;
         _paymentMethodHandlerDictionary = paymentMethodHandlerDictionary;
     }
 
@@ -62,8 +65,9 @@ public class ArkController : Controller
 
         return View(new ArkStoreWalletViewModel()
         {
-            Wallet = config?.WalletId,
-            
+            Wallet = config.WalletId,
+            SignerAvailable = await _walletSignerProvider.GetSigner(config.WalletId, HttpContext.RequestAborted) is not null,
+            Contracts = walletInfo
         });
     }
 
