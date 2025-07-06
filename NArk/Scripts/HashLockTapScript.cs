@@ -17,5 +17,6 @@ public class HashLockTapScript : ScriptBuilder
     {
         yield return OpcodeType.OP_HASH160;
         yield return Op.GetPushOp(Hash.ToBytes());
+        yield return OpcodeType.OP_EQUAL;
     }
 }

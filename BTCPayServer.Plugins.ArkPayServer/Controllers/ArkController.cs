@@ -82,8 +82,6 @@ public class ArkController : Controller
         if (action == "create")
         {
             var key = RandomUtils.GetBytes(32)!;
-            // var privKey = ECPrivKey.Create(key);
-            // var pubKey = privKey.CreateXOnlyPubKey();
             var encoder = Encoders.Bech32("nsec");
             encoder.SquashBytes = true;
             encoder.StrictLength = false;

@@ -37,6 +37,8 @@ public abstract class ArkContract
         Parsers.Add(new GenericArkContractParser(ArkPaymentContract.ContractType, ArkPaymentContract.Parse));
         Parsers.Add(new GenericArkContractParser(TweakedArkPaymentContract.ContractType, TweakedArkPaymentContract.Parse));
         Parsers.Add(new GenericArkContractParser(VHTLCContract.ContractType, VHTLCContract.Parse));
+        Parsers.Add(new GenericArkContractParser(ArkNoteContract.ContractType, ArkNoteContract.Parse));
+        
     }
 
 
