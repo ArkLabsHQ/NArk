@@ -173,17 +173,43 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
             cancellationToken: cancellation);
 
         // Store the swap in the database with VHTLCContract information
+        // First, create and save the ArkWalletContract
+        var contractScript = swapResult.VHTLCContract.ToString();
+        var walletContract = new ArkWalletContract
+        {
+            Script = contractScript,
+            WalletId = WalletId,
+            Type = "VHTLC",
+            Active = true,
+            ContractData = new Dictionary<string, string>
+            {
+                ["preimageHash"] = Encoders.Hex.EncodeData(swapResult.PreimageHash),
+                ["claimAddress"] = swapResult.ClaimAddress ?? "",
+                ["swapType"] = "reverse"
+            }
+        };
+
+        // Add the contract if it doesn't already exist
+        var existingContract = await dbContext.WalletContracts
+            .FirstOrDefaultAsync(c => c.Script == contractScript, cancellation);
+        
+        if (existingContract == null)
+        {
+            dbContext.WalletContracts.Add(walletContract);
+        }
+
         var reverseSwap = new LightningSwap
         {
             SwapId = swapResult.SwapId,
             WalletId = WalletId,
+            SwapType = "reverse",
             Invoice = swapResult.Invoice,
             LockupAddress = swapResult.LockupAddress,
             OnchainAmount = swapResult.OnchainAmount,
             TimeoutBlockHeight = swapResult.TimeoutBlockHeight,
             PreimageHash = Encoders.Hex.EncodeData(swapResult.PreimageHash),
             ClaimAddress = swapResult.ClaimAddress,
-            ContractData = swapResult.VHTLCContract.ToString(), // Store the contract data
+            ContractScript = contractScript, // Reference the contract by script
             Status = "created"
         };
 

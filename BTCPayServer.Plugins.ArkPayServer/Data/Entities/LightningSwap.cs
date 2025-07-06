@@ -24,7 +24,10 @@ public class LightningSwap
     
     public string? ClaimAddress { get; set; }
     
-    public string? ContractData { get; set; } // Store the VHTLCContract data
+    public string? ContractScript { get; set; } // Foreign key to ArkWalletContract
+    
+    // Navigation property
+    public ArkWalletContract? Contract { get; set; }
     
     public string Status { get; set; } = "created";
     
@@ -45,6 +48,12 @@ public class LightningSwap
             entity.Property(e => e.LockupAddress).IsRequired();
             entity.Property(e => e.Status).IsRequired().HasDefaultValue("created");
             entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Configure foreign key relationship to ArkWalletContract
+            entity.HasOne(e => e.Contract)
+                  .WithMany()
+                  .HasForeignKey(e => e.ContractScript)
+                  .OnDelete(DeleteBehavior.SetNull);
         });
     }
 }
