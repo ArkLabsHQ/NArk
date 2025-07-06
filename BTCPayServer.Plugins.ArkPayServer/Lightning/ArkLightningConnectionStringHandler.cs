@@ -33,7 +33,7 @@ public class ArkLightningConnectionStringHandler(IServiceProvider serviceProvide
         var swapProcessor = serviceProvider.GetRequiredService<LightningSwapProcessor>();
         var walletService = serviceProvider.GetRequiredService<IWalletService>();
         var operatorTermsService = serviceProvider.GetRequiredService<IOperatorTermsService>();
-        return new ArkLightningClient(walletId, boltzClient, dbContextFactory, swapProcessor, walletService, operatorTermsService);
+        return new ArkLightningClient(walletId, boltzClient, dbContextFactory, swapProcessor, walletService, operatorTermsService, serviceProvider);
     }
 }
 

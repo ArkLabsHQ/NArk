@@ -106,6 +106,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<IPaymentLinkExtension>(provider => provider.GetRequiredService<ArkadePaymentLinkExtension>());
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
         
+        // Register the Boltz swap monitoring hosted service
+        serviceCollection.AddSingleton<BoltzSwapMonitorService>();
+        serviceCollection.AddHostedService<BoltzSwapMonitorService>(provider => provider.GetRequiredService<BoltzSwapMonitorService>());
+        
         serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
     }
     

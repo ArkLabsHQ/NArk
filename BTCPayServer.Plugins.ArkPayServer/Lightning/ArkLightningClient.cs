@@ -6,6 +6,7 @@ using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using NArk;
 using NArk.Services;
@@ -21,7 +22,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 /// ARK Lightning client – talks to a Boltz service instead of a real LN node.
 /// Ark->LN interactions are handled through Boltz swaps
 /// </summary>
-public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPluginDbContextFactory DbContextFactory, LightningSwapProcessor SwapProcessor, IWalletService WalletService, IOperatorTermsService OperatorTermsService) : IExtendedLightningClient
+public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPluginDbContextFactory DbContextFactory, LightningSwapProcessor SwapProcessor, IWalletService WalletService, IOperatorTermsService OperatorTermsService, IServiceProvider ServiceProvider) : IExtendedLightningClient
 {
     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
     {
@@ -233,7 +234,9 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
 
     public Task<ILightningInvoiceListener> Listen(CancellationToken cancellation = default)
     {
-        return Task.FromResult<ILightningInvoiceListener>(new ArkInvoiceListener(WalletId, BoltzClient, DbContextFactory, SwapProcessor, cancellation));
+        var swapMonitorService = ServiceProvider.GetRequiredService<BoltzSwapMonitorService>();
+        var logger = ServiceProvider.GetRequiredService<ILogger<ArkInvoiceListener>>();
+        return Task.FromResult<ILightningInvoiceListener>(new ArkInvoiceListener(WalletId, DbContextFactory, swapMonitorService, logger, cancellation));
     }
 
     public Task<LightningNodeInformation> GetInfo(CancellationToken cancellation = default)
