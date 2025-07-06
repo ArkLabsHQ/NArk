@@ -36,6 +36,8 @@ public class LightningSwap
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     
     public DateTimeOffset? SettledAt { get; set; }
+    
+    public bool IsInvoiceReturned { get; set; } = false;
 
     public static void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,6 +50,7 @@ public class LightningSwap
             entity.Property(e => e.LockupAddress).IsRequired();
             entity.Property(e => e.Status).IsRequired().HasDefaultValue("created");
             entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.IsInvoiceReturned).IsRequired().HasDefaultValue(false);
             
             // Configure foreign key relationship to ArkWalletContract
             entity.HasOne(e => e.Contract)

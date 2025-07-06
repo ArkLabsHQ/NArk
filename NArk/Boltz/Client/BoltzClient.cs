@@ -21,4 +21,32 @@ public partial class BoltzClient
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
     }
+
+    /// <summary>
+    /// Derives the WebSocket URI from the base HTTP URI.
+    /// </summary>
+    /// <param name="baseHttpUri">The base HTTP URI of the Boltz API.</param>
+    /// <returns>The corresponding WebSocket URI.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when baseHttpUri is null.</exception>
+    public static Uri DeriveWebSocketUri(Uri? baseHttpUri)
+    {
+        if (baseHttpUri == null)
+        {
+            throw new ArgumentNullException(nameof(baseHttpUri), "HttpClient.BaseAddress cannot be null when WebSocket URI is not explicitly provided.");
+        }
+
+        var uriBuilder = new UriBuilder(baseHttpUri);
+        uriBuilder.Scheme = baseHttpUri.Scheme == "https" ? "wss" : "ws";
+
+        var path = uriBuilder.Path.TrimEnd('/');
+        if (path.EndsWith("/v2"))
+        {
+            uriBuilder.Path = path + "/ws";
+        }
+        else
+        {
+            uriBuilder.Path = path + "/v2/ws";
+        }
+        return uriBuilder.Uri;
+    }
 }

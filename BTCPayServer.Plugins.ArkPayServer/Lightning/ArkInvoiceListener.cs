@@ -19,7 +19,6 @@ public class ArkInvoiceListener : ILightningInvoiceListener
     private readonly Channel<LightningInvoice> _paidInvoicesChannel;
     private readonly ChannelWriter<LightningInvoice> _paidInvoicesWriter;
     private readonly ChannelReader<LightningInvoice> _paidInvoicesReader;
-    private readonly HashSet<string> _returnedInvoiceIds = new();
 
     public ArkInvoiceListener(string walletId, ArkPluginDbContextFactory dbContextFactory, 
         BoltzSwapMonitorService swapMonitorService, ILogger<ArkInvoiceListener> logger,
@@ -54,9 +53,9 @@ public class ArkInvoiceListener : ILightningInvoiceListener
             {
                 await using var dbContext = _dbContextFactory.CreateContext();
                 var paidSwap = await dbContext.LightningSwaps
-                    .FirstOrDefaultAsync(s => s.SwapId == e.SwapId && s.WalletId == _walletId, _cancellationToken);
+                    .FirstOrDefaultAsync(s => s.SwapId == e.SwapId && s.WalletId == _walletId && !s.IsInvoiceReturned, _cancellationToken);
                     
-                if (paidSwap != null && !_returnedInvoiceIds.Contains(paidSwap.SwapId))
+                if (paidSwap != null)
                 {
                     var invoice = CreateLightningInvoiceFromSwap(paidSwap);
                     await _paidInvoicesWriter.WriteAsync(invoice, _cancellationToken);
@@ -80,11 +79,23 @@ public class ArkInvoiceListener : ILightningInvoiceListener
             {
                 if (_paidInvoicesReader.TryRead(out var invoice))
                 {
-                    // Ensure we don't return the same invoice twice
-                    if (!_returnedInvoiceIds.Contains(invoice.Id))
+                    // Mark this invoice as returned in the database to prevent returning it again
+                    try
                     {
-                        _returnedInvoiceIds.Add(invoice.Id);
-                        return invoice;
+                        await using var dbContext = _dbContextFactory.CreateContext();
+                        var swap = await dbContext.LightningSwaps
+                            .FirstOrDefaultAsync(s => s.SwapId == invoice.Id && s.WalletId == _walletId, combinedCts.Token);
+                        
+                        if (swap != null && !swap.IsInvoiceReturned)
+                        {
+                            swap.IsInvoiceReturned = true;
+                            await dbContext.SaveChangesAsync(combinedCts.Token);
+                            return invoice;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error marking invoice {InvoiceId} as returned", invoice.Id);
                     }
                 }
             }
