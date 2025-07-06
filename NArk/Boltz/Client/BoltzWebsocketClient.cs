@@ -27,18 +27,13 @@ public class BoltzWebsocketClient : IAsyncDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="BoltzWebsocketClient"/> class.
     /// </summary>
+    /// <summary>
+    /// Initializes a new instance of the <see cref="BoltzWebsocketClient"/> class.
+    /// </summary>
     /// <param name="webSocketUri">The explicit URI for the WebSocket connection.</param>
     public BoltzWebsocketClient(Uri webSocketUri)
     {
         _webSocketUri = webSocketUri ?? throw new ArgumentNullException(nameof(webSocketUri));
-    }
-
-    public static async Task<BoltzWebsocketClient> CreateAndConnectAsync(Uri webSocketUri,
-        CancellationToken cancellationToken = default)
-    {
-        var listener = new BoltzWebsocketClient(webSocketUri);
-        await listener.ConnectAsync(cancellationToken);
-        return listener;
     }
 
     /// <summary>
