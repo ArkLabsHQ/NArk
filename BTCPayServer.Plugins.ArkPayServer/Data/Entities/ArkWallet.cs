@@ -11,9 +11,6 @@ public class ArkWallet
     public string Wallet { get; set; }
     public List<ArkWalletContract> Contracts { get; set; } = [];
     
-    
-    [Column(TypeName = "jsonb")]
-    public Dictionary<string, string> WalletData { get; set; }
 
     public ECXOnlyPubKey PublicKey => ArkExtensions.GetXOnlyPubKeyFromWallet(Wallet);
 
