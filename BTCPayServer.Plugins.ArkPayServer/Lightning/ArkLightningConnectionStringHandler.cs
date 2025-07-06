@@ -10,7 +10,7 @@ using NBitcoin;
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
 /// Handles strings such as "type=ark;wallet-id=WALLETID"
-public class ArkLightningConnectionStringHandler(BoltzClient client, IServiceProvider serviceProvider) : ILightningConnectionStringHandler
+public class ArkLightningConnectionStringHandler(IServiceProvider serviceProvider) : ILightningConnectionStringHandler
 {
     public ILightningClient? Create(string connectionString, Network network, out string? error)
     {
@@ -28,11 +28,12 @@ public class ArkLightningConnectionStringHandler(BoltzClient client, IServicePro
         }
 
         error = null;
+        var boltzClient = serviceProvider.GetRequiredService<BoltzClient>();
         var dbContextFactory = serviceProvider.GetRequiredService<ArkPluginDbContextFactory>();
         var swapProcessor = serviceProvider.GetRequiredService<LightningSwapProcessor>();
         var walletService = serviceProvider.GetRequiredService<IWalletService>();
         var operatorTermsService = serviceProvider.GetRequiredService<IOperatorTermsService>();
-        return new ArkLightningClient(walletId, client, dbContextFactory, swapProcessor, walletService, operatorTermsService);
+        return new ArkLightningClient(walletId, boltzClient, dbContextFactory, swapProcessor, walletService, operatorTermsService);
     }
 }
 
