@@ -21,7 +21,7 @@ public class ArkLightningConnectionStringHandler(IServiceProvider serviceProvide
             return null;
         }
 
-        if (!kv.TryGetValue("walletid", out var walletId))
+        if (!kv.TryGetValue("wallet-id", out var walletId))
         {
             error = "The key 'walletid' is mandatory for ArkLightning connection strings";
             return null;
