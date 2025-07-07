@@ -55,7 +55,7 @@ public class LightningSwap
             // Configure foreign key relationship to ArkWalletContract
             entity.HasOne(e => e.Contract)
                   .WithMany()
-                  .HasForeignKey(e => e.ContractScript)
+                  .HasForeignKey(e => new { e.ContractScript, e.WalletId })
                   .OnDelete(DeleteBehavior.SetNull);
         });
     }

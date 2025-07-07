@@ -161,7 +161,7 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
         }
         
         // Extract the receiver key from the wallet - this is our claim public key
-        var receiverKey = WalletService.GetXOnlyPubKeyFromWallet(wallet.Wallet);
+        var receiverKey = wallet.PublicKey;
         
         var reverseSwapService = new ReverseSwapService(BoltzClient, OperatorTermsService);
         
