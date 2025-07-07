@@ -94,7 +94,7 @@ public abstract class ArkContract
             throw new ArgumentException("Only collaborative and unilateral paths are allowed");
         
         var spendInfo = TaprootSpendInfo.WithHuffmanTree(
-            new TaprootInternalPubKey(TaprootConstants.UnspendableKey), 
+            new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToHex().ToECXOnlyPubKey().ToBytes()), 
             leaves.Select(x => ((uint)0, x.Build())).ToArray());
         
         return spendInfo;

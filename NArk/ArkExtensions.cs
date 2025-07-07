@@ -51,10 +51,15 @@ public static class ArkExtensions
     
     public static ECXOnlyPubKey ServerKey(this GetInfoResponse response)
     {
+        return response.SignerPubkey.ToECXOnlyPubKey();
+    }
+    
+    public static ECXOnlyPubKey ToECXOnlyPubKey(this string keyHex)
+    {
         // Convert hex string to bytes
-        var bytes = Convert.FromHexString(response.SignerPubkey);
+        var bytes = Convert.FromHexString(keyHex);
 
-        // If the server returns a standard compressed key (33 bytes),
+        // If  a standard compressed key (33 bytes),
         // remove the first byte (02 or 03) to get the 32-byte x-only key.
         if (bytes.Length == 33 && (bytes[0] == 0x02 || bytes[0] == 0x03))
         {
