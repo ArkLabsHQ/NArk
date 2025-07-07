@@ -28,7 +28,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
     private CancellationTokenSource? _cts;
     private readonly Channel<bool> _checkContractsChannel = Channel.CreateUnbounded<bool>();
 
-    private string _subscriptionId;
+    private string? _subscriptionId;
     private HashSet<string> _subscribedScripts = new();
     private Task? _listeningTask;
     private CancellationTokenSource _listeningCts;
@@ -325,7 +325,9 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
         _logger.LogInformation("[Manual] Updating remote subscription with {Count} scripts.", _subscribedScripts.Count);
 
-        var req = new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId };
+        var req = _subscriptionId is null ?
+            new SubscribeForScriptsRequest() :
+            new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId };
         req.Scripts.AddRange(_subscribedScripts);
 
         try

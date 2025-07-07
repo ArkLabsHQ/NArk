@@ -36,7 +36,7 @@ public class ArkWalletService(
             var address = paymentContract.GetArkAddress();
             var contract = new ArkWalletContract
             {
-                
+                WalletId = walletId,
                 Active = true,
                 ContractData = paymentContract.GetContractData(),
                 Script = address.ScriptPubKey.ToHex(),

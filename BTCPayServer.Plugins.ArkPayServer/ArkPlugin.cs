@@ -55,7 +55,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
                 ? "https://signet.boltz.exchange"
                 : networkType == ChainName.Regtest
-                    ? "https://localhost:9001"
+                    ? "http://localhost:9001/v2/"
                     : null;
         
         SetupBtcPayPluginServices(serviceCollection);

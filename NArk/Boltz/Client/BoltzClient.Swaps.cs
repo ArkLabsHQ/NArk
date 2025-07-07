@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace NArk.Wallet.Boltz;
 
 using System.Collections.Generic;
@@ -85,6 +87,7 @@ public partial class BoltzClient
     /// <returns>The reverse swap response.</returns>
     public async Task<ReverseResponse?> CreateReverseSwapAsync(ReverseRequest request)
     {
+        // TODO: I think it fails because the JSON is sent with null values, instead of removing the property
         var response = await _httpClient.PostAsJsonAsync("swap/reverse", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ReverseResponse>();

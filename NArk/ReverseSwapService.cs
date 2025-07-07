@@ -50,7 +50,6 @@ public class ReverseSwapService
     public async Task<ReverseSwapResult> CreateReverseSwapAsync(
         long invoiceAmount,
         ECXOnlyPubKey receiver,
-        string pairId = "LNBTC/BTC",
         CancellationToken cancellationToken = default)
     {
         // Get operator terms 
@@ -68,7 +67,6 @@ public class ReverseSwapService
             InvoiceAmount = invoiceAmount,
             ClaimPublicKey = Encoders.Hex.EncodeData(receiver.ToBytes()), // Receiver will claim the VTXO
             PreimageHash = Encoders.Hex.EncodeData(preimageHash),
-            PairId = pairId,
             AcceptZeroConf = true
         };
 

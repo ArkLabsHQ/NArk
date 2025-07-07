@@ -25,9 +25,6 @@ public class ReverseRequest
     [JsonPropertyName("claimPublicKey")]
     public string? ClaimPublicKey { get; set; } // For Taproot
 
-    [JsonPropertyName("pairId")]
-    public string PairId { get; set; }
-
     [JsonPropertyName("referralId")]
     public string? ReferralId { get; set; }
 
