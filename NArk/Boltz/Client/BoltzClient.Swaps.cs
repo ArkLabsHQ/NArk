@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace NArk.Wallet.Boltz;
 
 using System.Collections.Generic;
@@ -49,7 +47,7 @@ public partial class BoltzClient
     /// <returns>The submarine swap response.</returns>
     public async Task<SubmarineResponse?> CreateSubmarineSwapAsync(SubmarineRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync("swap/submarine", request);
+        var response = await PostAsJsonAsync("swap/submarine", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SubmarineResponse>();
     }
@@ -61,7 +59,7 @@ public partial class BoltzClient
     /// <param name="invoice">The invoice to set (can be an empty object if invoice was part of creation).</param>
     public async Task SetSubmarineSwapInvoiceAsync(string swapId, SubmarineInvoiceRequest invoice)
     {
-        var response = await _httpClient.PostAsJsonAsync($"swap/submarine/{swapId}/invoice", invoice);
+        var response = await PostAsJsonAsync($"swap/submarine/{swapId}/invoice", invoice);
         response.EnsureSuccessStatusCode();
     }
 
@@ -73,7 +71,7 @@ public partial class BoltzClient
     /// <returns>The claim details response with partial signature.</returns>
     public async Task<SubmarineClaimDetailsResponse?> GetSubmarineSwapClaimDetailsAsync(string swapId, SubmarineClaimDetailsRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"swap/submarine/{swapId}/claim", request);
+        var response = await PostAsJsonAsync($"swap/submarine/{swapId}/claim", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SubmarineClaimDetailsResponse>();
     }
@@ -87,8 +85,7 @@ public partial class BoltzClient
     /// <returns>The reverse swap response.</returns>
     public async Task<ReverseResponse?> CreateReverseSwapAsync(ReverseRequest request)
     {
-        // TODO: I think it fails because the JSON is sent with null values, instead of removing the property
-        var response = await _httpClient.PostAsJsonAsync("swap/reverse", request);
+        var response = await PostAsJsonAsync("swap/reverse", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ReverseResponse>();
     }
@@ -101,7 +98,7 @@ public partial class BoltzClient
     /// <returns>The claim details response with partial signature (reuses SubmarineClaimDetailsResponse structure).</returns>
     public async Task<SubmarineClaimDetailsResponse?> GetReverseSwapClaimDetailsAsync(string swapId, SubmarineClaimDetailsRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"swap/reverse/{swapId}/claim", request);
+        var response = await PostAsJsonAsync($"swap/reverse/{swapId}/claim", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SubmarineClaimDetailsResponse>();
     }
@@ -115,7 +112,7 @@ public partial class BoltzClient
     /// <returns>The chain swap response.</returns>
     public async Task<ChainResponse?> CreateChainSwapAsync(ChainRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync("swap/chain", request);
+        var response = await PostAsJsonAsync("swap/chain", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ChainResponse>();
     }
@@ -128,7 +125,7 @@ public partial class BoltzClient
     /// <returns>The updated user lockup details.</returns>
     public async Task<ChainLockupDetails?> SetChainSwapUserTransactionAsync(string swapId, ChainSetTransactionRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"swap/chain/{swapId}/user", request);
+        var response = await PostAsJsonAsync($"swap/chain/{swapId}/user", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ChainLockupDetails>();
     }
@@ -141,7 +138,7 @@ public partial class BoltzClient
     /// <returns>The updated server lockup details.</returns>
     public async Task<ChainLockupDetails?> SetChainSwapServerTransactionAsync(string swapId, ChainSetTransactionRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"swap/chain/{swapId}/server", request);
+        var response = await PostAsJsonAsync($"swap/chain/{swapId}/server", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ChainLockupDetails>();
     }

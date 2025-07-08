@@ -27,7 +27,7 @@ public partial class BoltzClient
     /// <returns>The created BOLT12 offer response.</returns>
     public async Task<Bolt12OfferResponse?> CreateBolt12OfferAsync(string currency, Bolt12OfferRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"lightning/{currency}/bolt12", request);
+        var response = await PostAsJsonAsync($"lightning/{currency}/bolt12", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<Bolt12OfferResponse>();
     }
@@ -39,7 +39,7 @@ public partial class BoltzClient
     /// <param name="request">The BOLT12 delete request containing the offer string.</param>
     public async Task DeleteBolt12OfferAsync(string currency, Bolt12DeleteRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"lightning/{currency}/bolt12/delete", request);
+        var response = await PostAsJsonAsync($"lightning/{currency}/bolt12/delete", request);
         response.EnsureSuccessStatusCode(); // Will throw for non-204 on failure, or do nothing on 204 success.
     }
 
@@ -51,7 +51,7 @@ public partial class BoltzClient
     /// <returns>The fetched BOLT12 invoice response.</returns>
     public async Task<Bolt12FetchResponse?> FetchBolt12InvoiceAsync(string currency, Bolt12FetchRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"lightning/{currency}/bolt12/fetch", request);
+        var response = await PostAsJsonAsync($"lightning/{currency}/bolt12/fetch", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<Bolt12FetchResponse>();
     }

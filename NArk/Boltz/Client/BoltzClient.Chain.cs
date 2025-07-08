@@ -61,7 +61,7 @@ public partial class BoltzClient
     /// <returns>The response containing the transaction ID if successful.</returns>
     public async Task<BroadcastResponse?> BroadcastTransactionAsync(string currency, BroadcastRequest request)
     {
-        var response = await _httpClient.PostAsJsonAsync($"chain/{currency}/transaction", request);
+        var response = await PostAsJsonAsync($"chain/{currency}/transaction", request);
         response.EnsureSuccessStatusCode(); // Or handle non-success codes more gracefully
         return await response.Content.ReadFromJsonAsync<BroadcastResponse>();
     }

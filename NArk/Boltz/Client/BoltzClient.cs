@@ -6,12 +6,18 @@ using System.Net.Http;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
 public partial class BoltzClient
 {
     private readonly HttpClient _httpClient;
+    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BoltzClient"/> class.
@@ -48,5 +54,13 @@ public partial class BoltzClient
             uriBuilder.Path = path + "/v2/ws";
         }
         return uriBuilder.Uri;
+    }
+
+    /// <summary>
+    /// Posts a value as JSON using the shared serialization options.
+    /// </summary>
+    private Task<HttpResponseMessage> PostAsJsonAsync<T>(string uri, T value, CancellationToken ct = default)
+    {
+        return _httpClient.PostAsJsonAsync(uri, value, _jsonOptions, ct);
     }
 }
