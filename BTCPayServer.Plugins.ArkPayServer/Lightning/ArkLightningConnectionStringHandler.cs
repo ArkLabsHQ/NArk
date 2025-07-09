@@ -15,9 +15,9 @@ public class ArkLightningConnectionStringHandler(IServiceProvider serviceProvide
     public ILightningClient? Create(string connectionString, Network network, out string? error)
     {
         var kv = LightningConnectionStringHelper.ExtractValues(connectionString, out var type);
-        if (type != "ark")
+        if (type != "arkade")
         {
-            error = "The key 'type' must be set to 'ark' for ArkLightning connection strings";
+            error = "The key 'type' must be set to 'arkade' for ArkLightning connection strings";
             return null;
         }
 

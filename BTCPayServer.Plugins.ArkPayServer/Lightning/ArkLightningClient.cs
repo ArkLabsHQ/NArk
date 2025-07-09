@@ -315,6 +315,6 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
         return Task.FromResult<ValidationResult?>(null);
     }
 
-    public string? DisplayName => "Ark Lightning (Boltz)";
+    public string? DisplayName => "Arkade Lightning (Boltz)";
     public Uri? ServerUri => null;
 }

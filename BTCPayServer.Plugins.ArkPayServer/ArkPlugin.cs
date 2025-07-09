@@ -88,8 +88,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         
         // Display ARK instructions in the Lightning setup screen
         serviceCollection.AddUIExtension(
-            location: "ln-payment-method-setup-custom",
-            partialViewName: "/Views/Lightning/SetupArkLightningNode.cshtml");
+            location: "ln-payment-method-setup-tab",
+            partialViewName: "/Views/Lightning/LNPaymentMethodSetupTab.cshtml");
         
         // Use NArk SDK Services
         serviceCollection.AddArkServices(new ArkConfiguration(
