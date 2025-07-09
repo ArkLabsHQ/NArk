@@ -22,52 +22,55 @@ namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 /// ARK Lightning client – talks to a Boltz service instead of a real LN node.
 /// Ark->LN interactions are handled through Boltz swaps
 /// </summary>
-public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPluginDbContextFactory DbContextFactory, LightningSwapProcessor SwapProcessor, IWalletService WalletService, IOperatorTermsService OperatorTermsService, IServiceProvider ServiceProvider) : IExtendedLightningClient
+public class ArkLightningClient(Network Network, 
+    string WalletId, 
+    BoltzClient BoltzClient, 
+    ArkPluginDbContextFactory DbContextFactory, 
+    LightningSwapProcessor SwapProcessor, 
+    ArkWalletService WalletService, 
+    IOperatorTermsService OperatorTermsService, 
+    IServiceProvider ServiceProvider) : IExtendedLightningClient
 {
     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
     {
         await using var dbContext = DbContextFactory.CreateContext();
-        
+        // Find by payment hash - we need to parse all BOLT11 invoices to match
         var reverseSwap = await dbContext.LightningSwaps
-            .FirstOrDefaultAsync(rs => rs.SwapId == invoiceId, cancellation);
-            
-        if (reverseSwap == null)
-            throw new ArgumentException($"Invoice with ID {invoiceId} not found");
+            .FirstOrDefaultAsync(rs =>
+                    rs.WalletId == WalletId &&
+                    rs.SwapType == "reverse" &&
+                    rs.SwapId == invoiceId,
+                cancellationToken: cancellation);
 
-        return CreateLightningInvoiceFromSwap(reverseSwap);
+        if(reverseSwap == null)
+            return null;
+        
+        var vtxo = await dbContext.Vtxos.FirstOrDefaultAsync(v => v.Script == reverseSwap.ContractScript, cancellationToken: cancellation);
+        return CreateLightningInvoiceFromSwap(reverseSwap, vtxo);
     }
 
     public async Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = default)
     {
         await using var dbContext = DbContextFactory.CreateContext();
-        
+        var paymentHashStr = paymentHash.ToString();
         // Find by payment hash - we need to parse all BOLT11 invoices to match
-        var reverseSwaps = await dbContext.LightningSwaps
-            .Where(rs => rs.WalletId == WalletId)
-            .ToListAsync(cancellation);
-            
-        foreach (var swap in reverseSwaps)
-        {
-            try
-            {
-                var bolt11 = BOLT11PaymentRequest.Parse(swap.Invoice, Network.Main); // TODO: DO not hard code
-                if (bolt11.PaymentHash == paymentHash)
-                {
-                    return CreateLightningInvoiceFromSwap(swap);
-                }
-            }
-            catch
-            {
-                // Continue if parsing fails
-            }
-        }
+        var reverseSwap = await dbContext.LightningSwaps
+            .FirstOrDefaultAsync(rs =>
+                    rs.WalletId == WalletId &&
+                    rs.SwapType == "reverse" &&
+                    rs.PreimageHash == paymentHashStr,
+                cancellationToken: cancellation);
+
+        if(reverseSwap == null)
+            return null;
         
-        throw new ArgumentException($"Invoice with payment hash {paymentHash} not found");
+        var vtxo = await dbContext.Vtxos.FirstOrDefaultAsync(v => v.Script == reverseSwap.ContractScript, cancellationToken: cancellation);
+        return CreateLightningInvoiceFromSwap(reverseSwap, vtxo);
     }
 
-    public LightningInvoice CreateLightningInvoiceFromSwap(LightningSwap reverseSwap)
+    public LightningInvoice CreateLightningInvoiceFromSwap(LightningSwap reverseSwap, VTXO? vtxo)
     {
-        var bolt11 = BOLT11PaymentRequest.Parse(reverseSwap.Invoice, Network.Main); // TODO: DO not hard code
+        var bolt11 = BOLT11PaymentRequest.Parse(reverseSwap.Invoice, Network); 
         
         // Map Boltz status to Lightning status
         var lightningStatus = reverseSwap.Status switch
@@ -82,10 +85,11 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
             Id = reverseSwap.SwapId,
             Amount = LightMoney.Satoshis(reverseSwap.OnchainAmount),
             Status = lightningStatus,
-            ExpiresAt = DateTimeOffset.UtcNow.AddHours(1), // TODO: Some other value?
+            ExpiresAt = bolt11.ExpiryDate,
             BOLT11 = reverseSwap.Invoice,
-            PaymentHash = bolt11.PaymentHash?.ToString(),
+            PaymentHash = reverseSwap.PreimageHash,
             PaidAt = reverseSwap.SettledAt,
+            
             AmountReceived = lightningStatus == LightningInvoiceStatus.Paid ? LightMoney.Satoshis(reverseSwap.OnchainAmount) : null
         };
     }
@@ -99,23 +103,22 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
     {
         await using var dbContext = DbContextFactory.CreateContext();
         
-        var query = dbContext.LightningSwaps.Where(rs => rs.WalletId == WalletId);
-        if (request.OffsetIndex.HasValue)
-        {
-            query = query.Skip((int)request.OffsetIndex.Value);
-        }
-        
-        var reverseSwaps = await query
+        var reverseSwaps = await dbContext.LightningSwaps
+            .Where(rs => rs.SwapType == "reverse" &&  
+                         rs.WalletId == WalletId)
             .OrderByDescending(rs => rs.CreatedAt)
-            .Take(100) // TODO: Some other value?
+            .Skip((int)request.OffsetIndex.GetValueOrDefault(0))
             .ToListAsync(cancellation);
         
+        var scripts = reverseSwaps.Select(rs => rs.ContractScript).ToArray();
+        
+        var vtxos = await dbContext.Vtxos.Where(v => scripts.Contains(v.Script)).ToDictionaryAsync(v => v.Script, v => v, cancellation);
         var invoices = new List<LightningInvoice>();
         foreach (var swap in reverseSwaps)
         {
             try
             {
-                var invoice = CreateLightningInvoiceFromSwap(swap);
+                var invoice = CreateLightningInvoiceFromSwap(swap, vtxos.TryGet(swap.ContractScript));
                 invoices.Add(invoice);
             }
             catch
@@ -127,19 +130,61 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
         return invoices.ToArray();
     }
 
-    public Task<LightningPayment> GetPayment(string paymentHash, CancellationToken cancellation = default)
+    public async Task<LightningPayment> GetPayment(string paymentHash, CancellationToken cancellation = default)
     {
-        throw new NotImplementedException();
+        await using var dbContext = DbContextFactory.CreateContext();
+
+        var swap = await dbContext.LightningSwaps
+            .Include(lightningSwap => lightningSwap.Contract)
+            .FirstOrDefaultAsync(rs =>
+                rs.SwapType == "submarine" &&
+                rs.PreimageHash == paymentHash
+                && rs.WalletId == WalletId, cancellation);
+
+       
+        return MapPayment(swap);
+    }
+
+    private LightningPayment? MapPayment(LightningSwap swap)
+    {
+        var bolt11 = BOLT11PaymentRequest.Parse(swap.Invoice, Network); // TODO: DO not hard code
+        var status = swap.Status switch
+        {
+            "transaction.claimed" or "invoice.paid" => LightningPaymentStatus.Complete,
+            "invoice.failedToPay" or "swap.expired" or "transaction.lockupFailed" => LightningPaymentStatus.Failed,
+            _ => LightningPaymentStatus.Pending
+        };
+        return new LightningPayment
+        {
+            Id = swap.SwapId,
+            Amount = LightMoney.Satoshis(swap.OnchainAmount),
+            Status = status,
+            BOLT11 = swap.Invoice,
+            PaymentHash = bolt11.PaymentHash?.ToString(),
+            Preimage = swap.PreimageHash,
+            CreatedAt = swap.CreatedAt
+        };
     }
 
     public Task<LightningPayment[]> ListPayments(CancellationToken cancellation = default)
     {
-        throw new NotImplementedException();
+        return ListPayments(new ListPaymentsParams(), cancellation);
     }
 
-    public Task<LightningPayment[]> ListPayments(ListPaymentsParams request, CancellationToken cancellation = default)
+    public async Task<LightningPayment[]> ListPayments(ListPaymentsParams request, CancellationToken cancellation = default)
     {
-        throw new NotImplementedException();
+        await using var dbContext = DbContextFactory.CreateContext();
+
+        var swaps = await dbContext.LightningSwaps
+            .Include(lightningSwap => lightningSwap.Contract)
+            .Where(rs =>
+                rs.SwapType == "submarine" &&
+                rs.WalletId == WalletId)
+            
+            .Skip((int)request.OffsetIndex.GetValueOrDefault(0))
+            .ToListAsync(cancellation);
+        
+        return swaps.Select(MapPayment).ToArray();
     }
 
     public async Task<LightningInvoice> CreateInvoice(LightMoney amount, string description, TimeSpan expiry,
@@ -161,43 +206,42 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
         }
         
         // Extract the receiver key from the wallet - this is our claim public key
-        var receiverKey = wallet.PublicKey;
         
         var reverseSwapService = new ReverseSwapService(BoltzClient, OperatorTermsService);
         
         var invoiceAmountSats = createInvoiceRequest.Amount.ToUnit(LightMoneyUnit.Satoshi);
-        
-        // Create reverse swap with just the receiver key - sender key comes from Boltz response
-        var swapResult = await reverseSwapService.CreateReverseSwapAsync(
-            (long)invoiceAmountSats, 
-            receiverKey,
-            cancellationToken: cancellation);
 
-        // Store the swap in the database with VHTLCContract information
-        // First, create and save the ArkWalletContract
-        var contractScript = swapResult.VHTLCContract.ToString();
-        var walletContract = new ArkWalletContract
+
+        ReverseSwapResult swapResult = null;
+        var contract = await WalletService.DeriveNewContract(WalletId, async wallet =>
         {
-            Script = contractScript,
-            WalletId = WalletId,
-            Type = "VHTLC",
-            Active = true,
-            ContractData = new Dictionary<string, string>
+            var receiverKey = wallet.PublicKey;
+
+            // Create reverse swap with just the receiver key - sender key comes from Boltz response
+            swapResult = await reverseSwapService.CreateReverseSwapAsync(
+                (long)invoiceAmountSats, 
+                receiverKey,
+                cancellationToken: cancellation);
+            // Store the swap in the database with VHTLCContract information
+            // First, create and save the ArkWalletContract
+            var contractScript = swapResult.VHTLCContract.GetArkAddress().ScriptPubKey.ToHex();
+            
+            return (new ArkWalletContract
             {
-                ["preimageHash"] = Encoders.Hex.EncodeData(swapResult.PreimageHash),
-                ["claimAddress"] = swapResult.ClaimAddress ?? "",
-                ["swapType"] = "reverse"
-            }
-        };
+                Script = contractScript,
+                WalletId = WalletId,
+                Type = swapResult.VHTLCContract.Type,
+                Active = true,
+                ContractData = swapResult.VHTLCContract.GetContractData()
+            }, swapResult.VHTLCContract);
+        }, cancellation);
 
-        // Add the contract if it doesn't already exist
-        var existingContract = await dbContext.WalletContracts
-            .FirstOrDefaultAsync(c => c.Script == contractScript, cancellation);
-        
-        if (existingContract == null)
+        if (swapResult is null || contract is not VHTLCContract htlcContract) 
         {
-            dbContext.WalletContracts.Add(walletContract);
-        }
+            return null;
+        }       
+
+        var contractScript = htlcContract.GetArkAddress().ScriptPubKey.ToHex();
 
         var reverseSwap = new LightningSwap
         {
@@ -214,22 +258,9 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
             Status = "created"
         };
 
-        dbContext.LightningSwaps.Add(reverseSwap);
+        await dbContext.LightningSwaps.AddAsync(reverseSwap, cancellation);
         await dbContext.SaveChangesAsync(cancellation);
-
-        // Parse the BOLT11 invoice to extract payment hash and create LightningInvoice
-        var bolt11 = BOLT11PaymentRequest.Parse(swapResult.Invoice, Network.Main);
-        
-        return new LightningInvoice
-        {
-            Id = swapResult.SwapId,
-            Amount = createInvoiceRequest.Amount,
-            Status = LightningInvoiceStatus.Unpaid,
-            ExpiresAt = DateTimeOffset.UtcNow.Add(createInvoiceRequest.Expiry),
-            BOLT11 = swapResult.Invoice,
-            PaymentHash = bolt11.PaymentHash?.ToString(),
-            Preimage = Encoders.Hex.EncodeData(swapResult.Preimage)
-        };
+        return CreateLightningInvoiceFromSwap(reverseSwap, null);
     }
 
     public Task<ILightningInvoiceListener> Listen(CancellationToken cancellation = default)
@@ -250,23 +281,26 @@ public class ArkLightningClient(string WalletId, BoltzClient BoltzClient, ArkPlu
         });
     }
 
-    public Task<LightningNodeBalance> GetBalance(CancellationToken cancellation = default)
+    public async Task<LightningNodeBalance> GetBalance(CancellationToken cancellation = default)
     {
-        // Ark balances are managed differently - return zero for now
-        return Task.FromResult(new LightningNodeBalance
+        await using var dbContext = DbContextFactory.CreateContext();
+        
+        var contracts = await dbContext.WalletContracts
+            .Where(c => c.WalletId == WalletId).Select(c => c.Script).ToListAsync(cancellation);
+        
+        var vtxos = await dbContext.Vtxos
+            .Where(vtxo => contracts.Contains(vtxo.Script))
+            .Where(vtxo => vtxo.SpentByTransactionId == null)
+            .ToListAsync(cancellation);
+        
+        var sum = vtxos.Sum(vtxo => vtxo.Amount);
+        return new LightningNodeBalance()
         {
-            OffchainBalance = new OffchainBalance
-            {
-                Local = LightMoney.Zero,
-                Remote = LightMoney.Zero
-            },
-            OnchainBalance = new OnchainBalance
-            {
-                Confirmed = Money.Zero,
-                Unconfirmed = Money.Zero,
-                Reserved = Money.Zero
-            }
-        });
+           OffchainBalance = new OffchainBalance()
+           {
+               Local = LightMoney.Satoshis(sum)
+           }
+        };
     }
 
     public Task<PayResponse> Pay(PayInvoiceParams payParams, CancellationToken cancellation = default)
