@@ -66,6 +66,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         
         serviceCollection.AddSingleton<ArkadeWalletSignerProvider>();
         serviceCollection.AddSingleton<ArkadeTweakedContractSweeper>();
+        serviceCollection.AddSingleton<ArkadeHTLCContractSweeper>();
         serviceCollection.AddDbContext<ArkPluginDbContext>((provider, o) =>
         {
             var factory = provider.GetRequiredService<ArkPluginDbContextFactory>();
@@ -81,6 +82,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
         serviceCollection.AddHostedService<ArkadeTweakedContractSweeper>(provider => provider.GetRequiredService<ArkadeTweakedContractSweeper>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
+        serviceCollection.AddHostedService<ArkadeHTLCContractSweeper>(provider => provider.GetRequiredService<ArkadeHTLCContractSweeper>());
 
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");
         // Display Ark as a wallet type in navigation sidebar

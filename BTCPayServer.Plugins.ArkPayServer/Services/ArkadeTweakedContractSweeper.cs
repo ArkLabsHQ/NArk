@@ -25,41 +25,6 @@ using NBXplorer;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
-
-public class ArkadeWalletSignerProvider
-{
-    private readonly IEnumerable<IArkadeMultiWalletSigner> _walletSigners;
-
-    public ArkadeWalletSignerProvider(IEnumerable<IArkadeMultiWalletSigner> walletSigners)
-    {
-        _walletSigners = walletSigners;
-    }
-
-    public async Task<IArkadeWalletSigner?> GetSigner(string walletId, CancellationToken cancellationToken = default)
-    {
-        var signers = await GetSigners([walletId],cancellationToken);
-        return signers.TryGetValue(walletId, out var signer) ? signer : null;
-    }
-
-    public async Task<Dictionary<string, IArkadeWalletSigner>> GetSigners(string[] walletId, CancellationToken cancellationToken = default)
-    {
-        var result = new Dictionary<string, IArkadeWalletSigner>();
-        foreach (var signer in _walletSigners)
-        {
-            foreach (var id in walletId)
-            {
-                if (await signer.CanHandle(id, cancellationToken))
-                {
-                    result.Add(id, await signer.CreateSigner(id, cancellationToken));
-                }
-            }
-        }
-        return result;
-        
-    }
-
-}
-
 public class ArkadeTweakedContractSweeper:IHostedService
 {
     private readonly StoreRepository _storeRepository;
@@ -145,9 +110,9 @@ public class ArkadeTweakedContractSweeper:IHostedService
                     .Select(x => ToArkCoin(x.Contract, x.Vtxo)).ToArray();
                 var total = Money.Satoshis(arkCoins.Sum(x => x.TxOut.Value));
 
-                var contract = ArkContract.Parse(group.First().Contract.Type, group.First().Contract.ContractData);
-       
-                var txout = new TxOut(total, contract.GetArkAddress());
+                var contract = (TweakedArkPaymentContract) ArkContract.Parse(group.First().Contract.Type, group.First().Contract.ContractData);
+                var destination = new ArkPaymentContract(contract.Server, contract.ExitDelay, contract.OriginalUser);
+                var txout = new TxOut(total, destination.GetArkAddress());
                 var arkTx = await ConstructArkTransaction(arkCoins.Select(x => (signer, x)).ToArray(), [txout], cts.Token);
                 
                 var submitRequest = new SubmitTxRequest();

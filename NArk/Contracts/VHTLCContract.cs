@@ -133,20 +133,19 @@ public class VHTLCContract : ArkContract
 
     private ScriptBuilder CreateRefundWithoutReceiverScript()
     {
-        // refundWithoutReceiver (at refundLocktime, sender + receiver + server)
-        var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
+        // refundWithoutReceiver (at refundLocktime, sender  + server)
+        var senderReceiverMultisig = new NofNMultisigTapScript([Sender]);
         var lockTime = new LockTimeTapScript(RefundLocktime);
         return new CollaborativePathArkTapScript(Server,
             new CompositeTapScript(lockTime, senderReceiverMultisig));
     }
 
-    public WitScript RefundWithoutReceiverWitness(SecpSchnorrSignature sender, SecpSchnorrSignature receiver)
+    public WitScript RefundWithoutReceiverWitness(SecpSchnorrSignature sender)
     {
         var tapLeaf = CreateRefundWithoutReceiverScript().Build();
         
         return new WitScript(
             Op.GetPushOp(sender.ToBytes()),
-            Op.GetPushOp(receiver.ToBytes()),
             Op.GetPushOp(tapLeaf.Script.ToBytes()),
             Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
