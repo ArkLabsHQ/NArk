@@ -13,10 +13,9 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 /// Hosted service that continuously monitors Boltz swaps and fires events when status changes occur.
 /// This replaces the polling mechanism and provides a centralized way to track swap status.
 /// </summary>
-public class BoltzSwapMonitorService : IHostedService, IDisposable
+public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<BoltzSwapMonitorService> logger)
+    : IHostedService, IDisposable
 {
-    private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<BoltzSwapMonitorService> _logger;
     private readonly ConcurrentDictionary<string, BoltzWebsocketClient> _webSocketClients = new();
     private readonly ConcurrentDictionary<string, HashSet<string>> _activeSwapsByWallet = new();
     private CancellationTokenSource? _cancellationTokenSource;
@@ -24,15 +23,9 @@ public class BoltzSwapMonitorService : IHostedService, IDisposable
 
     public event EventHandler<BoltzSwapStatusChangedEventArgs>? SwapStatusChanged;
 
-    public BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<BoltzSwapMonitorService> logger)
-    {
-        _serviceProvider = serviceProvider;
-        _logger = logger;
-    }
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting Boltz swap monitoring service");
+        logger.LogInformation("Starting Boltz swap monitoring service");
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _monitoringTask = Task.Run(MonitorSwapsAsync, _cancellationTokenSource.Token);
         await Task.CompletedTask;
@@ -40,7 +33,7 @@ public class BoltzSwapMonitorService : IHostedService, IDisposable
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Stopping Boltz swap monitoring service");
+        logger.LogInformation("Stopping Boltz swap monitoring service");
         
         _cancellationTokenSource?.Cancel();
         
@@ -64,7 +57,7 @@ public class BoltzSwapMonitorService : IHostedService, IDisposable
         {
             try
             {
-                using var scope = _serviceProvider.CreateScope();
+                using var scope = serviceProvider.CreateScope();
                 var dbContextFactory = scope.ServiceProvider.GetRequiredService<ArkPluginDbContextFactory>();
                 
                 await using var dbContext = dbContextFactory.CreateContext();
@@ -95,7 +88,7 @@ public class BoltzSwapMonitorService : IHostedService, IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error monitoring Boltz swaps");
+                logger.LogError(ex, "Error monitoring Boltz swaps");
             }
 
             // Wait before next check
@@ -169,7 +162,7 @@ public class BoltzSwapMonitorService : IHostedService, IDisposable
                         SwapStatusChanged?.Invoke(this, new BoltzSwapStatusChangedEventArgs(walletId, id, status));
                         
                         // Process the swap update
-                        using var scope = _serviceProvider.CreateScope();
+                        using var scope = serviceProvider.CreateScope();
                         var swapProcessor = scope.ServiceProvider.GetRequiredService<LightningSwapProcessor>();
                         await swapProcessor.HandleReverseSwapUpdateAsync(id, status, _cancellationTokenSource!.Token);
                     }
@@ -178,7 +171,7 @@ public class BoltzSwapMonitorService : IHostedService, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing WebSocket event for wallet {WalletId}", walletId);
+            logger.LogError(ex, "Error processing WebSocket event for wallet {WalletId}", walletId);
         }
     }
 
