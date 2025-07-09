@@ -1,3 +1,5 @@
+using NBitcoin.Secp256k1;
+
 namespace NArk.Services.Models;
 
-public record DeriveContractRequest(string Wallet, byte[]? Tweak = null);
+public record DeriveContractRequest(ECXOnlyPubKey User, byte[]? Tweak = null);

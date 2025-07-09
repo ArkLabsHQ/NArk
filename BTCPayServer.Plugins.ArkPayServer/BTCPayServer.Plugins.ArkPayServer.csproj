@@ -1,8 +1,7 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
-        <LangVersion>preview</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
@@ -24,6 +23,7 @@
         <ProjectReference>
             <Properties>StaticWebAssetsEnabled=false</Properties>
             <Private>false</Private>
+            <Private Condition="'$(Configuration)' == 'Debug'">true</Private>
             <ExcludeAssets>runtime;native;build;buildTransitive;contentFiles</ExcludeAssets>
         </ProjectReference>
     </ItemDefinitionGroup>
@@ -31,10 +31,10 @@
     <ItemGroup>
         <ProjectReference Include="..\NArk\NArk.csproj" >
             <Properties>StaticWebAssetsEnabled=false</Properties>
-            <Private>true</Private>
             <ExcludeAssets>runtime;contentFiles</ExcludeAssets>
         </ProjectReference>
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" >
+        
         </ProjectReference>
         <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
         <PackageReference Include="FlexLabs.EntityFrameworkCore.Upsert" Version="8.1.2" />
@@ -43,7 +43,6 @@
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.14.0" />
         <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.16"/>
         <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />     
-        <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
         <PackageReference Include="NBitcoin" Version="8.0.13" />
         <PackageReference Include="NBitcoin.Secp256k1" Version="3.1.6" />

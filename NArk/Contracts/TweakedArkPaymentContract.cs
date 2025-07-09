@@ -18,7 +18,11 @@ public class TweakedArkPaymentContract : ArkPaymentContract
 
     public override ECXOnlyPubKey User => OriginalUser.AddTweak(Tweak).ToXOnlyPubKey();
     
-    public override string Type => "TweakedPayment";
+    public override string Type => ContractType;
+
+    public const string ContractType = "TweakedPayment";
+    
+    
     
     public override Dictionary<string, string> GetContractData()
     {
@@ -31,7 +35,7 @@ public class TweakedArkPaymentContract : ArkPaymentContract
         return data;
     }
     
-    public override ArkContract? Parse(Dictionary<string, string> contractData)
+    public static ArkContract? Parse(Dictionary<string, string> contractData)
     {
         var server = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["server"]));
         var exitDelay = new Sequence(uint.Parse(contractData["exit_delay"]));

@@ -5,7 +5,7 @@ namespace NArk;
 public class UnilateralPathArkTapScript: ScriptBuilder
 {
     public Sequence Timeout { get; }
-    public ScriptBuilder? Condition { get; }
+    public ScriptBuilder? Condition { get; set; }
 
     public UnilateralPathArkTapScript(Sequence timeout, ScriptBuilder? condition= null)
     {

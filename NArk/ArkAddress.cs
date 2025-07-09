@@ -4,6 +4,15 @@ using NBitcoin.Secp256k1;
 
 namespace NArk;
 
+public class ArkCoin : Coin
+{
+    public ArkCoin(ArkContract contract, OutPoint outpoint, TxOut txout) : base(outpoint, txout)
+    {
+        Contract = contract;
+    }
+    public ArkContract Contract { get; set; }
+}
+
 public class ArkAddress: TaprootPubKey
 {
     static ArkAddress()
@@ -22,24 +31,29 @@ public class ArkAddress: TaprootPubKey
     protected static string HrpMainnet => "ark";
     protected static string HrpTestnet => "tark";
 
-    public ArkAddress(TaprootAddress taprootAddress, ECXOnlyPubKey serverKey) : base(taprootAddress.PubKey.ToBytes())
+    public ArkAddress(TaprootAddress taprootAddress, ECXOnlyPubKey serverKey, int version = 0) : base(taprootAddress.PubKey.ToBytes())
     {
         ArgumentNullException.ThrowIfNull(taprootAddress);
         ArgumentNullException.ThrowIfNull(serverKey);
+        ArgumentNullException.ThrowIfNull(version);
 
         ServerKey = serverKey;
+        Version = version;
     }
     
-    public ArkAddress(ECXOnlyPubKey tweakedKey, ECXOnlyPubKey serverKey) : base(tweakedKey.ToBytes())
+    public ArkAddress(ECXOnlyPubKey tweakedKey, ECXOnlyPubKey serverKey, int version = 0) : base(tweakedKey.ToBytes())
     {
         ArgumentNullException.ThrowIfNull(tweakedKey);
+        ArgumentNullException.ThrowIfNull(version);
         ArgumentNullException.ThrowIfNull(serverKey);
 
         ServerKey = serverKey;
+        Version = version;
     }
 
     public ECXOnlyPubKey ServerKey { get; }
-    
+    public int Version { get; }
+
     public override string ToString()
     {
         throw new NotImplementedException();
@@ -48,7 +62,7 @@ public class ArkAddress: TaprootPubKey
     public string ToString(bool mainnet)
     {
         var encoder = mainnet ? MainnetEncoder : TestnetEncoder;
-        var bytes = ServerKey.ToBytes().Concat(ToBytes()).ToArray();
+        byte[] bytes = [ Convert.ToByte(Version), ..ServerKey.ToBytes(), ..ToBytes() ];
         return encoder.EncodeData(bytes, Bech32EncodingType.BECH32M);
     }
 
@@ -60,12 +74,13 @@ public class ArkAddress: TaprootPubKey
             address.StartsWith(HrpTestnet) ? TestnetEncoder : throw new FormatException($"Invalid Ark address: {address}");
         var data = encoder.DecodeDataRaw(address, out var type);
         
-        if (type != Bech32EncodingType.BECH32M || data.Length != 64)
+        if (type != Bech32EncodingType.BECH32M || data.Length != 65)
             throw new FormatException($"Invalid Ark address: {address}");
         
-        var serverKey = ECXOnlyPubKey.Create(data.Take(32).ToArray());
-        var tweakedKey = ECXOnlyPubKey.Create(data.Skip(32).ToArray());
+        var version = data[0];
+        var serverKey = ECXOnlyPubKey.Create(data.Skip(1).Take(32).ToArray());
+        var tweakedKey = ECXOnlyPubKey.Create(data.Skip(33).ToArray());
         
-        return new ArkAddress(tweakedKey, serverKey);
+        return new ArkAddress(tweakedKey, serverKey, version);
     }
 }
