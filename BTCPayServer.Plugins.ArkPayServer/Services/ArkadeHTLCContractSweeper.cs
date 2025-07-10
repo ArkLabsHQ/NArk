@@ -14,7 +14,6 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkadeHTLCContractSweeper : IHostedService
 {
-    private readonly StoreRepository _storeRepository;
     private readonly ArkService.ArkServiceClient _arkServiceClient;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
     private readonly ArkadeWalletSignerProvider _walletSignerProvider;
@@ -26,7 +25,6 @@ public class ArkadeHTLCContractSweeper : IHostedService
     CancellationTokenSource cts = new();
 
     public ArkadeHTLCContractSweeper(
-        StoreRepository storeRepository,
         ArkService.ArkServiceClient arkServiceClient,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         ArkadeWalletSignerProvider walletSignerProvider,
@@ -35,7 +33,6 @@ public class ArkadeHTLCContractSweeper : IHostedService
         ILogger<ArkadeHTLCContractSweeper> logger,
         BTCPayNetworkProvider btcPayNetworkProvider)
     {
-        _storeRepository = storeRepository;
         _arkServiceClient = arkServiceClient;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
         _walletSignerProvider = walletSignerProvider;

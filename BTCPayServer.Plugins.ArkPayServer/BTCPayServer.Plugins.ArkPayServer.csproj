@@ -34,7 +34,7 @@
             <ExcludeAssets>runtime;contentFiles</ExcludeAssets>
         </ProjectReference>
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" >
-        
+            <Private>false</Private>
         </ProjectReference>
         <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
         <PackageReference Include="BTCPayServer.Lightning.Common" Version="1.5.2" />
@@ -50,6 +50,8 @@
         <PackageReference Include="Google.Api.CommonProtos" Version="2.16.0" GeneratePathProperty="true" />
         <PackageReference Include="Grpc.Net.Client" Version="2.71.0" />
         <EmbeddedResource Include="Resources\**" />
+
+        <EmbeddedResource Include="arkade.svg" />
     </ItemGroup>
 
 </Project>

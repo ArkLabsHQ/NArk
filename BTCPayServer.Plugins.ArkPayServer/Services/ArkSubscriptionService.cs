@@ -28,7 +28,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
     private CancellationTokenSource? _cts;
     private readonly Channel<bool> _checkContractsChannel = Channel.CreateUnbounded<bool>();
 
-    private string? _subscriptionId;
+    private string _subscriptionId = "";
     private HashSet<string> _subscribedScripts = new();
     private Task? _listeningTask;
     private CancellationTokenSource _listeningCts;
@@ -189,7 +189,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         {
             _logger.LogInformation("No active contracts. Stopping listener.");
             await StopListening();
-            _subscriptionId = null;
+            _subscriptionId = "";
             return;
         }
 
@@ -319,7 +319,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         {
             _logger.LogInformation("[Manual] No active scripts. Stopping listener and clearing subscription.");
             await StopListening();
-            _subscriptionId = null;
+            _subscriptionId = "";
             return;
         }
 

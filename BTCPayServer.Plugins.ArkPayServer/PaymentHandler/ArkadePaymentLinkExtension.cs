@@ -12,6 +12,6 @@ public class ArkadePaymentLinkExtension : IPaymentLinkExtension
     public string? GetPaymentLink(PaymentPrompt prompt, IUrlHelper? urlHelper)
     {
         var due = prompt.Calculate().Due;
-        return $"bitcoin:{prompt.Destination}?amount={due.ToString(CultureInfo.InvariantCulture)}";
+        return $"bitcoin:?ark={prompt.Destination}?amount={due.ToString(CultureInfo.InvariantCulture)}";
     }
 }

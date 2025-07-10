@@ -151,6 +151,7 @@ public class ArkWalletService(
         {
             return;
         }
+        logger.LogInformation("Toggling contract {Script} ({active}) for wallet {WalletId}", script,active, detailsWalletId);
 
         contract.Active = active;
         if (await dbContext.SaveChangesAsync() > 0)

@@ -49,6 +49,7 @@ public class ArkContractInvoiceListener : IHostedService
     {
         leases.Add(_eventAggregator.SubscribeAsync<InvoiceEvent>(async inv =>
         {
+            _memoryCache.Remove(GetCacheKey(inv.Invoice.Id));
             _CheckInvoices.Writer.TryWrite(inv.Invoice.Id);
         }));
         leases.Add(_eventAggregator.SubscribeAsync<VTXOsUpdated>(OnVTXOs));
@@ -196,6 +197,7 @@ public class ArkContractInvoiceListener : IHostedService
             while (await _CheckInvoices.Reader.WaitToReadAsync(cancellation) &&
                    _CheckInvoices.Reader.TryRead(out var invoiceId))
             {
+                _logger.LogInformation("Checking for invoice {InvoiceId}", invoiceId);
                 var invoice = await GetInvoice(invoiceId);
                 await ToggleArkadeContract(invoice);
             }

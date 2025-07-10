@@ -9,9 +9,9 @@ public class ArkadePromptDetails(string WalletId, ArkContract contract)
     [JsonConverter(typeof(ArkContractJsonConverter))]
     public ArkContract Contract { get; init; } = contract;
 
-    public void Deconstruct(out string WalletId, out ArkContract contract)
+    public void Deconstruct(out string walletId, out ArkContract contract)
     {
-        WalletId = this.WalletId;
+        walletId = this.WalletId;
         contract = this.Contract;
     }
 }

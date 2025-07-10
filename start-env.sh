@@ -54,6 +54,7 @@ else
   log "Cloning ts-sdk ($ARKD_BRANCH)..."
   git clone --depth 1 --branch "$ARKD_BRANCH" https://github.com/arkade-os/ts-sdk.git "$TS_SDK_DIR"
   pushd "$TS_SDK_DIR" >/dev/null
+  docker compose -f docker-compose.yml build --no-cache
   docker compose up -d
   popd >/dev/null
   rm -rf "$TS_SDK_DIR"
