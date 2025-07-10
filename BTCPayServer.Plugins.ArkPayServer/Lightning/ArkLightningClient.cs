@@ -272,13 +272,7 @@ public class ArkLightningClient(Network Network,
 
     public Task<LightningNodeInformation> GetInfo(CancellationToken cancellation = default)
     {
-        return Task.FromResult(new LightningNodeInformation
-        {
-            Alias = "Ark Lightning",
-            Color = "FF0000",
-            Version = "1.0.0",
-            BlockHeight = 0
-        });
+        throw new NotSupportedException();
     }
 
     public async Task<LightningNodeBalance> GetBalance(CancellationToken cancellation = default)
@@ -305,48 +299,47 @@ public class ArkLightningClient(Network Network,
 
     public Task<PayResponse> Pay(PayInvoiceParams payParams, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException("Ark Lightning client does not support outgoing payments");
+        throw new NotSupportedException();
     }
 
     public Task<PayResponse> Pay(string bolt11, PayInvoiceParams payParams, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException("Ark Lightning client does not support outgoing payments");
+        throw new NotSupportedException();
     }
 
     public Task<PayResponse> Pay(string bolt11, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException("Ark Lightning client does not support outgoing payments");
+        throw new NotSupportedException();
     }
 
     public Task<OpenChannelResponse> OpenChannel(OpenChannelRequest openChannelRequest, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException("Ark Lightning client does not support channel management");
+        throw new NotSupportedException();
     }
 
     public Task<BitcoinAddress> GetDepositAddress(CancellationToken cancellation = default)
     {
-        throw new NotSupportedException("Ark Lightning client does not support direct Bitcoin deposits");
+        throw new NotSupportedException();
     }
 
     public Task<ConnectionResult> ConnectTo(NodeInfo nodeInfo, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException("Ark Lightning client does not support peer connections");
+        throw new NotSupportedException();
     }
 
     public Task CancelInvoice(string invoiceId, CancellationToken cancellation = default)
     {
-        // For now, mark as cancelled in our database
-        return Task.CompletedTask;
+        throw new NotSupportedException();
     }
 
     public Task<LightningChannel[]> ListChannels(CancellationToken cancellation = default)
     {
-        return Task.FromResult(Array.Empty<LightningChannel>());
+        throw new NotSupportedException();
     }
 
     public Task<ValidationResult?> Validate()
     {
-        return Task.FromResult<ValidationResult?>(null);
+        return Task.FromResult(ValidationResult.Success);
     }
 
     public string? DisplayName => "Arkade Lightning (Boltz)";
