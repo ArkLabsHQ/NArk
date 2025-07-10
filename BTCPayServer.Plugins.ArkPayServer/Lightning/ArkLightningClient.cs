@@ -27,7 +27,8 @@ public class ArkLightningClient(Network network,
     BoltzClient boltzClient, 
     ArkPluginDbContextFactory dbContextFactory, 
     ArkWalletService walletService, 
-    IOperatorTermsService operatorTermsService, 
+    IOperatorTermsService operatorTermsService,
+    BoltzSwapMonitorService boltzMonitorService,
     IServiceProvider serviceProvider) : IExtendedLightningClient
 {
     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
@@ -217,7 +218,7 @@ public class ArkLightningClient(Network network,
             var receiverKey = wallet.PublicKey;
 
             // Create reverse swap with just the receiver key - sender key comes from Boltz response
-            swapResult = await reverseSwapService.CreateReverseSwapAsync(
+            swapResult = await reverseSwapService.CreateReverseSwap(
                 (long)invoiceAmountSats, 
                 receiverKey,
                 cancellationToken: cancellation);
@@ -259,6 +260,8 @@ public class ArkLightningClient(Network network,
 
         await dbContext.LightningSwaps.AddAsync(reverseSwap, cancellation);
         await dbContext.SaveChangesAsync(cancellation);
+        
+        await boltzMonitorService.MonitorSwaps(reverseSwap.SwapId);
         return CreateLightningInvoiceFromSwap(reverseSwap, null);
     }
 

@@ -18,33 +18,34 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
     private BoltzWebsocketClient? _webSocketClient;
     private readonly ConcurrentDictionary<string, byte> _activeSwaps = new();
     private CancellationTokenSource? _cancellationTokenSource;
-    private Task? _monitoringTask;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation("Starting Boltz swap monitoring service");
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _monitoringTask = Task.Run(MonitorSwapsAsync, _cancellationTokenSource.Token);
-        await Task.CompletedTask;
+        
+        _ = InitiateMonitoring();
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         logger.LogInformation("Stopping Boltz swap monitoring service");
-        
-        await _cancellationTokenSource?.CancelAsync()!;
-        
-        if (_monitoringTask != null)
+
+        if (_cancellationTokenSource is not null)
         {
-            await _monitoringTask.WaitAsync(cancellationToken);
+            await _cancellationTokenSource.CancelAsync();
         }
 
-        await _webSocketClient.DisposeAsync();
+        if (_webSocketClient is not null)
+        {
+            await _webSocketClient.DisposeAsync();
+        }
     }
 
-    private async Task MonitorSwapsAsync()
+    private async Task InitiateMonitoring()
     {
-        while (!_cancellationTokenSource!.Token.IsCancellationRequested)
+        if (!_cancellationTokenSource!.Token.IsCancellationRequested)
         {
             try
             {
@@ -58,19 +59,16 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
                     .Where(s => s.Status == "created" || s.Status == "pending")
                     .ToListAsync(_cancellationTokenSource.Token);
 
-                await EnsureWebSocketConnection(activeSwaps.Select(s => s.SwapId).ToArray());
+                await MonitorSwaps(activeSwaps.Select(s => s.SwapId).ToArray());
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error monitoring Boltz swaps");
             }
-
-            // TODO: Do not poll DB for swaps. This service should instead be able to react to new subscription requests
-            await Task.Delay(TimeSpan.FromSeconds(30), _cancellationTokenSource.Token);
         }
     }
 
-    private async Task EnsureWebSocketConnection(string[] swapIds)
+    public async Task MonitorSwaps(params string[] swapIds)
     {
         if (_webSocketClient == null)
         {
@@ -79,36 +77,19 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
             _webSocketClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsUri, _cancellationTokenSource?.Token ?? CancellationToken.None);
             _webSocketClient.OnAnyEventReceived += OnWebSocketEvent;
         }
-
-        // Update subscriptions for this wallet
-        var currentSwaps = _activeSwaps.Keys;
-        var newSwaps = swapIds.Except(currentSwaps).ToArray();
-        var removedSwaps = currentSwaps.Except(swapIds).ToArray();
-
-        if (newSwaps.Length > 0)
+        
+        foreach (var swapId in swapIds)
         {
-            foreach (var swapId in newSwaps)
-            {
-                _activeSwaps.TryAdd(swapId, 0);
-            }
-            await _webSocketClient.SubscribeAsync(newSwaps, _cancellationTokenSource!.Token);
+            _activeSwaps.TryAdd(swapId, 0);
         }
-
-        if (removedSwaps.Length > 0)
-        {
-            foreach (var swapId in removedSwaps)
-            {
-                _activeSwaps.TryRemove(swapId, out _);
-            }
-            await _webSocketClient.UnsubscribeAsync(removedSwaps, _cancellationTokenSource!.Token);
-        }
+        await _webSocketClient.SubscribeAsync(swapIds, _cancellationTokenSource!.Token);
     }
 
     private async Task OnWebSocketEvent(WebSocketResponse response)
     {
         try
         {
-            if (response.Event == "update" && response.Channel == "swap.update" && response.Args?.Count > 0)
+            if (response.Event == "update" && response.Channel == "swap.update" && response.Args.Count > 0)
             {
                 var swapUpdate = response.Args[0];
                 if (swapUpdate != null)
@@ -127,6 +108,8 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
                         
                         var eventAggregator = scope.ServiceProvider.GetRequiredService<EventAggregator>();
                         eventAggregator.Publish(new BoltzSwapStatusChangedEvent(id, status));
+                        
+                        // TODO: Unsubscribe for the swap, depending on the status
                     }
                 }
             }

@@ -2,29 +2,19 @@ using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
-using NArk.Services;
 using NArk.Wallet.Boltz;
 
 namespace NArk.Services;
 
-public class BoltzSwapService
+public class BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService operatorTermsService)
 {
-    private readonly BoltzClient _boltzClient;
-    private readonly IOperatorTermsService _operatorTermsService;
-
-    public BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService operatorTermsService)
-    {
-        _boltzClient = boltzClient;
-        _operatorTermsService = operatorTermsService;
-    }
-
-    public async Task<ReverseSwapResult> CreateReverseSwapAsync(
+    public async Task<ReverseSwapResult> CreateReverseSwap(
         long invoiceAmount,
         ECXOnlyPubKey receiver,
         CancellationToken cancellationToken = default)
     {
         // Get operator terms 
-        var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        var operatorTerms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         
         // Generate preimage and compute preimage hash using SHA256 for Boltz
         var preimage = RandomUtils.GetBytes(32);
@@ -41,7 +31,7 @@ public class BoltzSwapService
             AcceptZeroConf = true
         };
 
-        var response = await _boltzClient.CreateReverseSwapAsync(request);
+        var response = await boltzClient.CreateReverseSwapAsync(request);
 
         if (response == null)
         {
@@ -98,8 +88,6 @@ public class BoltzSwapService
             throw new InvalidOperationException($"Address mismatch: computed {claimAddress}, Boltz expects {response.LockupAddress}");
         }
 
-        // TODO: Subscribe to swap updates
-
         return new ReverseSwapResult
         {
             SwapId = response.Id,
@@ -116,7 +104,7 @@ public class BoltzSwapService
 
     public async Task<SwapStatusResponse?> GetSwapStatusAsync(string swapId, CancellationToken cancellationToken = default)
     {
-        return await _boltzClient.GetSwapStatusAsync(swapId);
+        return await boltzClient.GetSwapStatusAsync(swapId);
     }
 
     public async Task<SubmarineClaimDetailsResponse?> GetClaimDetailsAsync(
@@ -131,7 +119,7 @@ public class BoltzSwapService
             Preimage = preimage
         };
 
-        return await _boltzClient.GetReverseSwapClaimDetailsAsync(swapId, request);
+        return await boltzClient.GetReverseSwapClaimDetailsAsync(swapId, request);
     }
 }
 
