@@ -8,8 +8,6 @@ using NArk.Wallet.Boltz;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
-
-
 /// <summary>
 /// Hosted service that continuously monitors Boltz swaps and fires events when status changes occur.
 /// This replaces the polling mechanism and provides a centralized way to track swap status.
@@ -17,8 +15,8 @@ namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<BoltzSwapMonitorService> logger)
     : IHostedService, IDisposable
 {
-    private readonly ConcurrentDictionary<string, BoltzWebsocketClient> _webSocketClients = new();
-    private readonly ConcurrentDictionary<string, HashSet<string>> _activeSwapsByWallet = new();
+    private BoltzWebsocketClient? _webSocketClient;
+    private readonly ConcurrentDictionary<string, byte> _activeSwaps = new();
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _monitoringTask;
 
@@ -34,20 +32,14 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
     {
         logger.LogInformation("Stopping Boltz swap monitoring service");
         
-        _cancellationTokenSource?.Cancel();
+        await _cancellationTokenSource?.CancelAsync()!;
         
         if (_monitoringTask != null)
         {
             await _monitoringTask.WaitAsync(cancellationToken);
         }
 
-        // Dispose all WebSocket clients
-        foreach (var client in _webSocketClients.Values)
-        {
-            await client.DisposeAsync();
-        }
-        _webSocketClients.Clear();
-        _activeSwapsByWallet.Clear();
+        await _webSocketClient.DisposeAsync();
     }
 
     private async Task MonitorSwapsAsync()
@@ -64,86 +56,55 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
                 // Get all active swaps that need monitoring
                 var activeSwaps = await dbContext.LightningSwaps
                     .Where(s => s.Status == "created" || s.Status == "pending")
-                    .GroupBy(s => s.WalletId)
                     .ToListAsync(_cancellationTokenSource.Token);
 
-                // Update WebSocket subscriptions for each wallet
-                foreach (var walletGroup in activeSwaps)
-                {
-                    var walletId = walletGroup.Key;
-                    var swapIds = walletGroup.Select(s => s.SwapId).ToArray();
-                    
-                    await EnsureWebSocketConnection(walletId, swapIds);
-                }
-
-                // Remove inactive wallets
-                var activeWalletIds = activeSwaps.Select(g => g.Key).ToHashSet();
-                var inactiveWallets = _activeSwapsByWallet.Keys.Except(activeWalletIds).ToList();
-                
-                foreach (var walletId in inactiveWallets)
-                {
-                    await RemoveWebSocketConnection(walletId);
-                }
+                await EnsureWebSocketConnection(activeSwaps.Select(s => s.SwapId).ToArray());
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Error monitoring Boltz swaps");
             }
 
-            // Wait before next check
+            // TODO: Do not poll DB for swaps. This service should instead be able to react to new subscription requests
             await Task.Delay(TimeSpan.FromSeconds(30), _cancellationTokenSource.Token);
         }
     }
 
-    private async Task EnsureWebSocketConnection(string walletId, string[] swapIds)
+    private async Task EnsureWebSocketConnection(string[] swapIds)
     {
-        if (!_webSocketClients.TryGetValue(walletId, out var client))
+        if (_webSocketClient == null)
         {
-            // Create new WebSocket client for this wallet
+            // TODO: get URI this from BoltzClient instead
             var wsUri = new Uri("wss://api.boltz.exchange/v2/ws");
-            client = new BoltzWebsocketClient(wsUri);
-            client.OnAnyEventReceived += (response) => OnWebSocketEvent(walletId, response);
-            
-            _webSocketClients[walletId] = client;
-            _activeSwapsByWallet[walletId] = new HashSet<string>();
-            
-            await client.ConnectAsync(_cancellationTokenSource!.Token);
+            _webSocketClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsUri, _cancellationTokenSource?.Token ?? CancellationToken.None);
+            _webSocketClient.OnAnyEventReceived += OnWebSocketEvent;
         }
 
         // Update subscriptions for this wallet
-        var currentSwaps = _activeSwapsByWallet[walletId];
+        var currentSwaps = _activeSwaps.Keys;
         var newSwaps = swapIds.Except(currentSwaps).ToArray();
         var removedSwaps = currentSwaps.Except(swapIds).ToArray();
 
         if (newSwaps.Length > 0)
         {
-            await client.SubscribeAsync(newSwaps, _cancellationTokenSource!.Token);
             foreach (var swapId in newSwaps)
             {
-                currentSwaps.Add(swapId);
+                _activeSwaps.TryAdd(swapId, 0);
             }
+            await _webSocketClient.SubscribeAsync(newSwaps, _cancellationTokenSource!.Token);
         }
 
         if (removedSwaps.Length > 0)
         {
-            await client.UnsubscribeAsync(removedSwaps, _cancellationTokenSource!.Token);
             foreach (var swapId in removedSwaps)
             {
-                currentSwaps.Remove(swapId);
+                _activeSwaps.TryRemove(swapId, out _);
             }
+            await _webSocketClient.UnsubscribeAsync(removedSwaps, _cancellationTokenSource!.Token);
         }
     }
 
-    private async Task RemoveWebSocketConnection(string walletId)
-    {
-        if (_webSocketClients.TryRemove(walletId, out var client))
-        {
-            await client.DisposeAsync();
-        }
-        _activeSwapsByWallet.TryRemove(walletId, out _);
-    }
-
-    private async Task OnWebSocketEvent(string walletId, WebSocketResponse response)
+    private async Task OnWebSocketEvent(WebSocketResponse response)
     {
         try
         {
@@ -157,7 +118,7 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
                     
                     if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(status))
                     {
-                        var evnt = new BoltzSwapStatusChangedEvent(walletId, id, status);
+                        var evnt = new BoltzSwapStatusChangedEvent(id, status);
                         
                         using var scope = serviceProvider.CreateScope();
                         var dbContextFactory = scope.ServiceProvider.GetRequiredService<ArkPluginDbContextFactory>();
@@ -165,14 +126,14 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
                         await HandleReverseSwapUpdate(dbContextFactory, evnt);
                         
                         var eventAggregator = scope.ServiceProvider.GetRequiredService<EventAggregator>();
-                        eventAggregator.Publish(new BoltzSwapStatusChangedEvent(walletId, id, status));
+                        eventAggregator.Publish(new BoltzSwapStatusChangedEvent(id, status));
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error processing WebSocket event for wallet {WalletId}", walletId);
+            logger.LogError(ex, "Error processing WebSocket event {@response}", response);
         }
     }
     
@@ -230,14 +191,8 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
     {
         _cancellationTokenSource?.Cancel();
         _cancellationTokenSource?.Dispose();
-        
-        foreach (var client in _webSocketClients.Values)
-        {
-            // For synchronous dispose, just close without awaiting
-            _ = client.DisposeAsync();
-        }
-        _webSocketClients.Clear();
+        _webSocketClient.DisposeAsync();
     }
 }
 
-public record BoltzSwapStatusChangedEvent(string WalletId, string SwapId, string Status);
+public record BoltzSwapStatusChangedEvent(string SwapId, string Status);

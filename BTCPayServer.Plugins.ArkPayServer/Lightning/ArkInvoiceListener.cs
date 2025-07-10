@@ -37,12 +37,6 @@ public class ArkInvoiceListener : ILightningInvoiceListener
 
     private async Task OnSwapStatusChanged(BoltzSwapStatusChangedEvent e)
     {
-        // Only handle events for this wallet
-        if (e.WalletId != _walletId)
-        {
-            return;
-        }
-
         try
         {
             // If the swap is paid, add to paid invoices queue
@@ -51,12 +45,14 @@ public class ArkInvoiceListener : ILightningInvoiceListener
                 await using var dbContext = _dbContextFactory.CreateContext();
                 var paidSwap = await dbContext.LightningSwaps
                     .FirstOrDefaultAsync(s => s.SwapId == e.SwapId && s.WalletId == _walletId && !s.IsInvoiceReturned, _cancellationToken);
-                    
-                if (paidSwap != null)
+
+                if (paidSwap is null || paidSwap.WalletId != _walletId)
                 {
-                    var invoice = CreateLightningInvoiceFromSwap(paidSwap);
-                    await _paidInvoicesChannel.Writer.WriteAsync(invoice, _cancellationToken);
+                    return;
                 }
+                
+                var invoice = CreateLightningInvoiceFromSwap(paidSwap);
+                await _paidInvoicesChannel.Writer.WriteAsync(invoice, _cancellationToken);
             }
         }
         catch (Exception ex)
