@@ -206,12 +206,12 @@ public class ArkLightningClient(Network network,
         
         // Extract the receiver key from the wallet - this is our claim public key
         
-        var reverseSwapService = new ReverseSwapService(boltzClient, operatorTermsService);
+        var reverseSwapService = new BoltzSwapService(boltzClient, operatorTermsService);
         
         var invoiceAmountSats = createInvoiceRequest.Amount.ToUnit(LightMoneyUnit.Satoshi);
 
 
-        ReverseSwapResult swapResult = null;
+        ReverseSwapResult? swapResult = null;
         var contract = await walletService.DeriveNewContract(walletId, async wallet =>
         {
             var receiverKey = wallet.PublicKey;

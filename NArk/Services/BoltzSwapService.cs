@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
@@ -6,45 +5,17 @@ using NBitcoin.Secp256k1;
 using NArk.Services;
 using NArk.Wallet.Boltz;
 
-namespace NArk;
+namespace NArk.Services;
 
-public class ReverseSwapService
+public class BoltzSwapService
 {
     private readonly BoltzClient _boltzClient;
-    private readonly BoltzWebsocketClient? _websocketClient;
     private readonly IOperatorTermsService _operatorTermsService;
 
-    public ReverseSwapService(BoltzClient boltzClient, IOperatorTermsService operatorTermsService, BoltzWebsocketClient? websocketClient = null)
+    public BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService operatorTermsService)
     {
         _boltzClient = boltzClient;
         _operatorTermsService = operatorTermsService;
-        _websocketClient = websocketClient;
-        
-        // Subscribe to WebSocket events if available
-        if (_websocketClient != null)
-        {
-            _websocketClient.OnAnyEventReceived += OnSwapUpdateReceived;
-        }
-    }
-
-    public event Func<string, string, Task>? OnSwapStatusChanged;
-
-    private async Task OnSwapUpdateReceived(WebSocketResponse response)
-    {
-        if (response.Event == "update" && response.Args != null && response.Args.Count > 0)
-        {
-            var swapUpdate = response.Args[0];
-            var swapId = swapUpdate?["id"]?.GetValue<string>();
-            var status = swapUpdate?["status"]?.GetValue<string>();
-            
-            if (!string.IsNullOrEmpty(swapId) && !string.IsNullOrEmpty(status))
-            {
-                if (OnSwapStatusChanged != null)
-                {
-                    await OnSwapStatusChanged(swapId, status);
-                }
-            }
-        }
     }
 
     public async Task<ReverseSwapResult> CreateReverseSwapAsync(
@@ -127,11 +98,7 @@ public class ReverseSwapService
             throw new InvalidOperationException($"Address mismatch: computed {claimAddress}, Boltz expects {response.LockupAddress}");
         }
 
-        // Subscribe to WebSocket updates if available
-        if (_websocketClient != null)
-        {
-            await _websocketClient.SubscribeAsync([response.Id], cancellationToken);
-        }
+        // TODO: Subscribe to swap updates
 
         return new ReverseSwapResult
         {

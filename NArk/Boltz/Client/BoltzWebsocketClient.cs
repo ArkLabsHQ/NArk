@@ -66,7 +66,10 @@ public class BoltzWebsocketClient : IAsyncDisposable
             _webSocket?.Dispose();
             _webSocket = new ClientWebSocket();
 
-            await _receiveLoopCts?.CancelAsync();
+            if (_receiveLoopCts is not null)
+            {
+                await _receiveLoopCts.CancelAsync();
+            }
             _receiveLoopCts?.Dispose();
             _receiveLoopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
