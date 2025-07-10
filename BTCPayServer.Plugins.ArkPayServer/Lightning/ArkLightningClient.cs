@@ -22,22 +22,21 @@ namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 /// ARK Lightning client – talks to a Boltz service instead of a real LN node.
 /// Ark->LN interactions are handled through Boltz swaps
 /// </summary>
-public class ArkLightningClient(Network Network, 
-    string WalletId, 
-    BoltzClient BoltzClient, 
-    ArkPluginDbContextFactory DbContextFactory, 
-    LightningSwapProcessor SwapProcessor, 
-    ArkWalletService WalletService, 
-    IOperatorTermsService OperatorTermsService, 
-    IServiceProvider ServiceProvider) : IExtendedLightningClient
+public class ArkLightningClient(Network network, 
+    string walletId, 
+    BoltzClient boltzClient, 
+    ArkPluginDbContextFactory dbContextFactory, 
+    ArkWalletService walletService, 
+    IOperatorTermsService operatorTermsService, 
+    IServiceProvider serviceProvider) : IExtendedLightningClient
 {
     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
     {
-        await using var dbContext = DbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         // Find by payment hash - we need to parse all BOLT11 invoices to match
         var reverseSwap = await dbContext.LightningSwaps
             .FirstOrDefaultAsync(rs =>
-                    rs.WalletId == WalletId &&
+                    rs.WalletId == walletId &&
                     rs.SwapType == "reverse" &&
                     rs.SwapId == invoiceId,
                 cancellationToken: cancellation);
@@ -51,12 +50,12 @@ public class ArkLightningClient(Network Network,
 
     public async Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = default)
     {
-        await using var dbContext = DbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         var paymentHashStr = paymentHash.ToString();
         // Find by payment hash - we need to parse all BOLT11 invoices to match
         var reverseSwap = await dbContext.LightningSwaps
             .FirstOrDefaultAsync(rs =>
-                    rs.WalletId == WalletId &&
+                    rs.WalletId == walletId &&
                     rs.SwapType == "reverse" &&
                     rs.PreimageHash == paymentHashStr,
                 cancellationToken: cancellation);
@@ -70,7 +69,7 @@ public class ArkLightningClient(Network Network,
 
     public LightningInvoice CreateLightningInvoiceFromSwap(LightningSwap reverseSwap, VTXO? vtxo)
     {
-        var bolt11 = BOLT11PaymentRequest.Parse(reverseSwap.Invoice, Network); 
+        var bolt11 = BOLT11PaymentRequest.Parse(reverseSwap.Invoice, network); 
         
         // Map Boltz status to Lightning status
         var lightningStatus = reverseSwap.Status switch
@@ -101,11 +100,11 @@ public class ArkLightningClient(Network Network,
 
     public async Task<LightningInvoice[]> ListInvoices(ListInvoicesParams request, CancellationToken cancellation = default)
     {
-        await using var dbContext = DbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         
         var reverseSwaps = await dbContext.LightningSwaps
             .Where(rs => rs.SwapType == "reverse" &&  
-                         rs.WalletId == WalletId)
+                         rs.WalletId == walletId)
             .OrderByDescending(rs => rs.CreatedAt)
             .Skip((int)request.OffsetIndex.GetValueOrDefault(0))
             .ToListAsync(cancellation);
@@ -132,14 +131,14 @@ public class ArkLightningClient(Network Network,
 
     public async Task<LightningPayment> GetPayment(string paymentHash, CancellationToken cancellation = default)
     {
-        await using var dbContext = DbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
 
         var swap = await dbContext.LightningSwaps
             .Include(lightningSwap => lightningSwap.Contract)
             .FirstOrDefaultAsync(rs =>
                 rs.SwapType == "submarine" &&
                 rs.PreimageHash == paymentHash
-                && rs.WalletId == WalletId, cancellation);
+                && rs.WalletId == walletId, cancellation);
 
        
         return MapPayment(swap);
@@ -147,7 +146,7 @@ public class ArkLightningClient(Network Network,
 
     private LightningPayment? MapPayment(LightningSwap swap)
     {
-        var bolt11 = BOLT11PaymentRequest.Parse(swap.Invoice, Network); // TODO: DO not hard code
+        var bolt11 = BOLT11PaymentRequest.Parse(swap.Invoice, network); // TODO: DO not hard code
         var status = swap.Status switch
         {
             "transaction.claimed" or "invoice.paid" => LightningPaymentStatus.Complete,
@@ -173,13 +172,13 @@ public class ArkLightningClient(Network Network,
 
     public async Task<LightningPayment[]> ListPayments(ListPaymentsParams request, CancellationToken cancellation = default)
     {
-        await using var dbContext = DbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
 
         var swaps = await dbContext.LightningSwaps
             .Include(lightningSwap => lightningSwap.Contract)
             .Where(rs =>
                 rs.SwapType == "submarine" &&
-                rs.WalletId == WalletId)
+                rs.WalletId == walletId)
             
             .Skip((int)request.OffsetIndex.GetValueOrDefault(0))
             .ToListAsync(cancellation);
@@ -196,24 +195,24 @@ public class ArkLightningClient(Network Network,
 
     public async Task<LightningInvoice> CreateInvoice(CreateInvoiceParams createInvoiceRequest, CancellationToken cancellation = default)
     {
-        await using var dbContext = DbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         
         // Get the wallet from the database to extract the receiver key
-        var wallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.Id == WalletId, cancellation);
+        var wallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.Id == walletId, cancellation);
         if (wallet == null)
         {
-            throw new InvalidOperationException($"Wallet with ID {WalletId} not found");
+            throw new InvalidOperationException($"Wallet with ID {walletId} not found");
         }
         
         // Extract the receiver key from the wallet - this is our claim public key
         
-        var reverseSwapService = new ReverseSwapService(BoltzClient, OperatorTermsService);
+        var reverseSwapService = new ReverseSwapService(boltzClient, operatorTermsService);
         
         var invoiceAmountSats = createInvoiceRequest.Amount.ToUnit(LightMoneyUnit.Satoshi);
 
 
         ReverseSwapResult swapResult = null;
-        var contract = await WalletService.DeriveNewContract(WalletId, async wallet =>
+        var contract = await walletService.DeriveNewContract(walletId, async wallet =>
         {
             var receiverKey = wallet.PublicKey;
 
@@ -229,7 +228,7 @@ public class ArkLightningClient(Network Network,
             return (new ArkWalletContract
             {
                 Script = contractScript,
-                WalletId = WalletId,
+                WalletId = walletId,
                 Type = swapResult.VHTLCContract.Type,
                 Active = true,
                 ContractData = swapResult.VHTLCContract.GetContractData()
@@ -246,7 +245,7 @@ public class ArkLightningClient(Network Network,
         var reverseSwap = new LightningSwap
         {
             SwapId = swapResult.SwapId,
-            WalletId = WalletId,
+            WalletId = walletId,
             SwapType = "reverse",
             Invoice = swapResult.Invoice,
             LockupAddress = swapResult.LockupAddress,
@@ -265,9 +264,9 @@ public class ArkLightningClient(Network Network,
 
     public Task<ILightningInvoiceListener> Listen(CancellationToken cancellation = default)
     {
-        var swapMonitorService = ServiceProvider.GetRequiredService<BoltzSwapMonitorService>();
-        var logger = ServiceProvider.GetRequiredService<ILogger<ArkInvoiceListener>>();
-        return Task.FromResult<ILightningInvoiceListener>(new ArkInvoiceListener(WalletId, DbContextFactory, swapMonitorService, logger, cancellation));
+        var eventAggregator = serviceProvider.GetRequiredService<EventAggregator>();
+        var logger = serviceProvider.GetRequiredService<ILogger<ArkInvoiceListener>>();
+        return Task.FromResult<ILightningInvoiceListener>(new ArkInvoiceListener(walletId, dbContextFactory, logger, eventAggregator, cancellation));
     }
 
     public Task<LightningNodeInformation> GetInfo(CancellationToken cancellation = default)
@@ -277,10 +276,10 @@ public class ArkLightningClient(Network Network,
 
     public async Task<LightningNodeBalance> GetBalance(CancellationToken cancellation = default)
     {
-        await using var dbContext = DbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         
         var contracts = await dbContext.WalletContracts
-            .Where(c => c.WalletId == WalletId).Select(c => c.Script).ToListAsync(cancellation);
+            .Where(c => c.WalletId == walletId).Select(c => c.Script).ToListAsync(cancellation);
         
         var vtxos = await dbContext.Vtxos
             .Where(vtxo => contracts.Contains(vtxo.Script))

@@ -6,45 +6,42 @@ using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using NBXplorer;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
-public class ArkInvoiceListener : ILightningInvoiceListener
+public class ArkInvoiceListener : ILightningInvoiceListener 
 {
     private readonly string _walletId;
     private readonly ArkPluginDbContextFactory _dbContextFactory;
-    private readonly BoltzSwapMonitorService _swapMonitorService;
     private readonly ILogger<ArkInvoiceListener> _logger;
     private readonly CancellationToken _cancellationToken;
-    private readonly Channel<LightningInvoice> _paidInvoicesChannel;
-    private readonly ChannelWriter<LightningInvoice> _paidInvoicesWriter;
-    private readonly ChannelReader<LightningInvoice> _paidInvoicesReader;
-
-    public ArkInvoiceListener(string walletId, ArkPluginDbContextFactory dbContextFactory, 
-        BoltzSwapMonitorService swapMonitorService, ILogger<ArkInvoiceListener> logger,
-        CancellationToken cancellationToken)
+    
+    private readonly Channel<LightningInvoice> _paidInvoicesChannel = Channel.CreateUnbounded<LightningInvoice>();
+    private readonly CompositeDisposable _leases = new();
+    
+    public ArkInvoiceListener(
+        string walletId,
+        ArkPluginDbContextFactory dbContextFactory,
+        ILogger<ArkInvoiceListener> logger,
+        EventAggregator eventAggregator,
+        CancellationToken cancellationToken) 
     {
         _walletId = walletId;
         _dbContextFactory = dbContextFactory;
-        _swapMonitorService = swapMonitorService;
         _logger = logger;
         _cancellationToken = cancellationToken;
         
-        // Create channel for paid invoices
-        var channel = Channel.CreateUnbounded<LightningInvoice>();
-        _paidInvoicesChannel = channel;
-        _paidInvoicesWriter = channel.Writer;
-        _paidInvoicesReader = channel.Reader;
-        
-        // Subscribe to swap status changes
-        _swapMonitorService.SwapStatusChanged += OnSwapStatusChanged;
+        _leases.Add(eventAggregator.SubscribeAsync<BoltzSwapStatusChangedEvent>(OnSwapStatusChanged));
     }
 
-    private async void OnSwapStatusChanged(object? sender, BoltzSwapStatusChangedEventArgs e)
+    private async Task OnSwapStatusChanged(BoltzSwapStatusChangedEvent e)
     {
         // Only handle events for this wallet
         if (e.WalletId != _walletId)
+        {
             return;
+        }
 
         try
         {
@@ -58,7 +55,7 @@ public class ArkInvoiceListener : ILightningInvoiceListener
                 if (paidSwap != null)
                 {
                     var invoice = CreateLightningInvoiceFromSwap(paidSwap);
-                    await _paidInvoicesWriter.WriteAsync(invoice, _cancellationToken);
+                    await _paidInvoicesChannel.Writer.WriteAsync(invoice, _cancellationToken);
                 }
             }
         }
@@ -75,9 +72,9 @@ public class ArkInvoiceListener : ILightningInvoiceListener
         try
         {
             // Wait for a paid invoice from the channel
-            while (await _paidInvoicesReader.WaitToReadAsync(combinedCts.Token))
+            while (await _paidInvoicesChannel.Reader.WaitToReadAsync(combinedCts.Token))
             {
-                if (_paidInvoicesReader.TryRead(out var invoice))
+                if (_paidInvoicesChannel.Reader.TryRead(out var invoice))
                 {
                     // Mark this invoice as returned in the database to prevent returning it again
                     try
@@ -86,7 +83,7 @@ public class ArkInvoiceListener : ILightningInvoiceListener
                         var swap = await dbContext.LightningSwaps
                             .FirstOrDefaultAsync(s => s.SwapId == invoice.Id && s.WalletId == _walletId, combinedCts.Token);
                         
-                        if (swap != null && !swap.IsInvoiceReturned)
+                        if (swap is { IsInvoiceReturned: false })
                         {
                             swap.IsInvoiceReturned = true;
                             await dbContext.SaveChangesAsync(combinedCts.Token);
@@ -131,7 +128,7 @@ public class ArkInvoiceListener : ILightningInvoiceListener
 
     public void Dispose()
     {
-        _swapMonitorService.SwapStatusChanged -= OnSwapStatusChanged;
-        _paidInvoicesWriter.Complete();
+        _leases.Dispose();
+        _paidInvoicesChannel.Writer.Complete();
     }
 }

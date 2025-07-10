@@ -1,13 +1,12 @@
 using System.Collections.Concurrent;
 using BTCPayServer.Plugins.ArkPayServer.Data;
-using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk.Wallet.Boltz;
 
-namespace BTCPayServer.Plugins.ArkPayServer.Services;
+namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
 
 
@@ -22,8 +21,6 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
     private readonly ConcurrentDictionary<string, HashSet<string>> _activeSwapsByWallet = new();
     private CancellationTokenSource? _cancellationTokenSource;
     private Task? _monitoringTask;
-
-    public event EventHandler<BoltzSwapStatusChangedEventArgs>? SwapStatusChanged;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -160,13 +157,15 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
                     
                     if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(status))
                     {
-                        // Fire the status changed event
-                        SwapStatusChanged?.Invoke(this, new BoltzSwapStatusChangedEventArgs(walletId, id, status));
+                        var evnt = new BoltzSwapStatusChangedEvent(walletId, id, status);
                         
-                        // Process the swap update
                         using var scope = serviceProvider.CreateScope();
-                        var swapProcessor = scope.ServiceProvider.GetRequiredService<LightningSwapProcessor>();
-                        await swapProcessor.HandleReverseSwapUpdateAsync(id, status, _cancellationTokenSource!.Token);
+                        var dbContextFactory = scope.ServiceProvider.GetRequiredService<ArkPluginDbContextFactory>();
+                        
+                        await HandleReverseSwapUpdate(dbContextFactory, evnt);
+                        
+                        var eventAggregator = scope.ServiceProvider.GetRequiredService<EventAggregator>();
+                        eventAggregator.Publish(new BoltzSwapStatusChangedEvent(walletId, id, status));
                     }
                 }
             }
@@ -174,6 +173,56 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
         catch (Exception ex)
         {
             logger.LogError(ex, "Error processing WebSocket event for wallet {WalletId}", walletId);
+        }
+    }
+    
+    private async Task HandleReverseSwapUpdate(ArkPluginDbContextFactory dbContextFactory, BoltzSwapStatusChangedEvent e)
+    {
+        var swapId = e.SwapId;
+        var status = e.Status;
+        
+        logger.LogInformation("Processing reverse swap {SwapId} status update to: {Status}", swapId, status);
+        
+        try
+        {
+            await using var dbContext = dbContextFactory.CreateContext();
+            
+            // Find the swap in the database
+            var swap = await dbContext.LightningSwaps
+                .FirstOrDefaultAsync(s => s.SwapId == swapId && s.SwapType == "reverse");
+                
+            if (swap == null)
+            {
+                logger.LogWarning("Reverse swap {SwapId} not found in database", swapId);
+                return;
+            }
+            
+            // Update the swap status
+            var oldStatus = swap.Status;
+            swap.Status = status;
+            
+            // Set settlement time if swap is being marked as paid
+            if (status == "invoice.paid" && swap.SettledAt == null)
+            {
+                swap.SettledAt = DateTimeOffset.UtcNow;
+                logger.LogInformation("Reverse swap {SwapId} marked as settled", swapId);
+            }
+            
+            await dbContext.SaveChangesAsync();
+            
+            logger.LogInformation("Updated reverse swap {SwapId} status from {OldStatus} to {NewStatus}", 
+                swapId, oldStatus, status);
+                
+            // TODO: If status is "invoice.paid", trigger VTXO creation
+            if (status == "invoice.paid")
+            {
+                logger.LogInformation("Reverse swap {SwapId} paid - VTXO creation should be triggered", swapId);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to process reverse swap {SwapId} status update", swapId);
+            throw;
         }
     }
 
@@ -191,16 +240,4 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
     }
 }
 
-public class BoltzSwapStatusChangedEventArgs : EventArgs
-{
-    public string WalletId { get; }
-    public string SwapId { get; }
-    public string Status { get; }
-
-    public BoltzSwapStatusChangedEventArgs(string walletId, string swapId, string status)
-    {
-        WalletId = walletId;
-        SwapId = swapId;
-        Status = status;
-    }
-}
+public record BoltzSwapStatusChangedEvent(string WalletId, string SwapId, string Status);
