@@ -97,6 +97,21 @@ if [ -n "$container" ]; then
   docker exec "$container" arkd wallet unlock --password secret
   docker exec "$container" arkd wallet status
   log "arkd wallet unlocked"
+  
+  docker exec "$container" ark init --network regtest --password secret --server-url localhost:7070 --explorer http://chopsticks:3000
+  log "ark wallet initialized"
+  
+  # use nigiri faucet to `arkd wallet address`
+  address=$(docker exec -ti "$container" arkd wallet address)
+  nigiri faucet address
+  address=$(docker exec -ti "$container" ark receive)
+  # parse json and take boarding_address
+  address=$(echo "$address" | jq -r '.boarding_address')
+  nigiri faucet "$address"
+  
+  docker exec "$container" ark settle --password secret
+  
+  
 else
   log "Ark container not running; wallet not unlocked"
 fi
