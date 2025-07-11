@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using BTCPayServer.Plugins.ArkPayServer.Data;
+using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -12,7 +13,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 /// Hosted service that continuously monitors Boltz swaps and fires events when status changes occur.
 /// This replaces the polling mechanism and provides a centralized way to track swap status.
 /// </summary>
-public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<BoltzSwapMonitorService> logger)
+public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILogger<BoltzSwapSubscriptionService> logger)
     : IHostedService, IDisposable
 {
     private BoltzWebsocketClient? _webSocketClient;
@@ -177,5 +178,3 @@ public class BoltzSwapMonitorService(IServiceProvider serviceProvider, ILogger<B
         _webSocketClient.DisposeAsync();
     }
 }
-
-public record BoltzSwapStatusChangedEvent(string SwapId, string Status);

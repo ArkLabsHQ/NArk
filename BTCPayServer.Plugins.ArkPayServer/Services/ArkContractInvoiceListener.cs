@@ -199,5 +199,4 @@ public class ArkContractInvoiceListener(
             goto retry;
         }
     }
-
 }

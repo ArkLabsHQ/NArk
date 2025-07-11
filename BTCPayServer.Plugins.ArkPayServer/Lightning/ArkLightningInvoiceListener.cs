@@ -2,7 +2,7 @@ using System.Threading.Channels;
 using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using BTCPayServer.Plugins.ArkPayServer.Services;
+using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -10,20 +10,20 @@ using NBXplorer;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
-public class ArkInvoiceListener : ILightningInvoiceListener 
+public class ArkLightningInvoiceListener : ILightningInvoiceListener 
 {
     private readonly string _walletId;
     private readonly ArkPluginDbContextFactory _dbContextFactory;
-    private readonly ILogger<ArkInvoiceListener> _logger;
+    private readonly ILogger<ArkLightningInvoiceListener> _logger;
     private readonly CancellationToken _cancellationToken;
     
     private readonly Channel<LightningInvoice> _paidInvoicesChannel = Channel.CreateUnbounded<LightningInvoice>();
     private readonly CompositeDisposable _leases = new();
     
-    public ArkInvoiceListener(
+    public ArkLightningInvoiceListener(
         string walletId,
         ArkPluginDbContextFactory dbContextFactory,
-        ILogger<ArkInvoiceListener> logger,
+        ILogger<ArkLightningInvoiceListener> logger,
         EventAggregator eventAggregator,
         CancellationToken cancellationToken) 
     {
@@ -32,28 +32,24 @@ public class ArkInvoiceListener : ILightningInvoiceListener
         _logger = logger;
         _cancellationToken = cancellationToken;
         
-        _leases.Add(eventAggregator.SubscribeAsync<BoltzSwapStatusChangedEvent>(OnSwapStatusChanged));
+        _leases.Add(eventAggregator.SubscribeAsync<ArkLightningInvoicePaidEvent>(OnInvoicePaid));
     }
 
-    private async Task OnSwapStatusChanged(BoltzSwapStatusChangedEvent e)
+    private async Task OnInvoicePaid(ArkLightningInvoicePaidEvent e)
     {
         try
         {
-            // If the swap is paid, add to paid invoices queue
-            if (e.Status == "invoice.paid")
-            {
-                await using var dbContext = _dbContextFactory.CreateContext();
-                var paidSwap = await dbContext.LightningSwaps
-                    .FirstOrDefaultAsync(s => s.SwapId == e.SwapId && s.WalletId == _walletId && !s.IsInvoiceReturned, _cancellationToken);
+            await using var dbContext = _dbContextFactory.CreateContext();
+            var paidSwap = await dbContext.LightningSwaps
+                .FirstOrDefaultAsync(s => s.SwapId == e.SwapId && s.WalletId == _walletId && !s.IsInvoiceReturned, _cancellationToken);
 
-                if (paidSwap is null || paidSwap.WalletId != _walletId)
-                {
-                    return;
-                }
-                
-                var invoice = CreateLightningInvoiceFromSwap(paidSwap);
-                await _paidInvoicesChannel.Writer.WriteAsync(invoice, _cancellationToken);
+            if (paidSwap is null || paidSwap.WalletId != _walletId)
+            {
+                return;
             }
+            
+            var invoice = CreateLightningInvoiceFromSwap(paidSwap);
+            await _paidInvoicesChannel.Writer.WriteAsync(invoice, _cancellationToken);
         }
         catch (Exception ex)
         {

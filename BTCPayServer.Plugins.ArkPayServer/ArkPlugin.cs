@@ -84,6 +84,12 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddHostedService<ArkadeTweakedContractSweeper>(provider => provider.GetRequiredService<ArkadeTweakedContractSweeper>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
         serviceCollection.AddHostedService<ArkadeHTLCContractSweeper>(provider => provider.GetRequiredService<ArkadeHTLCContractSweeper>());
+        
+        // Register the Boltz swap services
+        serviceCollection.AddSingleton<BoltzSwapSubscriptionService>();
+        serviceCollection.AddHostedService<BoltzSwapSubscriptionService>(provider => provider.GetRequiredService<BoltzSwapSubscriptionService>());
+        serviceCollection.AddSingleton<BoltzSwapListener>();
+        serviceCollection.AddHostedService<BoltzSwapListener>(provider => provider.GetRequiredService<BoltzSwapListener>());
 
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");
         // Display Ark as a wallet type in navigation sidebar
@@ -108,10 +114,6 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<ArkadePaymentLinkExtension>();
         serviceCollection.AddSingleton<IPaymentLinkExtension>(provider => provider.GetRequiredService<ArkadePaymentLinkExtension>());
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
-        
-        // Register the Boltz swap monitoring hosted service
-        serviceCollection.AddSingleton<BoltzSwapMonitorService>();
-        serviceCollection.AddHostedService<BoltzSwapMonitorService>(provider => provider.GetRequiredService<BoltzSwapMonitorService>());
         
         serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
     }

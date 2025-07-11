@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Text.Json;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data;
@@ -13,7 +12,7 @@ using NArk.Services;
 using NArk.Wallet.Boltz;
 using NBitcoin;
 using NBitcoin.DataEncoders;
-using NBitcoin.Secp256k1;
+
 using NodeInfo = BTCPayServer.Lightning.NodeInfo;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
@@ -28,7 +27,7 @@ public class ArkLightningClient(Network network,
     ArkPluginDbContextFactory dbContextFactory, 
     ArkWalletService walletService, 
     IOperatorTermsService operatorTermsService,
-    BoltzSwapMonitorService boltzMonitorService,
+    BoltzSwapSubscriptionService boltzSubscriptionService,
     IServiceProvider serviceProvider) : IExtendedLightningClient
 {
     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
@@ -261,15 +260,17 @@ public class ArkLightningClient(Network network,
         await dbContext.LightningSwaps.AddAsync(reverseSwap, cancellation);
         await dbContext.SaveChangesAsync(cancellation);
         
-        await boltzMonitorService.MonitorSwaps(reverseSwap.SwapId);
+        await boltzSubscriptionService.MonitorSwaps(reverseSwap.SwapId);
+        
+        // TODO: I assume that the caller (in BTCPay) stores this invoice in the InvoiceRepository. Otherwise we need to do it
         return CreateLightningInvoiceFromSwap(reverseSwap, null);
     }
 
     public Task<ILightningInvoiceListener> Listen(CancellationToken cancellation = default)
     {
         var eventAggregator = serviceProvider.GetRequiredService<EventAggregator>();
-        var logger = serviceProvider.GetRequiredService<ILogger<ArkInvoiceListener>>();
-        return Task.FromResult<ILightningInvoiceListener>(new ArkInvoiceListener(walletId, dbContextFactory, logger, eventAggregator, cancellation));
+        var logger = serviceProvider.GetRequiredService<ILogger<ArkLightningInvoiceListener>>();
+        return Task.FromResult<ILightningInvoiceListener>(new ArkLightningInvoiceListener(walletId, dbContextFactory, logger, eventAggregator, cancellation));
     }
 
     public Task<LightningNodeInformation> GetInfo(CancellationToken cancellation = default)
