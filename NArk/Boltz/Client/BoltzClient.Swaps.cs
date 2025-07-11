@@ -1,3 +1,5 @@
+using NBitcoin;
+
 namespace NArk.Wallet.Boltz;
 
 using System.Collections.Generic;
@@ -85,6 +87,17 @@ public partial class BoltzClient
     /// <returns>The reverse swap response.</returns>
     public async Task<ReverseResponse?> CreateReverseSwapAsync(ReverseRequest request)
     {
+        // TODO: Temporarily mock Boltz response
+        return new ReverseResponse
+        {
+            RefundPublicKey = "030c589fb03ca4d931f632484fd87ce859ea2f4834a13b080a765ce24a07281081",
+            LockupAddress = "bc1phw9aky735q2lqfm024th32dfayqlvk2xgnvaqwwzef5nt7snx6nqkjsmuu",
+            TimeoutBlockHeight = 905224,
+            Invoice =
+                "lnbcrt500u1p58z8p9pp5mpq6egyhmdjg30q5kjugdskr7dpctm475l9hdyc3sz5cqxl9ydksdqqcqzzsxqyz5vqsp54hs4slwmk5x3q4yaa6wvfhqh3ruyxdnev3pdge2vk9za5jkz5ynq9qxpqysgq5ht9q9cnx4gh36y76uw9g55ynrl4ajqavatq7wjds6mvxg6r654sdkr08f0xl0t7y86p39eqzlhgxca7he3yt8vf56r84ce5u4xllmsqhezv2r",
+            OnchainAmount = 29388,
+            Id = Guid.NewGuid().ToString()
+        };
         var response = await PostAsJsonAsync("swap/reverse", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ReverseResponse>();
