@@ -22,9 +22,6 @@ public class ReverseResponse
     [JsonPropertyName("timeoutBlockHeight")]
     public long TimeoutBlockHeight { get; set; }
 
-    [JsonPropertyName("timeoutBlockHeights")]
-    public TimeoutBlockHeights? TimeoutBlockHeights { get; set; }
-
     [JsonPropertyName("blindingKey")]
     public string? BlindingKey { get; set; }
 
