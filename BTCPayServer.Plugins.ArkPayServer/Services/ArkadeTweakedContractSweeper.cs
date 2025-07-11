@@ -195,6 +195,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
 
             var input = checkpointgtx.Inputs.FindIndexedInput(coin.coin.Outpoint);
             var tapleaf = contract.CollaborativePath().Build().LeafHash;
+            checkpointTx.Inputs[(int) input.Index].Unknown.SetArkField(contract.GetTapTree());
             var hash = checkpointgtx.GetSignatureHashTaproot(checkpointPrecomputedTransactionData,
                 new TaprootExecutionData((int)input.Index, tapleaf));
             var sig = await coin.signer.Sign(hash,contract.Tweak, cancellationToken );
@@ -232,6 +233,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
             var input = gtx.Inputs.FindIndexedInput(coin.coin.Outpoint);
             var collabPath  = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
             var tapleaf = collabPath.Build();
+            tx.Inputs[(int)input.Index].Unknown.SetArkField(contract.GetTapTree());
             var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
                 new TaprootExecutionData((int)input.Index, tapleaf.LeafHash));
             var sig = await coin.signer.Sign(hash,null, cancellationToken );

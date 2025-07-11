@@ -82,8 +82,18 @@ public abstract class ArkContract
 
         return new ArkAddress(ECXOnlyPubKey.Create(spendInfo.OutputPubKey.ToBytes()), Server);
     }
+    
 
     public TaprootSpendInfo GetTaprootSpendInfo()
+    {
+        var spendInfo = TaprootSpendInfo.WithHuffmanTree(
+            new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToHex().ToECXOnlyPubKey().ToBytes()), 
+            GetTapTree().Select(x => ((uint)0, x)).ToArray());
+        
+        return spendInfo;
+    }
+
+    public TapScript[] GetTapTree()
     {
         var leaves = GetScriptBuilders().ToArray();
         if (!leaves.OfType<CollaborativePathArkTapScript>().Any())
@@ -92,12 +102,8 @@ public abstract class ArkContract
             throw new ArgumentException("At least one unilateral path is required");
         if(leaves.Any(x => x is not CollaborativePathArkTapScript && x is not UnilateralPathArkTapScript))
             throw new ArgumentException("Only collaborative and unilateral paths are allowed");
-        
-        var spendInfo = TaprootSpendInfo.WithHuffmanTree(
-            new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToHex().ToECXOnlyPubKey().ToBytes()), 
-            leaves.Select(x => ((uint)0, x.Build())).ToArray());
-        
-        return spendInfo;
+
+        return leaves.Select(x => x.Build()).ToArray();
     }
     
     public override string ToString()

@@ -218,6 +218,10 @@ public class ArkadeHTLCContractSweeper : IHostedService
                 checkpointgtx.PrecomputeTransactionData([coin.TxOut]);
 
             var input = checkpointgtx.Inputs.FindIndexedInput(coin.Outpoint);
+            
+            checkpointTx.Inputs[(int)input.Index].Unknown.SetArkField(htlc.GetTapTree());
+            checkpointTx.Inputs[(int)input.Index].Unknown.SetArkField(new WitScript(Op.GetPushOp(htlc.Preimage!)));
+            
             var tapLeaf = htlc.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().First().Build();
             var hash = checkpointgtx.GetSignatureHashTaproot(checkpointPrecomputedTransactionData,
                 new TaprootExecutionData((int)input.Index, tapLeaf.LeafHash));
@@ -264,6 +268,8 @@ public class ArkadeHTLCContractSweeper : IHostedService
                 checkpointgtx.PrecomputeTransactionData([coin.TxOut]);
 
             var input = checkpointgtx.Inputs.FindIndexedInput(coin.Outpoint);
+
+            checkpointTx.Inputs[(int) input.Index].Unknown.SetArkField(htlc.GetTapTree());
             var tapLeaf = htlc.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().First().Build();
             var hash = checkpointgtx.GetSignatureHashTaproot(checkpointPrecomputedTransactionData,
                 new TaprootExecutionData((int)input.Index, tapLeaf.LeafHash));
@@ -306,6 +312,8 @@ public class ArkadeHTLCContractSweeper : IHostedService
         {
             var contract = (GenericArkContract)coin.coin.Contract;
             var input = gtx.Inputs.FindIndexedInput(coin.coin.Outpoint);
+
+            tx.Inputs[(int) input.Index].Unknown.SetArkField(contract.GetTapTree());
             var collabPath = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
             var tapleaf = collabPath.Build();
             var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
