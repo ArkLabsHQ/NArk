@@ -80,30 +80,4 @@ public class BoltzSwapListener(
         }
     }
     
-    public async Task ToggleArkadeContract(string invoiceId)
-    {
-        var invoice = await invoiceRepository.GetInvoice(invoiceId);
-        
-        var active = invoice.Status == InvoiceStatus.New;
-        var listenedContract = GetListenedArkadeInvoice(invoice);
-        if (listenedContract is null)
-        {
-            return;
-        }
-
-        await arkWalletService.ToggleContract(listenedContract.Details.WalletId, listenedContract.Details.Contract,
-            active);
-    }
-    
-    private ArkadeListenedContract? GetListenedArkadeInvoice(InvoiceEntity invoice)
-    {
-        var prompt = invoice.GetPaymentPrompt(ArkadePlugin.ArkadePaymentMethodId);
-        return prompt is null
-            ? null
-            : new ArkadeListenedContract
-            {
-                InvoiceId = invoice.Id,
-                Details = arkadePaymentMethodHandler.ParsePaymentPromptDetails(prompt.Details)
-            };
-    }
 }

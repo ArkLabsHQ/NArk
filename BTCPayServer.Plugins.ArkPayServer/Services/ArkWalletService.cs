@@ -139,11 +139,15 @@ public class ArkWalletService(
         LoadWalletSigner(publicKey.ToHex(), wallet);
         return res.Single();
     }
-    
+
     public async Task ToggleContract(string detailsWalletId, ArkContract detailsContract, bool active)
     {
+        await ToggleContract(detailsWalletId, detailsContract.GetArkAddress().ScriptPubKey.ToHex(), active);
+        
+    }
+    public async Task ToggleContract(string detailsWalletId, string script, bool active)
+    {
         await using var dbContext = dbContextFactory.CreateContext();
-        var script = detailsContract.GetArkAddress().ScriptPubKey.ToHex();
         var contract = await dbContext.WalletContracts.FirstOrDefaultAsync(w => 
             w.WalletId == detailsWalletId && 
             w.Script == script && w.Active != active);

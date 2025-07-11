@@ -8,7 +8,7 @@ public class LightningSwap
     [Key]
     public string SwapId { get; set; } = null!;
     
-    public string WalletId { get; set; } = null!;
+    public string? WalletId { get; set; } = null!;
     
     public string SwapType { get; set; } = null!; // "reverse" for LN->Ark, "submarine" for Ark->LN
     

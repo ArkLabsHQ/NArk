@@ -131,32 +131,24 @@ public class ArkadeHTLCContractSweeper : IHostedService
                         operatorTerms.UnilateralExit, publicKey);
 
                     var txout = new TxOut(total, destination.GetArkAddress());
-                    var arkTx = await ConstructArkTransaction(signer, toSweepWithClaimPath, toSweepWithRefundPath,
-                        [txout], cts.Token);
-
-                    var submitRequest = new SubmitTxRequest();
-                    submitRequest.SignedArkTx = arkTx.arkTx.ToBase64();
-                    submitRequest.CheckpointTxs.AddRange(arkTx.checkpoints.Select(x => x.checkpoint.ToBase64()).ToArray());
-                    var response = await _arkServiceClient.SubmitTxAsync(submitRequest);
-                    var parsedReceivedCheckpoints = response.SignedCheckpointTxs.Select(x => PSBT.Parse(x, _network))
-                        .ToDictionary(psbt => psbt.GetGlobalTransaction().GetHash());
-                    var signedCheckpoints =
-                        arkTx.checkpoints.ToDictionary(psbt => psbt.checkpoint.GetGlobalTransaction().GetHash());
-                    foreach (var signedCheckpoint in signedCheckpoints)
-                    {
-                        var serverSig = parsedReceivedCheckpoints[signedCheckpoint.Key].Inputs[0].FinalScriptWitness
-                            .Pushes
-                            .First();
-
-                        signedCheckpoint.Value.checkpoint.Inputs[0].FinalScriptWitness = new WitScript(
-                            signedCheckpoint.Value.inputWitness.Pushes.Concat([serverSig]).ToArray());
-                    }
-
-                    FinalizeTxRequest finalizeTxRequest = new();
-                    finalizeTxRequest.ArkTxid = response.ArkTxid;
-                    finalizeTxRequest.FinalCheckpointTxs.AddRange(signedCheckpoints
-                        .Select(x => x.Value.checkpoint.ToBase64()).ToArray());
-                    var finalizeTxResponse = await _arkServiceClient.FinalizeTxAsync(finalizeTxRequest);
+                    
+                    // Use the new ArkTransactionExtensions to create the Ark transaction
+                    var coins = toSweepWithClaimPath.Concat(toSweepWithRefundPath)
+                        .Select(coin => new ArkCoinWithSigner(signer, coin.Contract, coin.Outpoint, coin.TxOut))
+                        .ToArray();
+                    
+                    var arkTx = await _network.CreateArkTransaction(
+                        coins,
+                        [txout],
+                        cts.Token);
+                    
+                    // Submit the transaction using the extension method
+                    var finalizeTxResponse = await _arkServiceClient.SubmitArkTransaction(
+                        arkTx.arkTx,
+                        arkTx.Item2,
+                        _network,
+                        cts.Token);
+                    
                     // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
                 }
             }

@@ -3,6 +3,7 @@ using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
 using BTCPayServer.Events;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
+using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using Microsoft.Extensions.Caching.Memory;
@@ -31,9 +32,21 @@ public class ArkContractInvoiceListener(
     {
         _leases.Add(eventAggregator.SubscribeAsync<InvoiceEvent>(OnInvoiceEvent));
         _leases.Add(eventAggregator.SubscribeAsync<VTXOsUpdated>(OnVTXOs));
+        _leases.Add(eventAggregator.SubscribeAsync<BoltzSwapStatusChangedEvent>(HandleSwapUpdate));
+
 
         _ = PollAllInvoices(cancellationToken);
         return Task.CompletedTask;
+    }
+
+    private async Task HandleSwapUpdate(BoltzSwapStatusChangedEvent arg)
+    {
+        if(arg.Script is null || arg.WalletId is null)
+            return;
+        
+        await arkWalletService.ToggleContract(arg.WalletId, arg.Script,
+            arg.Active);
+        
     }
 
     private async Task OnInvoiceEvent(InvoiceEvent invoiceEvent)

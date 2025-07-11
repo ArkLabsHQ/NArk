@@ -20,6 +20,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk;
+using NArk.Services;
 using NBitcoin;
 using NBXplorer;
 
@@ -65,12 +66,12 @@ public class ArkadeTweakedContractSweeper:IHostedService
         return Task.CompletedTask;
     }
 
-    private static ArkCoin ToArkCoin(ArkWalletContract c, VTXO vtxo)
+    private static ArkCoin ToArkCoin(ArkWalletContract c, VTXO vtxo, IArkadeWalletSigner? signer)
     {
         var cobtract = ArkContract.Parse(c.Type, c.ContractData);
         var outpoint = new OutPoint(uint256.Parse(vtxo.TransactionId), vtxo.TransactionOutputIndex);
         var txout = new TxOut(Money.Satoshis(vtxo.Amount), cobtract.GetArkAddress());
-        return new ArkCoin(cobtract, outpoint, txout);
+        return signer != null ? new ArkCoinWithSigner(signer, cobtract, outpoint, txout) : new ArkCoin(cobtract, outpoint, txout);
     }
 
     TaskCompletionSource? tcsWaitForNextPoll = null;
@@ -107,34 +108,26 @@ public class ArkadeTweakedContractSweeper:IHostedService
                     continue;
 
                 var arkCoins = group
-                    .Select(x => ToArkCoin(x.Contract, x.Vtxo)).ToArray();
+                    .Select(x => ToArkCoin(x.Contract, x.Vtxo,signer)).ToArray();
                 var total = Money.Satoshis(arkCoins.Sum(x => x.TxOut.Value));
 
                 var contract = (TweakedArkPaymentContract) ArkContract.Parse(group.First().Contract.Type, group.First().Contract.ContractData);
                 var destination = new ArkPaymentContract(contract.Server, contract.ExitDelay, contract.OriginalUser);
                 var txout = new TxOut(total, destination.GetArkAddress());
-                var arkTx = await ConstructArkTransaction(arkCoins.Select(x => (signer, x)).ToArray(), [txout], cts.Token);
                 
-                var submitRequest = new SubmitTxRequest();
-                submitRequest.SignedArkTx = arkTx.arkTx.ToBase64();
-                submitRequest.CheckpointTxs.AddRange(arkTx.Item2.Select(x => x.checkpoint.ToBase64()).ToArray());
-                var response = await _arkServiceClient.SubmitTxAsync(submitRequest);
-                var parsedReceivedCheckpoints = response.SignedCheckpointTxs.Select(x => PSBT.Parse(x, _network)).ToDictionary(psbt => psbt.GetGlobalTransaction().GetHash());
-                var signedCheckpoints =
-                    arkTx.Item2.ToDictionary(psbt => psbt.checkpoint.GetGlobalTransaction().GetHash());
-                foreach (var signedCheckpoint in signedCheckpoints)
-                {
-                    var serverSig = parsedReceivedCheckpoints[signedCheckpoint.Key].Inputs[0].FinalScriptWitness.Pushes
-                        .First();
-
-                    signedCheckpoint.Value.checkpoint.Inputs[0].FinalScriptWitness = new WitScript(
-                        signedCheckpoint.Value.inputWitness.Pushes.Concat([serverSig]).ToArray());
-                }
-
-                FinalizeTxRequest finalizeTxRequest = new();
-                finalizeTxRequest.ArkTxid = response.ArkTxid;
-                finalizeTxRequest.FinalCheckpointTxs.AddRange(signedCheckpoints.Select(x => x.Value.checkpoint.ToBase64()).ToArray());
-                var finalizeTxResponse = await _arkServiceClient.FinalizeTxAsync(finalizeTxRequest);
+                // Use the new ArkTransactionExtensions to create the Ark transaction
+                var arkTx = await _network.CreateArkTransaction(
+                    (ArkCoinWithSigner[]) arkCoins,
+                    [txout],
+                    cts.Token);
+                
+                // Submit the transaction using the extension method
+                var finalizeTxResponse = await _arkServiceClient.SubmitArkTransaction(
+                    arkTx.arkTx,
+                    arkTx.Item2,
+                    _network,
+                    cts.Token);
+                
                 // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
             }
             
@@ -144,108 +137,6 @@ public class ArkadeTweakedContractSweeper:IHostedService
         }
     }
     
-    private async Task<(PSBT arkTx, (PSBT checkpoint, WitScript inputWitness)[])> ConstructArkTransaction((IArkadeWalletSigner signer, 
-        ArkCoin coin)[]coins, 
-        TxOut[] outputs,
-        CancellationToken cancellationToken)
-    {
-        
-        var p2a = Script.FromHex("51024e73");
-
-        List<(PSBT checkpoint, WitScript inputWitness)> checkpoints = new();
-        List<(ArkCoin coin ,IArkadeWalletSigner signer)> checkpointCoins = new();
-        
-        
-        foreach (var coin in coins)
-        {
-            var cloned = (TweakedArkPaymentContract) ArkContract.Parse(coin.coin.Contract.ToString());
-            var scriptBuilders = cloned.GetScriptBuilders().ToList();
-            var checkpointScriptBuilders = new List<ScriptBuilder>();
-
-            var delay = scriptBuilders.OfType<UnilateralPathArkTapScript>().First().Timeout;
-            
-            var ownerScript = new NofNMultisigTapScript( [cloned.User]);
-            var serverScript = new NofNMultisigTapScript( [cloned.Server]);
-            checkpointScriptBuilders.Add(new UnilateralPathArkTapScript(delay, serverScript));
-            checkpointScriptBuilders.Add(new CollaborativePathArkTapScript(cloned.Server, ownerScript));
-            
-            var checkpointContract = new GenericArkContract(cloned.Server, checkpointScriptBuilders,
-                new Dictionary<string, string>()
-                {
-                    {"server", cloned.Server.ToHex()},
-                    {"user", cloned.OriginalUser.ToHex()},
-                    {"tweak", cloned.Tweak.ToHex()},
-                });
-            
-            var checkpoint = _network.CreateTransactionBuilder();
-            checkpoint.SetVersion(3);
-            checkpoint.SetFeeWeight(0);
-            checkpoint.AddCoin(coin.coin);
-            checkpoint.DustPrevention = false;
-            checkpoint.Send(p2a, Money.Zero);
-            checkpoint.SendAllRemaining(checkpointContract.GetArkAddress());
-
-            
-            var checkpointTx = checkpoint.BuildPSBT(false);
-            
-            
-            var contract = (TweakedArkPaymentContract)coin.coin.Contract;
-            var checkpointgtx = checkpointTx.GetGlobalTransaction();
-            var checkpointPrecomputedTransactionData = checkpointgtx.PrecomputeTransactionData(checkpointCoins.Select(x => x.coin.TxOut).ToArray());
-
-            var input = checkpointgtx.Inputs.FindIndexedInput(coin.coin.Outpoint);
-            var tapleaf = contract.CollaborativePath().Build().LeafHash;
-            checkpointTx.Inputs[(int) input.Index].Unknown.SetArkField(contract.GetTapTree());
-            var hash = checkpointgtx.GetSignatureHashTaproot(checkpointPrecomputedTransactionData,
-                new TaprootExecutionData((int)input.Index, tapleaf));
-            var sig = await coin.signer.Sign(hash,contract.Tweak, cancellationToken );
-            var witness = contract.CollaborativePathWitness(sig);
-            
-            checkpoints.Add((checkpointTx, witness));
-            var txout = checkpointTx.Outputs.Single(output =>
-                output.ScriptPubKey == checkpointContract.GetArkAddress().ScriptPubKey);
-            var outpoint = new OutPoint(checkpointgtx, txout.Index);
-            checkpointCoins.Add((new ArkCoin(checkpointContract, outpoint, txout.GetTxOut()!), coin.signer));
-        }
-        
-        var arkTx = _network.CreateTransactionBuilder();
-        arkTx.SetVersion(3);
-        arkTx.SetFeeWeight(0);
-        arkTx.DustPrevention = false;
-        
-        arkTx.Send(p2a, Money.Zero);
-        foreach (var coin in checkpointCoins)
-        {
-            arkTx.AddCoin(coin.coin);
-        }
-        foreach (var output in outputs)
-        {
-            arkTx.Send(output.ScriptPubKey, output.Value);
-        }
-        
-        var tx = arkTx.BuildPSBT(false);
-        
-        var gtx = tx.GetGlobalTransaction();
-        var precomputedTransactionData = gtx.PrecomputeTransactionData(checkpointCoins.Select(x => x.coin.TxOut).ToArray());
-        foreach (var coin in checkpointCoins)
-        {
-            var contract = (GenericArkContract)coin.coin.Contract;
-            var input = gtx.Inputs.FindIndexedInput(coin.coin.Outpoint);
-            var collabPath  = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
-            var tapleaf = collabPath.Build();
-            tx.Inputs[(int)input.Index].Unknown.SetArkField(contract.GetTapTree());
-            var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
-                new TaprootExecutionData((int)input.Index, tapleaf.LeafHash));
-            var sig = await coin.signer.Sign(hash,null, cancellationToken );
-            tx.Inputs[(int)input.Index].FinalScriptWitness =  new WitScript(
-                Op.GetPushOp(sig.ToBytes()), 
-                Op.GetPushOp(tapleaf.Script.ToBytes()),
-                Op.GetPushOp(contract.GetTaprootSpendInfo().GetControlBlock(tapleaf).ToBytes()));
-        }
-        
-        return (tx, checkpoints.ToArray());
-    }
-
     private Task OnVTXOsUpdated(VTXOsUpdated arg)
     {
         tcsWaitForNextPoll?.TrySetResult();
@@ -258,8 +149,4 @@ public class ArkadeTweakedContractSweeper:IHostedService
         leases.Dispose();
         leases = new CompositeDisposable();
     }
-    
-    
-    
-    
 }

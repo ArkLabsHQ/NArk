@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using BTCPayServer.Plugins.ArkPayServer.Data;
+using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -100,15 +101,18 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
                     
                     if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(status))
                     {
-                        var evnt = new BoltzSwapStatusChangedEvent(id, status);
+                        var inactive = status == "invoice.paid" || status == "invoice.expired" || status == "invoice.canceled";
+                        
+                        
                         
                         using var scope = serviceProvider.CreateScope();
                         var dbContextFactory = scope.ServiceProvider.GetRequiredService<ArkPluginDbContextFactory>();
                         
-                        await HandleReverseSwapUpdate(dbContextFactory, evnt);
+                       var swap = await HandleReverseSwapUpdate(dbContextFactory, id, status);
                         
                         var eventAggregator = scope.ServiceProvider.GetRequiredService<EventAggregator>();
-                        eventAggregator.Publish(new BoltzSwapStatusChangedEvent(id, status));
+                        var evnt = new BoltzSwapStatusChangedEvent(id, status, !inactive, swap?.ContractScript, swap?.WalletId);
+                        eventAggregator.Publish(evnt);
                         
                         // TODO: Unsubscribe for the swap, depending on the status
                     }
@@ -121,10 +125,8 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
         }
     }
     
-    private async Task HandleReverseSwapUpdate(ArkPluginDbContextFactory dbContextFactory, BoltzSwapStatusChangedEvent e)
+    private async Task<LightningSwap?> HandleReverseSwapUpdate(ArkPluginDbContextFactory dbContextFactory, string swapId, string status)
     {
-        var swapId = e.SwapId;
-        var status = e.Status;
         
         logger.LogInformation("Processing reverse swap {SwapId} status update to: {Status}", swapId, status);
         
@@ -139,7 +141,7 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
             if (swap == null)
             {
                 logger.LogWarning("Reverse swap {SwapId} not found in database", swapId);
-                return;
+                return null;
             }
             
             // Update the swap status
@@ -159,10 +161,13 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
                 swapId, oldStatus, status);
                 
             // TODO: If status is "invoice.paid", trigger VTXO creation
+            // Andrew: As long as the contract is created and active, we should detect the vtxo automatically
             if (status == "invoice.paid")
             {
                 logger.LogInformation("Reverse swap {SwapId} paid - VTXO creation should be triggered", swapId);
             }
+
+            return swap;
         }
         catch (Exception ex)
         {
