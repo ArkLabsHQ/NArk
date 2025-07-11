@@ -14,73 +14,60 @@ using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
-public class ArkContractInvoiceListener : IHostedService
+public class ArkContractInvoiceListener(
+    IMemoryCache memoryCache,
+    InvoiceRepository invoiceRepository,
+    ArkadePaymentMethodHandler arkadePaymentMethodHandler,
+    EventAggregator eventAggregator,
+    ArkWalletService arkWalletService,
+    PaymentService paymentService,
+    ILogger<ArkContractInvoiceListener> logger)
+    : IHostedService
 {
-    private readonly IMemoryCache _memoryCache;
-    private readonly InvoiceRepository _invoiceRepository;
-    private readonly ArkadePaymentMethodHandler _arkadePaymentMethodHandler;
-    private readonly EventAggregator _eventAggregator;
-    private readonly ArkWalletService _arkWalletService;
-    private readonly PaymentService _paymentService;
-    private readonly ILogger<ArkContractInvoiceListener> _logger;
-
-    readonly Channel<string> _CheckInvoices = Channel.CreateUnbounded<string>();
-    CompositeDisposable leases = new();
-
-    public ArkContractInvoiceListener(
-        IMemoryCache memoryCache,
-        InvoiceRepository invoiceRepository,
-        ArkadePaymentMethodHandler arkadePaymentMethodHandler,
-        EventAggregator eventAggregator,
-        ArkWalletService arkWalletService,
-        PaymentService paymentService,
-        ILogger<ArkContractInvoiceListener> logger)
-    {
-        _memoryCache = memoryCache;
-        _invoiceRepository = invoiceRepository;
-        _arkadePaymentMethodHandler = arkadePaymentMethodHandler;
-        _eventAggregator = eventAggregator;
-        _arkWalletService = arkWalletService;
-        _paymentService = paymentService;
-        _logger = logger;
-    }
+    private readonly Channel<string> _checkInvoices = Channel.CreateUnbounded<string>();
+    private CompositeDisposable _leases = new();
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        leases.Add(_eventAggregator.SubscribeAsync<InvoiceEvent>(async inv =>
-        {
-            _memoryCache.Remove(GetCacheKey(inv.Invoice.Id));
-            _CheckInvoices.Writer.TryWrite(inv.Invoice.Id);
-        }));
-        leases.Add(_eventAggregator.SubscribeAsync<VTXOsUpdated>(OnVTXOs));
+        _leases.Add(eventAggregator.SubscribeAsync<InvoiceEvent>(OnInvoiceEvent));
+        _leases.Add(eventAggregator.SubscribeAsync<VTXOsUpdated>(OnVTXOs));
 
         _ = PollAllInvoices(cancellationToken);
         return Task.CompletedTask;
+    }
+
+    private async Task OnInvoiceEvent(InvoiceEvent invoiceEvent)
+    {
+        var inv = await invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, invoiceEvent.InvoiceId);
+        if (inv is null)
+            return;
+        
+        memoryCache.Remove(GetCacheKey(invoiceEvent.Invoice.Id));
+        _checkInvoices.Writer.TryWrite(invoiceEvent.Invoice.Id);
     }
 
     private async Task OnVTXOs(VTXOsUpdated arg)
     {
         foreach (var scriptVtxos in arg.Vtxos.GroupBy(c => c.Script))
         {
-            var inv = await _invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, scriptVtxos.Key); 
+            var inv = await invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, scriptVtxos.Key); 
             if (inv is null)
                 continue;
             foreach (var vtxo in scriptVtxos)
             {
-                await HandlePaymentData(vtxo, inv, _arkadePaymentMethodHandler);
+                await HandlePaymentData(vtxo, inv, arkadePaymentMethodHandler);
             }
         }
-        
     }
 
-
-    private async Task ReceivedPayment(InvoiceEntity invoice, PaymentEntity payment)
+    private Task ReceivedPayment(InvoiceEntity invoice, PaymentEntity payment)
     {
-        _logger.LogInformation(
-            $"Invoice {invoice.Id} received payment {payment.Value} {payment.Currency} {payment.Id}");
+        logger.LogInformation("Invoice {invoiceId} received payment {amount} {currency} {paymentId}",
+            invoice.Id, payment.Value, payment.Currency, payment.Id);
 
-        _eventAggregator.Publish(
+        eventAggregator.Publish(
             new InvoiceEvent(invoice, InvoiceEvent.ReceivedPayment) { Payment = payment });
+        return Task.CompletedTask;
     }
     
     private async Task HandlePaymentData(VTXO vtxo, InvoiceEntity invoice, ArkadePaymentMethodHandler handler)
@@ -102,7 +89,7 @@ public class ArkContractInvoiceListener : IHostedService
 
         if (alreadyExistingPaymentThatMatches == null)
         {
-            var payment = await _paymentService.AddPayment(paymentData);
+            var payment = await paymentService.AddPayment(paymentData);
             if (payment != null)
             {
                 await ReceivedPayment(invoice, payment);
@@ -113,17 +100,17 @@ public class ArkContractInvoiceListener : IHostedService
             //else update it with the new data
             alreadyExistingPaymentThatMatches.Status = PaymentStatus.Settled;
             alreadyExistingPaymentThatMatches.Details = JToken.FromObject(details, handler.Serializer);
-            await _paymentService.UpdatePayments([alreadyExistingPaymentThatMatches]);
+            await paymentService.UpdatePayments([alreadyExistingPaymentThatMatches]);
         }
 
-        _eventAggregator.Publish(new InvoiceNeedUpdateEvent(invoice.Id));
+        eventAggregator.Publish(new InvoiceNeedUpdateEvent(invoice.Id));
     }
     
     
     public Task StopAsync(CancellationToken cancellationToken)
     {
-        leases.Dispose();
-        leases = new CompositeDisposable();
+        _leases.Dispose();
+        _leases = new CompositeDisposable();
         return Task.CompletedTask;
     }
 
@@ -136,7 +123,7 @@ public class ArkContractInvoiceListener : IHostedService
             return;
         }
 
-        await _arkWalletService.ToggleContract(listenedContract.Details.WalletId, listenedContract.Details.Contract,
+        await arkWalletService.ToggleContract(listenedContract.Details.WalletId, listenedContract.Details.Contract,
             active);
     }
 
@@ -148,7 +135,7 @@ public class ArkContractInvoiceListener : IHostedService
             : new ArkadeListenedContract
             {
                 InvoiceId = invoice.Id,
-                Details = _arkadePaymentMethodHandler.ParsePaymentPromptDetails(prompt.Details)
+                Details = arkadePaymentMethodHandler.ParsePaymentPromptDetails(prompt.Details)
             };
     }
 
@@ -165,9 +152,9 @@ public class ArkContractInvoiceListener : IHostedService
 
     private Task<InvoiceEntity> GetInvoice(string invoiceId)
     {
-        return _memoryCache.GetOrCreateAsync(GetCacheKey(invoiceId), async (cacheEntry) =>
+        return memoryCache.GetOrCreateAsync(GetCacheKey(invoiceId), async cacheEntry =>
         {
-            var invoice = await _invoiceRepository.GetInvoice(invoiceId);
+            var invoice = await invoiceRepository.GetInvoice(invoiceId);
             if (invoice is null)
                 return null;
             cacheEntry.AbsoluteExpiration = GetExpiration(invoice);
@@ -183,21 +170,21 @@ public class ArkContractInvoiceListener : IHostedService
             return;
         try
         {
-            foreach (var invoice in await _invoiceRepository.GetMonitoredInvoices(ArkadePlugin.ArkadePaymentMethodId,
+            foreach (var invoice in await invoiceRepository.GetMonitoredInvoices(ArkadePlugin.ArkadePaymentMethodId,
                          cancellation))
             {
                 if (GetListenedArkadeInvoice(invoice) is null) continue;
-                _CheckInvoices.Writer.TryWrite(invoice.Id);
-                _memoryCache.Set(GetCacheKey(invoice.Id), invoice, GetExpiration(invoice));
+                _checkInvoices.Writer.TryWrite(invoice.Id);
+                memoryCache.Set(GetCacheKey(invoice.Id), invoice, GetExpiration(invoice));
             }
 
-            _logger.LogInformation("Checking if any payment arrived on Arkade while the server was offline... done.");
+            logger.LogInformation("Checking if any payment arrived on Arkade while the server was offline... done.");
 
 
-            while (await _CheckInvoices.Reader.WaitToReadAsync(cancellation) &&
-                   _CheckInvoices.Reader.TryRead(out var invoiceId))
+            while (await _checkInvoices.Reader.WaitToReadAsync(cancellation) &&
+                   _checkInvoices.Reader.TryRead(out var invoiceId))
             {
-                _logger.LogInformation("Checking for invoice {InvoiceId}", invoiceId);
+                logger.LogInformation("Checking for invoice {InvoiceId}", invoiceId);
                 var invoice = await GetInvoice(invoiceId);
                 await ToggleArkadeContract(invoice);
             }
@@ -208,7 +195,7 @@ public class ArkContractInvoiceListener : IHostedService
         catch (Exception ex)
         {
             await Task.Delay(1000, cancellation);
-            _logger.LogWarning(ex, "Unhandled error in the Arkade invoice listener.");
+            logger.LogWarning(ex, "Unhandled error in the Arkade invoice listener.");
             goto retry;
         }
     }
