@@ -28,6 +28,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkadeTweakedContractSweeper:IHostedService
 {
+    private readonly ArkTransactionBuilder _arkTransactionBuilder;
     private readonly StoreRepository _storeRepository;
     private readonly ArkService.ArkServiceClient _arkServiceClient;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
@@ -38,7 +39,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
     private CompositeDisposable leases = new();
     CancellationTokenSource cts = new();
     public ArkadeTweakedContractSweeper(
-        
+        ArkTransactionBuilder arkTransactionBuilder,
         StoreRepository storeRepository, 
         ArkService.ArkServiceClient arkServiceClient,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
@@ -48,6 +49,7 @@ public class ArkadeTweakedContractSweeper:IHostedService
         
         BTCPayNetworkProvider btcPayNetworkProvider )
     {
+        _arkTransactionBuilder = arkTransactionBuilder;
         _storeRepository = storeRepository;
         _arkServiceClient = arkServiceClient;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
@@ -116,13 +118,15 @@ public class ArkadeTweakedContractSweeper:IHostedService
                 var txout = new TxOut(total, destination.GetArkAddress());
                 
                 // Use the new ArkTransactionExtensions to create the Ark transaction
-                var arkTx = await _network.CreateArkTransaction(
+                var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
                     (ArkCoinWithSigner[]) arkCoins,
                     [txout],
                     cts.Token);
                 
                 // Submit the transaction using the extension method
-                var finalizeTxResponse = await _arkServiceClient.SubmitArkTransaction(
+                var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
+                    (ArkCoinWithSigner[]) arkCoins,
+                    _arkServiceClient,
                     arkTx.arkTx,
                     arkTx.Item2,
                     _network,

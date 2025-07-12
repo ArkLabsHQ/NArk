@@ -4,15 +4,12 @@ using NBitcoin.Secp256k1;
 namespace NArk;
 
 
-
 public class NofNMultisigTapScript : ScriptBuilder
 {
     public NofNMultisigTapScript(ECXOnlyPubKey[] owners)
     {
         Owners = owners;
     }
-
-    public static TapScript Create(params ECXOnlyPubKey[] owners) => new NofNMultisigTapScript(owners).Build();
 
     public ECXOnlyPubKey[] Owners { get; }
     public override IEnumerable<Op> BuildScript()

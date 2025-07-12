@@ -14,6 +14,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkadeHTLCContractSweeper : IHostedService
 {
+    private readonly ArkTransactionBuilder _arkTransactionBuilder;
     private readonly ArkService.ArkServiceClient _arkServiceClient;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
     private readonly ArkadeWalletSignerProvider _walletSignerProvider;
@@ -25,6 +26,7 @@ public class ArkadeHTLCContractSweeper : IHostedService
     CancellationTokenSource cts = new();
 
     public ArkadeHTLCContractSweeper(
+        ArkTransactionBuilder arkTransactionBuilder,
         ArkService.ArkServiceClient arkServiceClient,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         ArkadeWalletSignerProvider walletSignerProvider,
@@ -33,6 +35,7 @@ public class ArkadeHTLCContractSweeper : IHostedService
         ILogger<ArkadeHTLCContractSweeper> logger,
         BTCPayNetworkProvider btcPayNetworkProvider)
     {
+        _arkTransactionBuilder = arkTransactionBuilder;
         _arkServiceClient = arkServiceClient;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
         _walletSignerProvider = walletSignerProvider;
@@ -137,17 +140,22 @@ public class ArkadeHTLCContractSweeper : IHostedService
                         .Select(coin => new ArkCoinWithSigner(signer, coin.Contract, coin.Outpoint, coin.TxOut))
                         .ToArray();
                     
-                    var arkTx = await _network.CreateArkTransaction(
+
+                    // Use the new ArkTransactionExtensions to create the Ark transaction
+                    var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
                         coins,
                         [txout],
                         cts.Token);
-                    
+                
                     // Submit the transaction using the extension method
-                    var finalizeTxResponse = await _arkServiceClient.SubmitArkTransaction(
+                    var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
+                        coins,
+                        _arkServiceClient,
                         arkTx.arkTx,
                         arkTx.Item2,
                         _network,
                         cts.Token);
+
                     
                     // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
                 }
@@ -157,167 +165,6 @@ public class ArkadeHTLCContractSweeper : IHostedService
             await tcsWaitForNextPoll.Task.WithCancellation(CancellationTokenSource
                 .CreateLinkedTokenSource(cts.Token, cts2.Token).Token);
         }
-    }
-
-    private async Task<(PSBT arkTx, (PSBT checkpoint, WitScript inputWitness)[] checkpoints)> ConstructArkTransaction(
-        IArkadeWalletSigner signer, 
-        List<ArkCoin> toSweepWithClaimPath,
-        List<ArkCoin> toSweepWithRefundPath, 
-        TxOut[] outputs,
-        CancellationToken cancellationToken)
-    {
-        var p2a = Script.FromHex("51024e73");
-
-        List<(PSBT checkpoint, WitScript inputWitness)> checkpoints = new();
-        List<(ArkCoin coin, IArkadeWalletSigner signer)> checkpointCoins = new();
-
-        // Process claim path coins (receiver with preimage)
-        foreach (var coin in toSweepWithClaimPath)
-        {
-            var htlc = (VHTLCContract)coin.Contract;
-            
-            // Create checkpoint contract for claim path
-            var checkpointScriptBuilders = new List<ScriptBuilder>();
-            var receiverScript = new NofNMultisigTapScript([htlc.Receiver]);
-            var serverScript = new NofNMultisigTapScript([htlc.Server]);
-            
-            checkpointScriptBuilders.Add(new UnilateralPathArkTapScript(htlc.UnilateralClaimDelay, serverScript));
-            checkpointScriptBuilders.Add(new CollaborativePathArkTapScript(htlc.Server, receiverScript));
-            
-            var checkpointContract = new GenericArkContract(htlc.Server, checkpointScriptBuilders,
-                new Dictionary<string, string>()
-                {
-                    { "server", htlc.Server.ToHex() },
-                    { "receiver", htlc.Receiver.ToHex() },
-                    { "sender", htlc.Sender.ToHex() },
-                    { "hash", htlc.Hash.ToString() }
-                });
-            
-            // Build checkpoint transaction
-            var checkpoint = _network.CreateTransactionBuilder();
-            checkpoint.SetVersion(3);
-            checkpoint.SetFeeWeight(0);
-            checkpoint.AddCoin(coin);
-            checkpoint.DustPrevention = false;
-            checkpoint.Send(p2a, Money.Zero);
-            checkpoint.SendAllRemaining(checkpointContract.GetArkAddress());
-
-            var checkpointTx = checkpoint.BuildPSBT(false);
-            
-            // Sign the checkpoint transaction using claim path
-            var checkpointgtx = checkpointTx.GetGlobalTransaction();
-            var checkpointPrecomputedTransactionData =
-                checkpointgtx.PrecomputeTransactionData([coin.TxOut]);
-
-            var input = checkpointgtx.Inputs.FindIndexedInput(coin.Outpoint);
-            
-            checkpointTx.Inputs[(int)input.Index].Unknown.SetArkField(htlc.GetTapTree());
-            checkpointTx.Inputs[(int)input.Index].Unknown.SetArkField(new WitScript(Op.GetPushOp(htlc.Preimage!)));
-            
-            var tapLeaf = htlc.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().First().Build();
-            var hash = checkpointgtx.GetSignatureHashTaproot(checkpointPrecomputedTransactionData,
-                new TaprootExecutionData((int)input.Index, tapLeaf.LeafHash));
-            
-            var sig = await signer.Sign(hash, null, cancellationToken);
-            var witness = htlc.ClaimWitness(htlc.Preimage!, sig);
-            
-            checkpoints.Add((checkpointTx, witness));
-            var txout = checkpointTx.Outputs.Single(output =>
-                output.ScriptPubKey == checkpointContract.GetArkAddress().ScriptPubKey);
-            var outpoint = new OutPoint(checkpointgtx, txout.Index);
-            checkpointCoins.Add((new ArkCoin(checkpointContract, outpoint, txout.GetTxOut()!), signer));
-        }
-        
-        // Process refund path coins (sender with timelock passed)
-        foreach (var coin in toSweepWithRefundPath)
-        {
-            var htlc = (VHTLCContract)coin.Contract;
-            
-            // Create checkpoint contract for refund path
-            var checkpointScriptBuilders = new List<ScriptBuilder>();
-            var senderScript = new NofNMultisigTapScript([htlc.Sender]);
-            var serverScript = new NofNMultisigTapScript([htlc.Server]);
-            
-            checkpointScriptBuilders.Add(new UnilateralPathArkTapScript(htlc.UnilateralRefundWithoutReceiverDelay, serverScript));
-            checkpointScriptBuilders.Add(new CollaborativePathArkTapScript(htlc.Server, senderScript));
-            
-            var checkpointContract = new GenericArkContract(htlc.Server, checkpointScriptBuilders);
-            
-            // Build checkpoint transaction
-            var checkpoint = _network.CreateTransactionBuilder();
-            checkpoint.SetVersion(3);
-            checkpoint.SetFeeWeight(0);
-            checkpoint.AddCoin(coin);
-            checkpoint.DustPrevention = false;
-            checkpoint.Send(p2a, Money.Zero);
-            checkpoint.SendAllRemaining(checkpointContract.GetArkAddress());
-
-            var checkpointTx = checkpoint.BuildPSBT(false);
-            
-            // Sign the checkpoint transaction using refund path
-            var checkpointgtx = checkpointTx.GetGlobalTransaction();
-            var checkpointPrecomputedTransactionData =
-                checkpointgtx.PrecomputeTransactionData([coin.TxOut]);
-
-            var input = checkpointgtx.Inputs.FindIndexedInput(coin.Outpoint);
-
-            checkpointTx.Inputs[(int) input.Index].Unknown.SetArkField(htlc.GetTapTree());
-            var tapLeaf = htlc.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().First().Build();
-            var hash = checkpointgtx.GetSignatureHashTaproot(checkpointPrecomputedTransactionData,
-                new TaprootExecutionData((int)input.Index, tapLeaf.LeafHash));
-            
-            var sig = await signer.Sign(hash, null, cancellationToken);
-            var witness = htlc.RefundWithoutReceiverWitness(sig);
-            
-            checkpoints.Add((checkpointTx, witness));
-            var txout = checkpointTx.Outputs.Single(output =>
-                output.ScriptPubKey == checkpointContract.GetArkAddress().ScriptPubKey);
-            var outpoint = new OutPoint(checkpointgtx, txout.Index);
-            checkpointCoins.Add((new ArkCoin(checkpointContract, outpoint, txout.GetTxOut()!), signer));
-        }
-
-        // Build the Ark transaction that spends from all checkpoint outputs
-        var arkTx = _network.CreateTransactionBuilder();
-        arkTx.SetVersion(3);
-        arkTx.SetFeeWeight(0);
-        arkTx.DustPrevention = false;
-
-        arkTx.Send(p2a, Money.Zero);
-        foreach (var coin in checkpointCoins)
-        {
-            arkTx.AddCoin(coin.coin);
-        }
-
-        foreach (var output in outputs)
-        {
-            arkTx.Send(output.ScriptPubKey, output.Value);
-        }
-
-        var tx = arkTx.BuildPSBT(false);
-
-        var gtx = tx.GetGlobalTransaction();
-        var precomputedTransactionData =
-            gtx.PrecomputeTransactionData(checkpointCoins.Select(x => x.coin.TxOut).ToArray());
-            
-        // Sign each input in the Ark transaction
-        foreach (var coin in checkpointCoins)
-        {
-            var contract = (GenericArkContract)coin.coin.Contract;
-            var input = gtx.Inputs.FindIndexedInput(coin.coin.Outpoint);
-
-            tx.Inputs[(int) input.Index].Unknown.SetArkField(contract.GetTapTree());
-            var collabPath = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
-            var tapleaf = collabPath.Build();
-            var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
-                new TaprootExecutionData((int)input.Index, tapleaf.LeafHash));
-            var sig = await coin.signer.Sign(hash, null, cancellationToken);
-            tx.Inputs[(int)input.Index].FinalScriptWitness = new WitScript(
-                Op.GetPushOp(sig.ToBytes()),
-                Op.GetPushOp(tapleaf.Script.ToBytes()),
-                Op.GetPushOp(contract.GetTaprootSpendInfo().GetControlBlock(tapleaf).ToBytes()));
-        }
-
-        return (tx, checkpoints.ToArray());
     }
 
     private Task OnVTXOsUpdated(VTXOsUpdated arg)

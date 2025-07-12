@@ -3,13 +3,17 @@ using NBitcoin.Secp256k1;
 
 namespace NArk;
 
-public class CollaborativePathArkTapScript : NofNMultisigTapScript
+
+
+
+public class CollaborativePathArkTapScript:ScriptBuilder
 {
-    public ECXOnlyPubKey Server => Owners[0];
+    public ECXOnlyPubKey Server { get; }
     public ScriptBuilder? Condition { get; }
 
-    public CollaborativePathArkTapScript(ECXOnlyPubKey server, ScriptBuilder? condition = null) : base([server])
+    public CollaborativePathArkTapScript(ECXOnlyPubKey server, ScriptBuilder? condition = null)
     {
+        Server = server;
         Condition = condition;
     }
 
@@ -18,6 +22,12 @@ public class CollaborativePathArkTapScript : NofNMultisigTapScript
 
     public override IEnumerable<Op> BuildScript()
     {
-        return [..Condition?.BuildScript() ?? new List<Op>(), ..base.BuildScript()];
+        var condition = Condition?.BuildScript()?.ToList() ?? [];
+        foreach (var op in condition)
+        {
+            yield return op;
+        }
+        yield return Op.GetPushOp(Server.ToBytes());
+        yield return OpcodeType.OP_CHECKSIG;
     }
 }

@@ -37,29 +37,19 @@ public class ArkPaymentContract : ArkContract
     }
     
     
-    public WitScript CollaborativePathWitness(SecpSchnorrSignature user )
-    {
-        var tapLeaf = CollaborativePath().Build();
-        
-        
-        return new WitScript(
-            Op.GetPushOp(user.ToBytes()), 
-            Op.GetPushOp(tapLeaf.Script.ToBytes()),
-            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
-    }
-    
     public ScriptBuilder UnilateralPath()
     {
         var ownerScript = new NofNMultisigTapScript( [User]);
         return new UnilateralPathArkTapScript(ExitDelay, ownerScript);
     }
     
-    public WitScript UnilateralPathWitness(SecpSchnorrSignature user )
+    public WitScript UnilateralPathWitness(SecpSchnorrSignature server,SecpSchnorrSignature user )
     {
         var tapLeaf = UnilateralPath().Build();
         
         
         return new WitScript(
+            Op.GetPushOp(server.ToBytes()),
             Op.GetPushOp(user.ToBytes()), 
             Op.GetPushOp(tapLeaf.Script.ToBytes()),
             Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));

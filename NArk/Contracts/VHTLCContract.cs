@@ -92,7 +92,7 @@ public class VHTLCContract : ArkContract
     }
     
 
-    private ScriptBuilder CreateClaimScript()
+    public ScriptBuilder CreateClaimScript()
     {
         // claim (preimage + receiver)
         var hashLock = new HashLockTapScript(Hash);
@@ -101,18 +101,19 @@ public class VHTLCContract : ArkContract
             new CompositeTapScript(hashLock, receiverMultisig));
     }
 
-    public WitScript ClaimWitness(byte[] preimage, SecpSchnorrSignature receiver)
+    public WitScript ClaimWitness(SecpSchnorrSignature server,byte[] preimage, SecpSchnorrSignature receiver)
     {
         var tapLeaf = CreateClaimScript().Build();
         
         return new WitScript(
+            Op.GetPushOp(server.ToBytes()),
             Op.GetPushOp(preimage),
             Op.GetPushOp(receiver.ToBytes()),
             Op.GetPushOp(tapLeaf.Script.ToBytes()),
             Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
 
-    private ScriptBuilder CreateCooperativeScript()
+    public ScriptBuilder CreateCooperativeScript()
     {
         // refund (sender + receiver + server)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
@@ -120,18 +121,19 @@ public class VHTLCContract : ArkContract
             new CompositeTapScript(senderReceiverMultisig));
     }
 
-    public WitScript CooperativeWitness(SecpSchnorrSignature sender, SecpSchnorrSignature receiver)
+    public WitScript CooperativeWitness(SecpSchnorrSignature server, SecpSchnorrSignature sender, SecpSchnorrSignature receiver)
     {
         var tapLeaf = CreateCooperativeScript().Build();
         
         return new WitScript(
+            Op.GetPushOp(server.ToBytes()),
             Op.GetPushOp(sender.ToBytes()),
             Op.GetPushOp(receiver.ToBytes()),
             Op.GetPushOp(tapLeaf.Script.ToBytes()),
             Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
 
-    private ScriptBuilder CreateRefundWithoutReceiverScript()
+    public ScriptBuilder CreateRefundWithoutReceiverScript()
     {
         // refundWithoutReceiver (at refundLocktime, sender  + server)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender]);
@@ -140,17 +142,18 @@ public class VHTLCContract : ArkContract
             new CompositeTapScript(lockTime, senderReceiverMultisig));
     }
 
-    public WitScript RefundWithoutReceiverWitness(SecpSchnorrSignature sender)
+    public WitScript RefundWithoutReceiverWitness(SecpSchnorrSignature server, SecpSchnorrSignature sender)
     {
         var tapLeaf = CreateRefundWithoutReceiverScript().Build();
         
         return new WitScript(
+            Op.GetPushOp(server.ToBytes()),
             Op.GetPushOp(sender.ToBytes()),
             Op.GetPushOp(tapLeaf.Script.ToBytes()),
             Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
 
-    private ScriptBuilder CreateUnilateralClaimScript()
+    public ScriptBuilder CreateUnilateralClaimScript()
     {
         // unilateralClaim (preimage + receiver after unilateralClaimDelay)
         var hashLock = new HashLockTapScript(Hash);
@@ -170,7 +173,7 @@ public class VHTLCContract : ArkContract
             Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
 
-    private ScriptBuilder CreateUnilateralRefundScript()
+    public ScriptBuilder CreateUnilateralRefundScript()
     {
         // unilateralRefund (sender + receiver after unilateralRefundDelay)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
@@ -189,7 +192,7 @@ public class VHTLCContract : ArkContract
             Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
 
-    private ScriptBuilder CreateUnilateralRefundWithoutReceiverScript()
+    public ScriptBuilder CreateUnilateralRefundWithoutReceiverScript()
     {
         // unilateralRefundWithoutReceiver (sender after unilateralRefundWithoutReceiverDelay)
         return new UnilateralPathArkTapScript(UnilateralRefundWithoutReceiverDelay,

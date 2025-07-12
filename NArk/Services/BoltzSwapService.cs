@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
@@ -6,19 +7,38 @@ using NArk.Wallet.Boltz;
 
 namespace NArk.Services;
 
-public class BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService operatorTermsService)
+public class BoltzSwapService
 {
+    private readonly BoltzClient _boltzClient;
+    private readonly IOperatorTermsService _operatorTermsService;
+    private readonly ILogger<BoltzSwapService> _logger;
+
+    public BoltzSwapService(
+        BoltzClient boltzClient, 
+        IOperatorTermsService operatorTermsService,
+        ILogger<BoltzSwapService> logger = null)
+    {
+        _boltzClient = boltzClient;
+        _operatorTermsService = operatorTermsService;
+        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<BoltzSwapService>.Instance;
+    }
+
     public async Task<ReverseSwapResult> CreateReverseSwap(
         long invoiceAmount,
         ECXOnlyPubKey receiver,
         CancellationToken cancellationToken = default)
     {
+        _logger.LogInformation("Creating reverse swap with invoice amount {InvoiceAmount} for receiver {Receiver}", 
+            invoiceAmount, receiver.ToHex());
+        
         // Get operator terms 
-        var operatorTerms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+        var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        _logger.LogDebug("Retrieved operator terms with signer key {SignerKey}", operatorTerms.SignerKey.ToHex());
         
         // Generate preimage and compute preimage hash using SHA256 for Boltz
         var preimage = RandomUtils.GetBytes(32);
         var preimageHash = Hashes.SHA256(preimage);
+        _logger.LogDebug("Generated preimage hash: {PreimageHash}", Encoders.Hex.EncodeData(preimageHash));
 
         // First make the Boltz request to get the swap details including timeout block heights
         var request = new ReverseRequest
@@ -31,20 +51,26 @@ public class BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService ope
             AcceptZeroConf = true
         };
 
-        var response = await boltzClient.CreateReverseSwapAsync(request);
+        _logger.LogDebug("Sending reverse swap request to Boltz");
+        var response = await _boltzClient.CreateReverseSwapAsync(request);
 
         if (response == null)
         {
+            _logger.LogError("Failed to create reverse swap - null response from Boltz");
             throw new InvalidOperationException("Failed to create reverse swap");
         }
+
+        _logger.LogInformation("Received reverse swap response from Boltz with ID: {SwapId}", response.Id);
 
         // Extract the sender key from Boltz's response (refundPublicKey)
         if (string.IsNullOrEmpty(response.RefundPublicKey))
         {
+            _logger.LogError("Boltz did not provide refund public key");
             throw new InvalidOperationException("Boltz did not provide refund public key");
         }
         
         var sender = response.RefundPublicKey.ToECXOnlyPubKey();
+        _logger.LogDebug("Using sender key: {SenderKey}", response.RefundPublicKey);
 
         var vhtlcContract = new VHTLCContract(
             server: operatorTerms.SignerKey,
@@ -60,14 +86,20 @@ public class BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService ope
         // Get the claim address and validate it matches Boltz's lockup address
         var arkAddress = vhtlcContract.GetArkAddress();
         var claimAddress = arkAddress.GetAddress(operatorTerms.Network).ToString();
+        _logger.LogDebug("Generated claim address: {ClaimAddress}", claimAddress);
         
         // Validate that our computed address matches what Boltz expects
         if (claimAddress != response.LockupAddress)
         {
+            _logger.LogWarning("Address mismatch: computed {ComputedAddress}, Boltz expects {BoltzAddress}", 
+                claimAddress, response.LockupAddress);
             // TODO: Temporarily ignore this, since we use a mocked response from Boltz
             //throw new InvalidOperationException($"Address mismatch: computed {claimAddress}, Boltz expects {response.LockupAddress}");
         }
 
+        _logger.LogInformation("Successfully created reverse swap with ID: {SwapId}, lockup address: {LockupAddress}", 
+            response.Id, response.LockupAddress);
+        
         return new ReverseSwapResult
         {
             SwapId = response.Id,
@@ -84,7 +116,19 @@ public class BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService ope
 
     public async Task<SwapStatusResponse?> GetSwapStatusAsync(string swapId, CancellationToken cancellationToken = default)
     {
-        return await boltzClient.GetSwapStatusAsync(swapId);
+        _logger.LogDebug("Getting swap status for swap ID: {SwapId}", swapId);
+        var status = await _boltzClient.GetSwapStatusAsync(swapId);
+        
+        if (status != null)
+        {
+            _logger.LogDebug("Received swap status for {SwapId}: {Status}", swapId, status.Status);
+        }
+        else
+        {
+            _logger.LogWarning("Failed to get swap status for {SwapId} - null response", swapId);
+        }
+        
+        return status;
     }
 
     public async Task<SubmarineClaimDetailsResponse?> GetClaimDetailsAsync(
@@ -93,13 +137,26 @@ public class BoltzSwapService(BoltzClient boltzClient, IOperatorTermsService ope
         string preimage,
         CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("Getting claim details for swap ID: {SwapId}", swapId);
+        
         var request = new SubmarineClaimDetailsRequest
         {
             Transaction = transactionHex,
             Preimage = preimage
         };
 
-        return await boltzClient.GetReverseSwapClaimDetailsAsync(swapId, request);
+        var response = await _boltzClient.GetReverseSwapClaimDetailsAsync(swapId, request);
+        
+        if (response != null)
+        {
+            _logger.LogDebug("Successfully retrieved claim details for swap ID: {SwapId}", swapId);
+        }
+        else
+        {
+            _logger.LogWarning("Failed to get claim details for swap ID: {SwapId} - null response", swapId);
+        }
+        
+        return response;
     }
 }
 

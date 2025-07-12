@@ -13,7 +13,9 @@ using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NArk;
+using NArk.Services;
 using NArk.Wallet.Boltz;
 using NBitcoin;
 
@@ -75,6 +77,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddStartupTask<ArkPluginMigrationRunner>();
 
         serviceCollection.AddSingleton<ArkWalletService>();
+        serviceCollection.AddSingleton<ArkTransactionBuilder>(provider => new ArkTransactionBuilder(provider.GetRequiredService<BTCPayNetworkProvider>().BTC.NBitcoinNetwork, provider.GetRequiredService<ILogger<ArkTransactionBuilder>>()));
         serviceCollection.AddSingleton<ArkadeCheckoutModelExtension>();
         serviceCollection.AddSingleton<ICheckoutModelExtension>(provider => provider.GetRequiredService<ArkadeCheckoutModelExtension>());
         serviceCollection.AddSingleton<IArkadeMultiWalletSigner>(provider => provider.GetRequiredService<ArkWalletService>());
