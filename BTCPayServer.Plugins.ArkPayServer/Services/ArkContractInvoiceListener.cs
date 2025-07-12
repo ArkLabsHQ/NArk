@@ -9,6 +9,8 @@ using BTCPayServer.Services.Invoices;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NArk;
+using NArk.Services;
 using NBitcoin;
 using NBXplorer;
 using Newtonsoft.Json.Linq;
@@ -19,12 +21,16 @@ public class ArkContractInvoiceListener(
     IMemoryCache memoryCache,
     InvoiceRepository invoiceRepository,
     ArkadePaymentMethodHandler arkadePaymentMethodHandler,
+    OperatorTermsService operatorTermsService,
     EventAggregator eventAggregator,
     ArkWalletService arkWalletService,
     PaymentService paymentService,
-    ILogger<ArkContractInvoiceListener> logger)
+    ILogger<ArkContractInvoiceListener> logger,
+    BTCPayNetworkProvider btcPayNetworkProvider)
     : IHostedService
 {
+    private readonly OperatorTermsService _operatorTermsService = operatorTermsService;
+    private readonly BTCPayNetworkProvider _btcPayNetworkProvider = btcPayNetworkProvider;
     private readonly Channel<string> _checkInvoices = Channel.CreateUnbounded<string>();
     private CompositeDisposable _leases = new();
 
@@ -61,9 +67,13 @@ public class ArkContractInvoiceListener(
 
     private async Task OnVTXOs(VTXOsUpdated arg)
     {
+        var terms = await _operatorTermsService.GetOperatorTerms();
         foreach (var scriptVtxos in arg.Vtxos.GroupBy(c => c.Script))
         {
-            var inv = await invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, scriptVtxos.Key); 
+           var script = Script.FromHex(scriptVtxos.Key);
+            var address = ArkAddress.FromScriptPubKey(script, terms.SignerKey);
+            var network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
+            var inv = await invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, address.ToString(network.ChainName == ChainName.Mainnet)); 
             if (inv is null)
                 continue;
             foreach (var vtxo in scriptVtxos)
@@ -211,5 +221,7 @@ public class ArkContractInvoiceListener(
             logger.LogWarning(ex, "Unhandled error in the Arkade invoice listener.");
             goto retry;
         }
+        
+        logger.LogInformation("Exiting poll loop.");
     }
 }

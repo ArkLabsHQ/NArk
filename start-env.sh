@@ -103,7 +103,7 @@ if [ -n "$container" ]; then
   
   # use nigiri faucet to `arkd wallet address`
   address=$(docker exec -ti "$container" arkd wallet address)
-  nigiri faucet address
+  nigiri faucet $address
   address=$(docker exec -ti "$container" ark receive)
   # parse json and take boarding_address
   address=$(echo "$address" | jq -r '.boarding_address')

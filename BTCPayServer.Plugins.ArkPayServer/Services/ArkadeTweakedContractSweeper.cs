@@ -83,61 +83,78 @@ public class ArkadeTweakedContractSweeper:IHostedService
     {
         while (!cts.IsCancellationRequested)
         {
-            tcsWaitForNextPoll = new TaskCompletionSource();
-
-            await using var db = _arkPluginDbContextFactory.CreateContext();
-            
-            var vtxosAndContracts = await db.Vtxos
-                .Where(vtxo => vtxo.SpentByTransactionId == null && !vtxo.IsNote) // VTXO is unspent
-                .Join(
-                    db.WalletContracts.Where(c => c.Type == TweakedArkPaymentContract.ContractType), // Only tweaked contracts
-                    vtxo => vtxo.Script, // Key from VTXO
-                    contract => contract.Script, // Key from WalletContract
-                    (vtxo, contract) => new { Vtxo = vtxo, Contract = contract } // Select both VTXO and contract
-                )
-                .ToListAsync(cts.Token);
-
-            var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
-
-            var walletsToCheck = groupedByWallet.Select(g => g.Key);
-            
-            var walletSigners = await _walletSignerProvider.GetSigners(walletsToCheck.ToArray(), cts.Token);
-            
-            foreach (var group in groupedByWallet)
+            try
             {
-                var signer = walletSigners.TryGet(group.Key);
-                if (signer is null)
-                    continue;
 
-                var arkCoins = group
-                    .Select(x => ToArkCoin(x.Contract, x.Vtxo,signer)).ToArray();
-                var total = Money.Satoshis(arkCoins.Sum(x => x.TxOut.Value));
 
-                var contract = (TweakedArkPaymentContract) ArkContract.Parse(group.First().Contract.Type, group.First().Contract.ContractData);
-                var destination = new ArkPaymentContract(contract.Server, contract.ExitDelay, contract.OriginalUser);
-                var txout = new TxOut(total, destination.GetArkAddress());
-                
-                // Use the new ArkTransactionExtensions to create the Ark transaction
-                var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
-                    (ArkCoinWithSigner[]) arkCoins,
-                    [txout],
-                    cts.Token);
-                
-                // Submit the transaction using the extension method
-                var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
-                    (ArkCoinWithSigner[]) arkCoins,
-                    _arkServiceClient,
-                    arkTx.arkTx,
-                    arkTx.Item2,
-                    _network,
-                    cts.Token);
-                
-                // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
+                tcsWaitForNextPoll = new TaskCompletionSource();
+
+                await using var db = _arkPluginDbContextFactory.CreateContext();
+
+                var vtxosAndContracts = await db.Vtxos
+                    .Where(vtxo => (vtxo.SpentByTransactionId == "" || vtxo.SpentByTransactionId == null) && !vtxo.IsNote) // VTXO is unspent
+                    .Join(
+                        db.WalletContracts.Where(c =>
+                            c.Type == TweakedArkPaymentContract.ContractType), // Only tweaked contracts
+                        vtxo => vtxo.Script, // Key from VTXO
+                        contract => contract.Script, // Key from WalletContract
+                        (vtxo, contract) => new {Vtxo = vtxo, Contract = contract} // Select both VTXO and contract
+                    )
+                    .ToListAsync(cts.Token);
+
+                var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
+
+                var walletsToCheck = groupedByWallet.Select(g => g.Key);
+
+                var walletSigners = await _walletSignerProvider.GetSigners(walletsToCheck.ToArray(), cts.Token);
+
+                foreach (var group in groupedByWallet)
+                {
+                    var signer = walletSigners.TryGet(group.Key);
+                    if (signer is null)
+                        continue;
+
+                    var arkCoins = group
+                        .Select(x => ToArkCoin(x.Contract, x.Vtxo, signer)).ToArray();
+                    var total = Money.Satoshis(arkCoins.Sum(x => x.TxOut.Value));
+
+                    var contract = (TweakedArkPaymentContract) ArkContract.Parse(group.First().Contract.Type,
+                        group.First().Contract.ContractData);
+                    var destination =
+                        new ArkPaymentContract(contract.Server, contract.ExitDelay, contract.OriginalUser);
+                    var txout = new TxOut(total, destination.GetArkAddress());
+
+                    // Use the new ArkTransactionExtensions to create the Ark transaction
+                    var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
+                        (ArkCoinWithSigner[]) arkCoins,
+                        [txout],
+                        cts.Token);
+
+                    // Submit the transaction using the extension method
+                    var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
+                        (ArkCoinWithSigner[]) arkCoins,
+                        _arkServiceClient,
+                        arkTx.arkTx,
+                        arkTx.Item2,
+                        _network,
+                        cts.Token);
+
+                    // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
+                }
+
+
+                using var cts2 = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                await tcsWaitForNextPoll.Task.WithCancellation(CancellationTokenSource
+                    .CreateLinkedTokenSource(cts.Token, cts2.Token).Token);
             }
-            
-            
-            using var cts2 = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            await tcsWaitForNextPoll.Task.WithCancellation( CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cts2.Token).Token);
+            catch (OperationCanceledException)
+            {
+                // Ignore
+            }
+            catch (Exception e)
+            {
+              _logger.LogError(e, "Error while polling for VTXOs to sweep");
+            }
         }
     }
     

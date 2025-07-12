@@ -83,6 +83,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<IArkadeMultiWalletSigner>(provider => provider.GetRequiredService<ArkWalletService>());
         serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddSingleton<ArkContractInvoiceListener>();
+        serviceCollection.AddHostedService<ArkWalletService>(provider => provider.GetRequiredService<ArkWalletService>());
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
         serviceCollection.AddHostedService<ArkadeTweakedContractSweeper>(provider => provider.GetRequiredService<ArkadeTweakedContractSweeper>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());

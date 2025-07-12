@@ -57,6 +57,13 @@ public class ArkAddress: TaprootPubKey
         return encoder.EncodeData(bytes, Bech32EncodingType.BECH32M);
     }
 
+    public static ArkAddress FromScriptPubKey(Script scriptPubKey, ECXOnlyPubKey serverKey)
+    {
+        var k = PayToTaprootTemplate.Instance.ExtractScriptPubKeyParameters(scriptPubKey);
+        var pubKey = ECXOnlyPubKey.Create(k.ToBytes());
+        return new ArkAddress(pubKey, serverKey);
+    }
+
     public static ArkAddress Parse(string address)
     {
         address = address.ToLowerInvariant();

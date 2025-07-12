@@ -306,9 +306,10 @@ public class ArkWalletService(
     }
 
 
-    public Task<bool> CanHandle(string walletId, CancellationToken cancellationToken = default)
+    public async Task<bool> CanHandle(string walletId, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult(walletSigners.ContainsKey(walletId));
+        await started.Task;
+        return walletSigners.ContainsKey(walletId);
     }
 
     public Task<IArkadeWalletSigner> CreateSigner(string walletId, CancellationToken cancellationToken = default)

@@ -69,101 +69,111 @@ public class ArkadeHTLCContractSweeper : IHostedService
     {
         while (!cts.IsCancellationRequested)
         {
-            tcsWaitForNextPoll = new TaskCompletionSource();
-
-            await using var db = _arkPluginDbContextFactory.CreateContext();
-
-            var vtxosAndContracts = await db.Vtxos
-                .Where(vtxo => vtxo.SpentByTransactionId == null && !vtxo.IsNote) // VTXO is unspent
-                .Join(
-                    db.WalletContracts.Where(c => c.Type == VHTLCContract.ContractType), // Only tweaked contracts
-                    vtxo => vtxo.Script, // Key from VTXO
-                    contract => contract.Script, // Key from WalletContract
-                    (vtxo, contract) => new { Vtxo = vtxo, Contract = contract } // Select both VTXO and contract
-                )
-                .ToListAsync(cts.Token);
-
-            var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
-
-            var walletsToCheck = groupedByWallet.Select(g => g.Key);
-
-            var walletSigners = await _walletSignerProvider.GetSigners(walletsToCheck.ToArray(), cts.Token);
-
-            foreach (var group in groupedByWallet)
+            try
             {
-                var signer = walletSigners.TryGet(group.Key);
-                if (signer is null)
-                    continue;
+                tcsWaitForNextPoll = new TaskCompletionSource();
 
-                var wallet = await db.Wallets.FirstOrDefaultAsync(x => x.Id == group.Key, cts.Token);
-                if (wallet is null)
-                    continue;
+                await using var db = _arkPluginDbContextFactory.CreateContext();
 
-                var publicKey = wallet.PublicKey;
+                var vtxosAndContracts = await db.Vtxos
+                    .Where(vtxo => vtxo.SpentByTransactionId == null && !vtxo.IsNote) // VTXO is unspent
+                    .Join(
+                        db.WalletContracts.Where(c => c.Type == VHTLCContract.ContractType), // Only tweaked contracts
+                        vtxo => vtxo.Script, // Key from VTXO
+                        contract => contract.Script, // Key from WalletContract
+                        (vtxo, contract) => new {Vtxo = vtxo, Contract = contract} // Select both VTXO and contract
+                    )
+                    .ToListAsync(cts.Token);
 
-                // lets find htlcs with vtxos that we can sweep
-                // for example, if we are the receiver + we have the preimage, we can sweep it
-                // if we are the sender + we have the preimage + timelock has passed, we can sweep it
-                // the other path is cooperatively signed, so we'd need a way to get a sig from boltz
+                var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
 
-                var toSweepWithClaimPath = new List<ArkCoin>();
-                var toSweepWithRefundPath = new List<ArkCoin>();
+                var walletsToCheck = groupedByWallet.Select(g => g.Key);
 
-                foreach (var vtxo in group)
+                var walletSigners = await _walletSignerProvider.GetSigners(walletsToCheck.ToArray(), cts.Token);
+
+                foreach (var group in groupedByWallet)
                 {
-                    var arkCoin = ToArkCoin(vtxo.Contract, vtxo.Vtxo);
-                    var htlc = (VHTLCContract)arkCoin.Contract;
-                    if (htlc.Receiver == publicKey && htlc.Preimage is not null)
+                    var signer = walletSigners.TryGet(group.Key);
+                    if (signer is null)
+                        continue;
+
+                    var wallet = await db.Wallets.FirstOrDefaultAsync(x => x.Id == group.Key, cts.Token);
+                    if (wallet is null)
+                        continue;
+
+                    var publicKey = wallet.PublicKey;
+
+                    // lets find htlcs with vtxos that we can sweep
+                    // for example, if we are the receiver + we have the preimage, we can sweep it
+                    // if we are the sender + we have the preimage + timelock has passed, we can sweep it
+                    // the other path is cooperatively signed, so we'd need a way to get a sig from boltz
+
+                    var toSweepWithClaimPath = new List<ArkCoin>();
+                    var toSweepWithRefundPath = new List<ArkCoin>();
+
+                    foreach (var vtxo in group)
                     {
-                        toSweepWithClaimPath.Add(arkCoin);
+                        var arkCoin = ToArkCoin(vtxo.Contract, vtxo.Vtxo);
+                        var htlc = (VHTLCContract) arkCoin.Contract;
+                        if (htlc.Receiver == publicKey && htlc.Preimage is not null)
+                        {
+                            toSweepWithClaimPath.Add(arkCoin);
+                        }
+                        else if (htlc.Sender == publicKey && htlc.RefundLocktime.IsTimeLock &&
+                                 htlc.RefundLocktime.Date < DateTime.UtcNow)
+                        {
+                            toSweepWithRefundPath.Add(arkCoin);
+                        }
                     }
-                    else if (htlc.Sender == publicKey && htlc.RefundLocktime.IsTimeLock &&
-                             htlc.RefundLocktime.Date < DateTime.UtcNow)
+
+                    if (toSweepWithClaimPath.Count > 0 || toSweepWithRefundPath.Count > 0)
                     {
-                        toSweepWithRefundPath.Add(arkCoin);
+                        var total = Money.Satoshis(toSweepWithClaimPath.Concat(toSweepWithRefundPath)
+                            .Sum(x => x.TxOut.Value));
+
+                        var operatorTerms = await _operatorTermsService.GetOperatorTerms(cts.Token);
+                        var destination = new ArkPaymentContract(operatorTerms.SignerKey,
+                            operatorTerms.UnilateralExit, publicKey);
+
+                        var txout = new TxOut(total, destination.GetArkAddress());
+
+                        // Use the new ArkTransactionExtensions to create the Ark transaction
+                        var coins = toSweepWithClaimPath.Concat(toSweepWithRefundPath)
+                            .Select(coin => new ArkCoinWithSigner(signer, coin.Contract, coin.Outpoint, coin.TxOut))
+                            .ToArray();
+
+
+                        // Use the new ArkTransactionExtensions to create the Ark transaction
+                        var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
+                            coins,
+                            [txout],
+                            cts.Token);
+
+                        // Submit the transaction using the extension method
+                        var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
+                            coins,
+                            _arkServiceClient,
+                            arkTx.arkTx,
+                            arkTx.Item2,
+                            _network,
+                            cts.Token);
+
+
+                        // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
                     }
                 }
 
-                if (toSweepWithClaimPath.Count > 0 || toSweepWithRefundPath.Count > 0)
-                {
-                    var total = Money.Satoshis(toSweepWithClaimPath.Concat(toSweepWithRefundPath)
-                        .Sum(x => x.TxOut.Value));
-
-                    var operatorTerms = await _operatorTermsService.GetOperatorTerms(cts.Token);
-                    var destination = new ArkPaymentContract(operatorTerms.SignerKey,
-                        operatorTerms.UnilateralExit, publicKey);
-
-                    var txout = new TxOut(total, destination.GetArkAddress());
-                    
-                    // Use the new ArkTransactionExtensions to create the Ark transaction
-                    var coins = toSweepWithClaimPath.Concat(toSweepWithRefundPath)
-                        .Select(coin => new ArkCoinWithSigner(signer, coin.Contract, coin.Outpoint, coin.TxOut))
-                        .ToArray();
-                    
-
-                    // Use the new ArkTransactionExtensions to create the Ark transaction
-                    var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
-                        coins,
-                        [txout],
-                        cts.Token);
+                using var cts2 = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                await tcsWaitForNextPoll.Task.WithCancellation(CancellationTokenSource
+                    .CreateLinkedTokenSource(cts.Token, cts2.Token).Token);
+            }catch (OperationCanceledException)
+            {
                 
-                    // Submit the transaction using the extension method
-                    var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
-                        coins,
-                        _arkServiceClient,
-                        arkTx.arkTx,
-                        arkTx.Item2,
-                        _network,
-                        cts.Token);
-
-                    
-                    // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
-                }
             }
-
-            using var cts2 = new CancellationTokenSource(TimeSpan.FromMinutes(5));
-            await tcsWaitForNextPoll.Task.WithCancellation(CancellationTokenSource
-                .CreateLinkedTokenSource(cts.Token, cts2.Token).Token);
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while sweeping HTLCs");
+            }
         }
     }
 

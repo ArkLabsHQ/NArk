@@ -59,8 +59,8 @@ public class ArkPaymentContract : ArkContract
     {
         var data = new Dictionary<string, string>();
         data["exit_delay"] = ExitDelay.Value.ToString();
-        data["user"] = Convert.ToHexString(User.ToBytes());
-        data["server"] = Convert.ToHexString(Server.ToBytes()); 
+        data["user"] = User.ToHex();
+        data["server"] = Server.ToHex();
         return data;
     }
     

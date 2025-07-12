@@ -28,9 +28,9 @@ public class TweakedArkPaymentContract : ArkPaymentContract
     {
         var data = new Dictionary<string, string>();
         data["exit_delay"] = ExitDelay.Value.ToString();
-        data["user"] = Convert.ToHexString(OriginalUser.ToBytes());
-        data["tweak"] = Convert.ToHexString(Tweak);
-        data["server"] = Convert.ToHexString(Server.ToBytes()); 
+        data["user"] = OriginalUser.ToHex();
+        data["tweak"] = Tweak.ToHex();
+        data["server"] = Server.ToHex();
         
         return data;
     }
