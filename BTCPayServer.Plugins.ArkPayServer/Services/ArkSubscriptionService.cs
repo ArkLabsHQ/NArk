@@ -160,6 +160,8 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
         var activeScripts = new HashSet<string>(activeContracts);
 
+        await ProcessUpdates(activeScripts.ToArray(), cancellationToken);
+        
         if (activeScripts.SetEquals(_subscribedScripts))
         {
             _logger.LogDebug("No change in active contracts, skipping subscription update.");
