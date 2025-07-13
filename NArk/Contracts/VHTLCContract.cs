@@ -159,7 +159,7 @@ public class VHTLCContract : ArkContract
         var hashLock = new HashLockTapScript(Hash);
         var receiverMultisig = new NofNMultisigTapScript([Receiver]);
         return new UnilateralPathArkTapScript(UnilateralClaimDelay,
-            new CompositeTapScript(hashLock, receiverMultisig));
+            receiverMultisig, hashLock);
     }
 
     public WitScript UnilateralClaimWitness(byte[] preimage, SecpSchnorrSignature receiver)
@@ -177,8 +177,7 @@ public class VHTLCContract : ArkContract
     {
         // unilateralRefund (sender + receiver after unilateralRefundDelay)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
-        return new UnilateralPathArkTapScript(UnilateralRefundDelay,
-            new CompositeTapScript(senderReceiverMultisig));
+        return new UnilateralPathArkTapScript(UnilateralRefundDelay, senderReceiverMultisig);
     }
 
     public WitScript UnilateralRefundWitness(SecpSchnorrSignature sender, SecpSchnorrSignature receiver)
