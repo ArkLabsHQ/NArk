@@ -79,9 +79,9 @@ namespace NArk.Services
             // Submit the transaction
             var submitRequest = new Ark.V1.SubmitTxRequest
             {
-                SignedArkTx = arkTx.ToBase64()
+                SignedArkTx = arkTx.ToPSBTv0().ToBase64()
             };
-            submitRequest.CheckpointTxs.AddRange(checkpoints.Select(x => x.ToBase64()));
+            submitRequest.CheckpointTxs.AddRange(checkpoints.Select(x => x.ToPSBTv0().ToBase64()));
             
             _logger.LogDebug("Sending SubmitTx request to Ark service");
             var response = await arkServiceClient.SubmitTxAsync(submitRequest, cancellationToken: cancellationToken);
@@ -89,7 +89,7 @@ namespace NArk.Services
             
             // Process the signed checkpoints from the server
             var parsedReceivedCheckpoints = response.SignedCheckpointTxs
-                .Select(x => PSBT.Parse(x, network))
+                .Select(x => PSBT.Parse(x, network).ToPSBTv2())
                 .ToDictionary(psbt => psbt.GetGlobalTransaction().GetHash());
                 
             var unsignedCheckpoints = checkpoints
@@ -112,7 +112,7 @@ namespace NArk.Services
                 ArkTxid = response.ArkTxid
             };
             finalizeTxRequest.FinalCheckpointTxs.AddRange(
-                signedCheckpoints.Select(x => x.ToBase64()));
+                signedCheckpoints.Select(x => x.ToPSBTv0().ToBase64()));
                 
             _logger.LogDebug("Sending FinalizeTx request to Ark service");
             var finalizeResponse = await arkServiceClient.FinalizeTxAsync(finalizeTxRequest, cancellationToken: cancellationToken);
