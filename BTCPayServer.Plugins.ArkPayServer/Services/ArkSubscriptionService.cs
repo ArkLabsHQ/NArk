@@ -3,7 +3,6 @@ using Ark.V1;
 using AsyncKeyedLock;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using BTCPayServer.Services.Invoices;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -289,6 +288,8 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
     private async Task ProcessUpdates(string[] scripts, CancellationToken cancellationToken)
     {
+        if(scripts.Length == 0)
+            return;
         // var handler = _arkadePaymentMethodHandler;
         var request = new GetVtxosRequest();
         request.Scripts.AddRange(scripts);

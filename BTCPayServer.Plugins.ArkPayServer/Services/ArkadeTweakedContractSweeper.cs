@@ -153,7 +153,8 @@ public class ArkadeTweakedContractSweeper:IHostedService
             }
             catch (Exception e)
             {
-              _logger.LogError(e, "Error while polling for VTXOs to sweep");
+              _logger.LogError(e, "Error while polling for VTXOs to sweep. Retrying in 1 minute.");
+                await Task.Delay(TimeSpan.FromMinutes(1), cts.Token);
             }
         }
     }

@@ -18,7 +18,7 @@ public class ArkadeCheckoutModelExtension: ICheckoutModelExtension
 
     public string Image => "arkade.svg";
 
-    public string Badge => "👾";
+    public string Badge => "";//"👾";
 
     public void ModifyCheckoutModel(CheckoutModelContext context)
     {
@@ -27,7 +27,7 @@ public class ArkadeCheckoutModelExtension: ICheckoutModelExtension
         
         context.Model.CheckoutBodyComponentName = BitcoinCheckoutModelExtension.CheckoutBodyComponentName;
         context.Model.ShowRecommendedFee = false;
-        context.Model.InvoiceBitcoinUrlQR = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper).ToUpperInvariant();
+        context.Model.InvoiceBitcoinUrlQR = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper).ToUpperInvariant().Replace("BITCOIN:","bitcoin:");
         context.Model.InvoiceBitcoinUrl = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper);
         
         //

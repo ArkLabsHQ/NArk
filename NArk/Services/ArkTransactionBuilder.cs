@@ -164,11 +164,7 @@ namespace NArk.Services
 
                 var psbtInput = (PSBT2Input) checkpointTx.Inputs.FindIndexedInput(coin.Outpoint)!;
                 // Add Ark PSBT fields
-                psbtInput.Unknown.SetArkField(
-                    coin.Contract.GetTapTree());
-                
-                
-                
+                psbtInput.Unknown.SetArkField(coin.Contract.GetTapTree());
                 
                 // Get signature hash for the input
                 var tapLeaf = GetCollaborativePathLeaf(coin.Contract);

@@ -73,13 +73,14 @@ public class ArkController : Controller
 
     [HttpPost("stores/{storeId}")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-    public async Task<IActionResult> SetupStore(string storeId, ArkStoreWalletViewModel model, string? action = null)
+    public async Task<IActionResult> SetupStore(string storeId, ArkStoreWalletViewModel model, string? command = null)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
             return NotFound();
 
-        if (action == "create")
+        var generatedKey = "";
+        if (command == "create")
         {
             var key = RandomUtils.GetBytes(32)!;
             var encoder = Encoders.Bech32("nsec");
@@ -87,6 +88,8 @@ public class ArkController : Controller
             encoder.StrictLength = false;
             var npub = encoder.EncodeData(key, Bech32EncodingType.BECH32);
             model.Wallet = npub;
+            generatedKey = "Your new wallet key is: " + npub;
+            
         }
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
         if (model.Wallet != config?.WalletId )
@@ -103,8 +106,16 @@ public class ArkController : Controller
             
         }
         await _storeRepository.UpdateStore(store);
-        TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method successfully {(string.IsNullOrEmpty(config?.WalletId) ? "enabled" : "updated")}.";
+        if (string.IsNullOrEmpty(generatedKey))
+        {
+            TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method successfully {(string.IsNullOrEmpty(config?.WalletId) ? "enabled" : "updated")}.";
 
+        }
+        else
+        {
+            TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method successfully generated. {generatedKey}";
+        }
+       
         return RedirectToAction("SetupStore", new { storeId });
     }
     

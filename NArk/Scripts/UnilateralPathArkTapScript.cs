@@ -23,7 +23,8 @@ public class UnilateralPathArkTapScript: ScriptBuilder
         {
             condition.Add(OpcodeType.OP_VERIFY);
         }
-        
-        return [ ..condition, Op.GetPushOp(Timeout.Value), OpcodeType.OP_CHECKSEQUENCEVERIFY,OpcodeType.OP_DROP, ..Owners.BuildScript() ];
+        var owners = Owners.BuildScript().ToList();
+        owners[^1] = OpcodeType.OP_CHECKSIG;
+        return [ ..condition, Op.GetPushOp(Timeout.Value), OpcodeType.OP_CHECKSEQUENCEVERIFY,OpcodeType.OP_DROP, ..owners ];
     }
 }
