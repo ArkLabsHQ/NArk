@@ -227,26 +227,26 @@ namespace NArk.Services
             foreach (var coin in checkpointCoins)
             {
                 var contract = (GenericArkContract)coin.Contract;
-                var input = (PSBT2Input) tx.Inputs.FindIndexedInput(coin.Outpoint)!;
+                var checkpointInput = (PSBT2Input) tx.Inputs.FindIndexedInput(coin.Outpoint)!;
                 
                 // Get collaborative path and create signature
                 var collabPath = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
                 var tapleaf = collabPath.Build();
                 
                 // Add Ark PSBT field
-                input.Unknown.SetArkField(contract.GetTapTree());
-                input.SetTaprootLeafScript(contract.GetTaprootSpendInfo(), tapleaf);
+                checkpointInput.Unknown.SetArkField(contract.GetTapTree());
+                checkpointInput.SetTaprootLeafScript(contract.GetTaprootSpendInfo(), tapleaf);
                 
                 
                
                 var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
-                    new TaprootExecutionData((int)input.Index, tapleaf.LeafHash));
+                    new TaprootExecutionData((int)checkpointInput.Index, tapleaf.LeafHash));
                 
-                _logger.LogDebug("Signing Ark transaction for input {InputIndex}", input.Index);
+                _logger.LogDebug("Signing Ark transaction for input {InputIndex}", checkpointInput.Index);
                 var sig = await coin.Signer.Sign(hash, null, cancellationToken);
                 
                 var ourKey = ( (NofNMultisigTapScript)contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single().Condition).Owners.First();
-                input.SetTaprootScriptSpendSignature(ourKey, tapleaf.LeafHash, sig);
+                checkpointInput.SetTaprootScriptSpendSignature(ourKey, tapleaf.LeafHash, sig);
                 
             }
             
