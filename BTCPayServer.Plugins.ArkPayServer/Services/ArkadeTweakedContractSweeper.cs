@@ -68,12 +68,12 @@ public class ArkadeTweakedContractSweeper:IHostedService
         return Task.CompletedTask;
     }
 
-    private static ArkCoin ToArkCoin(ArkWalletContract c, VTXO vtxo, IArkadeWalletSigner? signer)
+    private static ArkCoinWithSigner ToArkCoin(ArkWalletContract c, VTXO vtxo, IArkadeWalletSigner signer)
     {
         var cobtract = ArkContract.Parse(c.Type, c.ContractData);
         var outpoint = new OutPoint(uint256.Parse(vtxo.TransactionId), vtxo.TransactionOutputIndex);
         var txout = new TxOut(Money.Satoshis(vtxo.Amount), cobtract.GetArkAddress());
-        return signer != null ? new ArkCoinWithSigner(signer, cobtract, outpoint, txout) : new ArkCoin(cobtract, outpoint, txout);
+        return new ArkCoinWithSigner(signer, cobtract, outpoint, txout);
     }
 
     TaskCompletionSource? tcsWaitForNextPoll = null;
@@ -126,13 +126,13 @@ public class ArkadeTweakedContractSweeper:IHostedService
 
                     // Use the new ArkTransactionExtensions to create the Ark transaction
                     var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
-                        (ArkCoinWithSigner[]) arkCoins,
+                        arkCoins,
                         [txout],
                         cts.Token);
 
                     // Submit the transaction using the extension method
                     var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
-                        (ArkCoinWithSigner[]) arkCoins,
+                        arkCoins,
                         _arkServiceClient,
                         arkTx.arkTx,
                         arkTx.Item2,

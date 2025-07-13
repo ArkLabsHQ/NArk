@@ -29,8 +29,6 @@ public class ArkContractInvoiceListener(
     BTCPayNetworkProvider btcPayNetworkProvider)
     : IHostedService
 {
-    private readonly OperatorTermsService _operatorTermsService = operatorTermsService;
-    private readonly BTCPayNetworkProvider _btcPayNetworkProvider = btcPayNetworkProvider;
     private readonly Channel<string> _checkInvoices = Channel.CreateUnbounded<string>();
     private CompositeDisposable _leases = new();
 
@@ -57,22 +55,18 @@ public class ArkContractInvoiceListener(
 
     private async Task OnInvoiceEvent(InvoiceEvent invoiceEvent)
     {
-        var inv = await invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, invoiceEvent.InvoiceId);
-        if (inv is null)
-            return;
-        
         memoryCache.Remove(GetCacheKey(invoiceEvent.Invoice.Id));
         _checkInvoices.Writer.TryWrite(invoiceEvent.Invoice.Id);
     }
 
     private async Task OnVTXOs(VTXOsUpdated arg)
     {
-        var terms = await _operatorTermsService.GetOperatorTerms();
+        var terms = await operatorTermsService.GetOperatorTerms();
         foreach (var scriptVtxos in arg.Vtxos.GroupBy(c => c.Script))
         {
            var script = Script.FromHex(scriptVtxos.Key);
             var address = ArkAddress.FromScriptPubKey(script, terms.SignerKey);
-            var network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
+            var network = btcPayNetworkProvider.BTC.NBitcoinNetwork;
             var inv = await invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, address.ToString(network.ChainName == ChainName.Mainnet)); 
             if (inv is null)
                 continue;

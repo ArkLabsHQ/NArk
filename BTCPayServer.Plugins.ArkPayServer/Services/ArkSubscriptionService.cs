@@ -14,14 +14,10 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 {
-    private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
     private readonly AsyncKeyedLocker _asyncKeyedLocker;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
     private readonly IndexerService.IndexerServiceClient _indexerClient;
-    // private readonly ArkadePaymentMethodHandler _arkadePaymentMethodHandler;
-    // private readonly InvoiceRepository _invoiceRepository;
     private readonly EventAggregator _eventAggregator;
-    // private readonly PaymentService _paymentService;
     private readonly ILogger<ArkSubscriptionService> _logger;
 
     private Task _processingTask;
@@ -39,22 +35,15 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         IndexerService.IndexerServiceClient indexerClient,
-        // ArkadePaymentMethodHandler arkadePaymentMethodHandler,
-        // InvoiceRepository invoiceRepository,
-        PaymentService paymentService,
         EventAggregator eventAggregator,
         ILogger<ArkSubscriptionService> logger)
     {
-        _btcPayNetworkProvider = btcPayNetworkProvider;
         _asyncKeyedLocker = asyncKeyedLocker;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
         _indexerClient = indexerClient;
-        // _arkadePaymentMethodHandler = arkadePaymentMethodHandler;
-        // _invoiceRepository = invoiceRepository;
-        // _paymentService = paymentService;
         _eventAggregator = eventAggregator;
         _logger = logger;
-        _network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
+        _network = btcPayNetworkProvider.BTC.NBitcoinNetwork;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)

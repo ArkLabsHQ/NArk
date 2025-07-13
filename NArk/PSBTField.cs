@@ -92,9 +92,9 @@ public static class ArkPSBTUtils
         foreach (var tapscript in leaves)
         {
             // Write depth (always 1 for now)
-            chunks.Add(new byte[] { 1 });
+            chunks.Add([1]);
             // Write leaf version (0xc0 for tapscript)
-            chunks.Add(new byte[] { 0xc0 });
+            chunks.Add([0xc0]);
             // Write script length and script
             chunks.Add(new VarInt((ulong) tapscript.Script.Length).ToBytes());
             chunks.Add(tapscript.Script.ToBytes());
