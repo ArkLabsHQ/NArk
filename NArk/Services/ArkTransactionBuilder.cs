@@ -57,7 +57,7 @@ namespace NArk.Services
            }
            witness.Add(Op.GetPushOp(leaf.Script.ToBytes()));
            witness.Add(Op.GetPushOp(coin.Contract.GetTaprootSpendInfo().GetControlBlock(leaf).ToBytes()));
-
+           var checkpointInput = 
            receivedCheckpointTx.Inputs[(int) input.Index].FinalScriptWitness = new WitScript(witness.ToArray());
            
            return receivedCheckpointTx;
@@ -79,9 +79,9 @@ namespace NArk.Services
             // Submit the transaction
             var submitRequest = new Ark.V1.SubmitTxRequest
             {
-                SignedArkTx = arkTx.ToPSBTv0().ToBase64()
+                SignedArkTx = arkTx.ToBase64()
             };
-            submitRequest.CheckpointTxs.AddRange(checkpoints.Select(x => x.ToPSBTv0().ToBase64()));
+            submitRequest.CheckpointTxs.AddRange(checkpoints.Select(x => x.ToBase64()));
             
             _logger.LogDebug("Sending SubmitTx request to Ark service");
             var response = await arkServiceClient.SubmitTxAsync(submitRequest, cancellationToken: cancellationToken);
@@ -89,7 +89,7 @@ namespace NArk.Services
             
             // Process the signed checkpoints from the server
             var parsedReceivedCheckpoints = response.SignedCheckpointTxs
-                .Select(x => PSBT.Parse(x, network).ToPSBTv2())
+                .Select(x => PSBT.Parse(x, network))
                 .ToDictionary(psbt => psbt.GetGlobalTransaction().GetHash());
                 
             var unsignedCheckpoints = checkpoints
@@ -112,7 +112,7 @@ namespace NArk.Services
                 ArkTxid = response.ArkTxid
             };
             finalizeTxRequest.FinalCheckpointTxs.AddRange(
-                signedCheckpoints.Select(x => x.ToPSBTv0().ToBase64()));
+                signedCheckpoints.Select(x => x.ToBase64()));
                 
             _logger.LogDebug("Sending FinalizeTx request to Ark service");
             var finalizeResponse = await arkServiceClient.FinalizeTxAsync(finalizeTxRequest, cancellationToken: cancellationToken);
@@ -142,7 +142,7 @@ namespace NArk.Services
             List<PSBT> checkpoints = new();
             List<ArkCoinWithSigner> checkpointCoins = new();
 
-            // Create checkpoint transactions for each input coin
+            
             foreach (var coin in coins)
             {
                 _logger.LogDebug("Creating checkpoint for coin with outpoint {Outpoint}", coin.Outpoint);
@@ -150,6 +150,7 @@ namespace NArk.Services
                 // Create checkpoint contract
                 var checkpointContract = CreateCheckpointContract(coin.Contract);
                 
+                var tapLeaf = GetCollaborativePathLeaf(coin.Contract);
                 // Build checkpoint transaction
                 var checkpoint = _network.CreateTransactionBuilder();
                 checkpoint.SetVersion(3);
@@ -158,20 +159,19 @@ namespace NArk.Services
                 checkpoint.DustPrevention = false;
                 checkpoint.Send(p2a, Money.Zero);
                 checkpoint.SendAllRemaining(checkpointContract.GetArkAddress());
+                checkpoint.SetLockTime(tapLeaf.locktime ?? LockTime.Zero);
 
-                var checkpointTx = (PSBT2)checkpoint.BuildPSBT(false, PSBTVersion.PSBTv2);
+                var checkpointTx = checkpoint.BuildPSBT(false, PSBTVersion.PSBTv0);
 
 
-                var psbtInput = (PSBT2Input) checkpointTx.Inputs.FindIndexedInput(coin.Outpoint)!;
+                var psbtInput = checkpointTx.Inputs.FindIndexedInput(coin.Outpoint)!;
                 // Add Ark PSBT fields
                 psbtInput.Unknown.SetArkField(coin.Contract.GetTapTree());
                 
-                // Get signature hash for the input
-                var tapLeaf = GetCollaborativePathLeaf(coin.Contract);
 
                 psbtInput.SetTaprootLeafScript(coin.Contract.GetTaprootSpendInfo(), tapLeaf.Leaf);
-                if(tapLeaf.locktime is not null)
-                    psbtInput.LockTime = tapLeaf.locktime.Value;
+                if (tapLeaf.locktime is not null)
+                    psbtInput.SetLockTime(tapLeaf.locktime.Value);
                 
                 // Sign the checkpoint transaction
                 // var checkpointGtx = checkpointTx.GetGlobalTransaction();
@@ -217,7 +217,7 @@ namespace NArk.Services
                 arkTx.Send(output.ScriptPubKey, output.Value);
             }
             
-            var tx = (PSBT2) arkTx.BuildPSBT(false, PSBTVersion.PSBTv2);
+            var tx =  arkTx.BuildPSBT(false, PSBTVersion.PSBTv0);
             
             // Sign each input in the Ark transaction
             var gtx = tx.GetGlobalTransaction();
@@ -227,7 +227,7 @@ namespace NArk.Services
             foreach (var coin in checkpointCoins)
             {
                 var contract = (GenericArkContract)coin.Contract;
-                var checkpointInput = (PSBT2Input) tx.Inputs.FindIndexedInput(coin.Outpoint)!;
+                var checkpointInput =  tx.Inputs.FindIndexedInput(coin.Outpoint)!;
                 
                 // Get collaborative path and create signature
                 var collabPath = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
@@ -313,7 +313,7 @@ namespace NArk.Services
                     return (arkContract.CollaborativePath().Build(), null, null);
                 case VHTLCContract {Preimage: not null} claimHtlc:
                     return (claimHtlc.CreateClaimScript().Build(), new WitScript(Op.GetPushOp(claimHtlc.Preimage!)), null);
-                case VHTLCContract refundHtlc when refundHtlc.RefundLocktime.Date > DateTime.UtcNow.Date:
+                case VHTLCContract {RefundLocktime.IsTimeLock: true} refundHtlc when refundHtlc.RefundLocktime.Date > DateTime.UtcNow.Date:
                     return (refundHtlc.CreateRefundWithoutReceiverScript().Build(), null, refundHtlc.RefundLocktime);
                 default:
                     throw new NotSupportedException($"Contract type {contract.GetType().Name} not supported");
