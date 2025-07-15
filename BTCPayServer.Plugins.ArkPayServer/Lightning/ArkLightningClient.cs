@@ -23,13 +23,14 @@ namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 /// </summary>
 public class ArkLightningClient(Network network, 
     string walletId, 
-    BoltzClient boltzClient, 
+    BoltzSwapService boltzSwapService,
     ArkPluginDbContextFactory dbContextFactory, 
     ArkWalletService walletService, 
-    IOperatorTermsService operatorTermsService,
     BoltzSwapSubscriptionService boltzSubscriptionService,
-    IServiceProvider serviceProvider) : IExtendedLightningClient
+    EventAggregator eventAggregator,
+    ILogger<ArkLightningInvoiceListener> logger) : IExtendedLightningClient
 {
+
     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
     {
         await using var dbContext = dbContextFactory.CreateContext();
@@ -204,9 +205,6 @@ public class ArkLightningClient(Network network,
             throw new InvalidOperationException($"Wallet with ID {walletId} not found");
         }
         
-        // Extract the receiver key from the wallet - this is our claim public key
-        
-        var reverseSwapService = new BoltzSwapService(boltzClient, operatorTermsService);
         
         var invoiceAmountSats = createInvoiceRequest.Amount.ToUnit(LightMoneyUnit.Satoshi);
 
@@ -217,7 +215,7 @@ public class ArkLightningClient(Network network,
             var receiverKey = wallet.PublicKey;
 
             // Create reverse swap with just the receiver key - sender key comes from Boltz response
-            swapResult = await reverseSwapService.CreateReverseSwap(
+            swapResult = await boltzSwapService.CreateReverseSwap(
                 (long)invoiceAmountSats, 
                 receiverKey,
                 cancellationToken: cancellation);
@@ -237,7 +235,7 @@ public class ArkLightningClient(Network network,
 
         if (swapResult is null || contract is not VHTLCContract htlcContract) 
         {
-            return null;
+            throw new InvalidOperationException("Failed to create reverse swap");
         }       
 
         var contractScript = htlcContract.GetArkAddress().ScriptPubKey.ToHex();
@@ -268,8 +266,6 @@ public class ArkLightningClient(Network network,
 
     public Task<ILightningInvoiceListener> Listen(CancellationToken cancellation = default)
     {
-        var eventAggregator = serviceProvider.GetRequiredService<EventAggregator>();
-        var logger = serviceProvider.GetRequiredService<ILogger<ArkLightningInvoiceListener>>();
         return Task.FromResult<ILightningInvoiceListener>(new ArkLightningInvoiceListener(walletId, dbContextFactory, logger, eventAggregator, cancellation));
     }
 
@@ -287,7 +283,7 @@ public class ArkLightningClient(Network network,
         
         var vtxos = await dbContext.Vtxos
             .Where(vtxo => contracts.Contains(vtxo.Script))
-            .Where(vtxo => vtxo.SpentByTransactionId == null)
+            .Where(vtxo => vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == "")
             .ToListAsync(cancellation);
         
         var sum = vtxos.Sum(vtxo => vtxo.Amount);
@@ -347,4 +343,6 @@ public class ArkLightningClient(Network network,
 
     public string? DisplayName => "Arkade Lightning (Boltz)";
     public Uri? ServerUri => null;
+
+    public override string ToString() => $"type=arkade;wallet-id={walletId}";
 }

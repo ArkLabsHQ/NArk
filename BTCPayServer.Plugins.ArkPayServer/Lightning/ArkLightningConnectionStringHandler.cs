@@ -26,12 +26,7 @@ public class ArkLightningConnectionStringHandler(IServiceProvider serviceProvide
         }
 
         error = null;
-        var boltzClient = serviceProvider.GetRequiredService<BoltzClient>();
-        var dbContextFactory = serviceProvider.GetRequiredService<ArkPluginDbContextFactory>();
-        var walletService = serviceProvider.GetRequiredService<ArkWalletService>();
-        var operatorTermsService = serviceProvider.GetRequiredService<IOperatorTermsService>();
-        var boltzSwapMonitorService = serviceProvider.GetRequiredService<BoltzSwapSubscriptionService>();
-        return new ArkLightningClient(network, walletId, boltzClient, dbContextFactory, walletService, operatorTermsService, boltzSwapMonitorService, serviceProvider);
+        return ActivatorUtilities.CreateInstance<ArkLightningClient>(serviceProvider, network, walletId);
     }
 }
 

@@ -66,7 +66,7 @@ public class VHTLCContract : ArkContract
             { "sender", Sender.ToHex() },
             { "receiver", Receiver.ToHex() },
             { "hash", Encoders.Hex.EncodeData(Hash.ToBytes()) },
-            { "refundLocktime", RefundLocktime.ToString() },
+            { "refundLocktime", RefundLocktime.Value.ToString() },
             { "unilateralClaimDelay", UnilateralClaimDelay.Value.ToString() },
             { "unilateralRefundDelay", UnilateralRefundDelay.Value.ToString() },
             { "unilateralRefundWithoutReceiverDelay", UnilateralRefundWithoutReceiverDelay.Value.ToString() }

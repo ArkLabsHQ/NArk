@@ -40,6 +40,9 @@
             </button>
         }
         <button id="page-primary" name="command" type="submit" value="save" class="btn btn-primary me-2">Save</button>
+        @if (!string.IsNullOrEmpty(Model.Wallet) && !Model.LNEnabled){
+            <button name="command" type="submit" value="enable-ln" class="btn btn-primary me-2">Enable Lightning</button>
+        }
     </div>
 </form>
      <div class="table-responsive">
