@@ -143,21 +143,11 @@ public class ArkadeHTLCContractSweeper : IHostedService
                             .ToArray();
 
 
-                        // Use the new ArkTransactionExtensions to create the Ark transaction
-                        var arkTx = await _arkTransactionBuilder.ConstructArkTransaction(
+                        await _arkTransactionBuilder.ConstructAndSubmitArkTransaction(
                             coins,
                             [txout],
-                            cts.Token);
-
-                        // Submit the transaction using the extension method
-                        var finalizeTxResponse = await _arkTransactionBuilder.SubmitArkTransaction(
-                            coins,
                             _arkServiceClient,
-                            arkTx.arkTx,
-                            arkTx.Item2,
-                            _network,
                             cts.Token);
-
 
                         // _eventAggregator.Publish(new VTXOsUpdated(finalizeTxResponse.Vtxos));
                     }

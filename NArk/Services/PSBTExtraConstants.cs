@@ -1,4 +1,5 @@
-﻿using NBitcoin;
+using NBitcoin;
+using NBitcoin.BIP370;
 using NBitcoin.Secp256k1;
 
 namespace NArk.Services;
@@ -46,14 +47,11 @@ public static class PSBTExtraConstants
         
         
     }
-        
+
     public static (ControlBlock controlBlock, TapScript leafScript) GetTaprootLeafScript(byte[] keyBytes, byte[] valueBytes)
     {
         var controlBlock =  ControlBlock.FromSlice(keyBytes[1..65]);
         var leafScript = new TapScript(Script.FromBytesUnsafe(valueBytes[1..^1]), (TapLeafVersion)valueBytes[^1]);
         return (controlBlock, leafScript);
     }
-        
-        
-        
 }

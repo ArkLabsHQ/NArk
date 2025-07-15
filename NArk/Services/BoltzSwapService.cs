@@ -16,11 +16,11 @@ public class BoltzSwapService
     public BoltzSwapService(
         BoltzClient boltzClient, 
         IOperatorTermsService operatorTermsService,
-        ILogger<BoltzSwapService> logger = null)
+        ILogger<BoltzSwapService> logger)
     {
         _boltzClient = boltzClient;
         _operatorTermsService = operatorTermsService;
-        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<BoltzSwapService>.Instance;
+        _logger = logger;
     }
 
     public async Task<ReverseSwapResult> CreateReverseSwap(
@@ -76,7 +76,7 @@ public class BoltzSwapService
             server: operatorTerms.SignerKey,
             sender: sender,
             receiver: receiver,
-            hash: Hashes.Hash160(preimage), // Use Hash160 like arkade implementation
+            preimage: preimage,
             refundLocktime: new LockTime(80 * 600), // TODO: Don't know
             unilateralClaimDelay: new Sequence((uint)response.TimeoutBlockHeight),
             unilateralRefundDelay: new Sequence((uint)response.TimeoutBlockHeight),

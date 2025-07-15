@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using NBitcoin;
-using NBitcoin.BIP370;
 
 namespace NArk.Services
 {
@@ -64,7 +63,17 @@ namespace NArk.Services
         }
 
 
-
+public async Task ConstructAndSubmitArkTransaction(
+            ArkCoinWithSigner[] arkCoins,
+            TxOut[] arkOutputs,
+             Ark.V1.ArkService.ArkServiceClient arkServiceClient,
+            CancellationToken cancellationToken)
+        {
+            var (arkTx, checkpoints) = await ConstructArkTransaction(arkCoins, arkOutputs, cancellationToken);
+            await SubmitArkTransaction(arkCoins, arkServiceClient, arkTx, checkpoints, _network, cancellationToken);
+        }   
+        
+        
         public async Task<Ark.V1.FinalizeTxResponse> SubmitArkTransaction(
             ArkCoinWithSigner[] arkCoins,
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
@@ -170,27 +179,7 @@ namespace NArk.Services
                 
 
                 psbtInput.SetTaprootLeafScript(coin.Contract.GetTaprootSpendInfo(), tapLeaf.Leaf);
-                if (tapLeaf.locktime is not null)
-                    psbtInput.SetLockTime(tapLeaf.locktime.Value);
                 
-                // Sign the checkpoint transaction
-                // var checkpointGtx = checkpointTx.GetGlobalTransaction();
-                // var checkpointPrecomputedTransactionData = 
-                //     checkpointGtx.PrecomputeTransactionData([coin.TxOut]);
-
-                // var input = checkpointGtx.Inputs.FindIndexedInput(coin.Outpoint);
-                // var hash = checkpointGtx.GetSignatureHashTaproot(
-                //     checkpointPrecomputedTransactionData,
-                //     new TaprootExecutionData((int)input.Index, tapLeaf.Leaf.LeafHash));
-                //
-                // // Sign and create witness
-                // _logger.LogDebug("Signing checkpoint transaction for input {InputIndex}", input.Index);
-                // var sig = await coin.Signer.Sign(
-                //     hash, 
-                //     coin.Contract is TweakedArkPaymentContract tweaked ? tweaked.Tweak : null, 
-                //     cancellationToken);
-                //
-                // Add to checkpoints collection
                 checkpoints.Add(checkpointTx);
                 
                 // Create checkpoint coin for the Ark transaction
@@ -207,9 +196,7 @@ namespace NArk.Services
             arkTx.SetVersion(3);
             arkTx.SetFeeWeight(0);
             arkTx.DustPrevention = false;
-            
             arkTx.Send(p2a, Money.Zero);
-           
             arkTx.AddCoins(checkpointCoins);
             
             foreach (var output in outputs)
@@ -237,8 +224,6 @@ namespace NArk.Services
                 checkpointInput.Unknown.SetArkField(contract.GetTapTree());
                 checkpointInput.SetTaprootLeafScript(contract.GetTaprootSpendInfo(), tapleaf);
                 
-                
-               
                 var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
                     new TaprootExecutionData((int)checkpointInput.Index, tapleaf.LeafHash));
                 
