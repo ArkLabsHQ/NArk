@@ -125,17 +125,19 @@ public class ArkWalletService(
 
     public async Task<ArkWallet> Upsert(string wallet)
     {
-        await using var dbContext = dbContextFactory.CreateContext();
+        
         
         var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(wallet);
+
+        await walletService.DerivePaymentContractAsync(new DeriveContractRequest(publicKey));
+        await using var dbContext = dbContextFactory.CreateContext();
+        
         
         var res = await dbContext.Wallets.Upsert(new ArkWallet()
         {
             Id = publicKey.ToHex(),
             Wallet = wallet,
         }).RunAndReturnAsync();
-
-        await walletService.DerivePaymentContractAsync(new DeriveContractRequest(publicKey));
         LoadWalletSigner(publicKey.ToHex(), wallet);
         return res.Single();
     }

@@ -35,6 +35,7 @@
         </ProjectReference>
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" >
             <Private>false</Private>
+            <Private Condition="'$(Configuration)' == 'Debug'">true</Private>
         </ProjectReference>
         <PackageReference Include="AsyncKeyedLock" Version="7.1.6" />
         <PackageReference Include="BTCPayServer.Lightning.Common" Version="1.5.2" />

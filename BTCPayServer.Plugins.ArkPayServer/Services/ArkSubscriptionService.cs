@@ -27,10 +27,8 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
     private HashSet<string> _subscribedScripts = new();
     private Task? _listeningTask;
     private CancellationTokenSource _listeningCts;
-    private readonly Network _network;
 
     public ArkSubscriptionService(
-        BTCPayNetworkProvider btcPayNetworkProvider,
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         IndexerService.IndexerServiceClient indexerClient,
@@ -42,7 +40,6 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         _indexerClient = indexerClient;
         _eventAggregator = eventAggregator;
         _logger = logger;
-        _network = btcPayNetworkProvider.BTC.NBitcoinNetwork;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -120,6 +117,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             }
         }
     }
+    
 
     private async Task ProcessingLoop(CancellationToken cancellationToken)
     {
@@ -152,14 +150,18 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         using var keyLocker = await _asyncKeyedLocker.LockAsync("UpdateSubscription", cancellationToken);
 
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();
-        var activeContracts = await dbContext.WalletContracts
-            .Where(c => c.Active)
-            .Select(c => c.Script)
+        var allContracts = await dbContext.WalletContracts
+            // .Where(c => c.Active)
+            .Select(c => new { c.Script, c.Active })
             .ToListAsync(cancellationToken);
 
-        var activeScripts = new HashSet<string>(activeContracts);
+        var allScripts = allContracts.Select(c => c.Script).ToHashSet();
 
-        await ProcessUpdates(activeScripts.ToArray(), cancellationToken);
+        await ProcessUpdates(allScripts.ToArray(), cancellationToken);
+        var activeScripts = allContracts
+            .Where(c => c.Active)
+            .Select(c => c.Script)
+            .ToHashSet();
         
         if (activeScripts.SetEquals(_subscribedScripts))
         {
@@ -303,8 +305,6 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
            Vtxos = results.ToArray()
        });
     }
-    
-
     private async Task SynchronizeSubscriptionWithIndexerAsync(CancellationToken cancellationToken)
     {
         if (_subscribedScripts.Count == 0)

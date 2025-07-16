@@ -35,7 +35,7 @@
     
     <div class="text-start mt-4">
         @if (string.IsNullOrEmpty(Model.Wallet)){
-            <button id="test" name="command" type="submit" value="create" class="btn btn-secondary text-nowrap mb-2" text-translate="true">
+            <button id="test" name="command" type="submit" value="create" class="btn btn-secondary text-nowrap mb-2  me-2" text-translate="true">
                 Generate Wallet 
             </button>
         }
@@ -45,93 +45,101 @@
         }
     </div>
 </form>
-     <div class="table-responsive">
-            <table id="contracts" class="table table-hover">
-                <thead >
-                    <tr>
-                        
-                        <th text-translate="true" class="text-nowrap">Address</th>
-                        <th text-translate="true" class="text-nowrap">Contract</th>
-                        <th text-translate="true" class="text-nowrap">Active</th>
-                        <th></th>
-                    </tr>
-                </thead>
-         
-                <tbody>
-                    @foreach (var contract in Model.Contracts)
-                    {
-                        var arkContract = ArkContract.Parse(contract.Key.Type, contract.Key.ContractData);
-                        <tr>
+@if (Model.Contracts?.Any() is true)
+{
+    <h2 class="text-center mt-5 mb-3">Contracts</h2>
 
-                            <td>
-                                <vc:truncate-center text="@arkContract.GetArkAddress().ToString(mainnet)" classes="truncate-center-id"/>
-                            </td>
+    <div class="table-responsive">
+        <table id="contracts" class="table table-hover">
+            <thead >
+            <tr>
 
-                            <td>
-                                <vc:truncate-center text="@arkContract.ToString()" classes="truncate-center-id"/>
-                            </td>
-                            <td>
-                                @if (contract.Key.Active)
-                                {
-                                    <span class="text-success" text-translate="true">Active</span>
-                                }
-                                else
-                                {
-                                    <span class="text-danger" text-translate="true">Inactive</span>
-                                }
-                            </td>
+                <th text-translate="true" class="text-nowrap">Address</th>
+                <th text-translate="true" class="text-nowrap">Contract</th>
+                <th text-translate="true" class="text-nowrap">Active</th>
+                <th></th>
+            </tr>
+            </thead>
 
+            <tbody>
+            @foreach (var contract in Model.Contracts)
+            {
+                var arkContract = ArkContract.Parse(contract.Key.Type, contract.Key.ContractData);
+                <tr>
 
-                        </tr>
-                        @if (contract.Value.Any())
+                    <td>
+                        <vc:truncate-center text="@arkContract.GetArkAddress().ToString(mainnet)" classes="truncate-center-id"/>
+                    </td>
+
+                    <td>
+                        <vc:truncate-center text="@arkContract.ToString()" classes="truncate-center-id"/>
+                    </td>
+                    <td>
+                        @if (contract.Key.Active)
                         {
-                            <tr>
-                                
-                                <td colspan="3" class="border-top-0">
-
-                                    
-                                    <table class="table table-hover">
-                                        <thead>
-                                        <tr>
-                                            <th text-translate="true">Outpoint</th>
-                                            <th text-translate="true">Received Time</th>
-                                            <th text-translate="true">Spent</th>
-                                            
-                                            <th text-translate="true" class="text-end">Amount</th>
-	            
-                                        </tr>
-                                        </thead>
-                                        <tbody>
-                                        @foreach (var vtxo in contract.Value)
-                                        {
-                                        
-                                            <tr >
-                                                <td>
-                                                    <vc:truncate-center text="@vtxo.TransactionId" classes="truncate-center-id"/>
-
-                                                </td>
-                                                <td>@vtxo.SeenAt.ToBrowserDate()</td>
-                                                <td>@if(string.IsNullOrEmpty(vtxo.SpentByTransactionId))
-                                                    {
-                                                        <span class="text-success" text-translate="true">Unspent</span>
-                                                    }else{
-                                                        <span class="text-danger" text-translate="true">Spent</span>
-                                                    }
-                                                    </td>
-                                                
-                                                <td class="payment-value text-end text-nowrap">
-                                                    <span data-sensitive class="text-success">@vtxo.Amount sats</span>
-                                                </td>
-                                            </tr>
-                                        }
-                                        </tbody>
-                                    </table>
-                                   
-
-                                </td>
-                            </tr>
+                            <span class="text-success" text-translate="true">Active</span>
                         }
-                    }
-                </tbody>
-            </table>
-     </div>
+                        else
+                        {
+                            <span class="text-danger" text-translate="true">Inactive</span>
+                        }
+                    </td>
+
+
+                </tr>
+                @if (contract.Value.Any())
+                {
+                    <tr>
+
+                        <td colspan="3" class="border-top-0">
+
+
+                            <table class="table table-hover">
+                                <thead>
+                                <tr>
+                                    <th text-translate="true">Outpoint</th>
+                                    <th text-translate="true">Received Time</th>
+                                    <th text-translate="true">Spent</th>
+
+                                    <th text-translate="true" class="text-end">Amount</th>
+
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var vtxo in contract.Value)
+                                {
+
+                                    <tr >
+                                        <td>
+                                            <vc:truncate-center text="@vtxo.TransactionId" classes="truncate-center-id"/>
+
+                                        </td>
+                                        <td>@vtxo.SeenAt.ToBrowserDate()</td>
+                                        <td>
+                                            @if (string.IsNullOrEmpty(vtxo.SpentByTransactionId))
+                                            {
+                                                <span class="text-success" text-translate="true">Unspent</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-danger" text-translate="true">Spent</span>
+                                            }
+                                        </td>
+
+                                        <td class="payment-value text-end text-nowrap">
+                                            <span data-sensitive class="text-success">@vtxo.Amount sats</span>
+                                        </td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+
+
+                        </td>
+                    </tr>
+                }
+            }
+            </tbody>
+        </table>
+    </div>
+}

@@ -64,7 +64,7 @@ namespace NArk.Services
 
 
 public async Task ConstructAndSubmitArkTransaction(
-            ArkCoinWithSigner[] arkCoins,
+            IEnumerable<ArkCoinWithSigner> arkCoins,
             TxOut[] arkOutputs,
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
             CancellationToken cancellationToken)
@@ -75,7 +75,7 @@ public async Task ConstructAndSubmitArkTransaction(
         
         
         public async Task<Ark.V1.FinalizeTxResponse> SubmitArkTransaction(
-            ArkCoinWithSigner[] arkCoins,
+            IEnumerable<ArkCoinWithSigner> arkCoins,
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
             PSBT arkTx,
             PSBT[] checkpoints,
@@ -139,12 +139,12 @@ public async Task ConstructAndSubmitArkTransaction(
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>The Ark transaction and checkpoint transactions with their input witnesses</returns>
         public async Task<(PSBT arkTx, PSBT[] checkpoints)> ConstructArkTransaction(
-            ArkCoinWithSigner[] coins,
+            IEnumerable<ArkCoinWithSigner> coins,
             TxOut[] outputs,
             CancellationToken cancellationToken)
         {
             _logger.LogInformation("Constructing Ark transaction with {CoinsCount} coins and {OutputsCount} outputs", 
-                coins.Length, outputs.Length);
+                coins.Count(), outputs.Length);
             
             var p2a = Script.FromHex("51024e73"); // Standard Ark protocol marker
 

@@ -20,7 +20,7 @@ public class ArkStoreWalletViewModel
     public string? Wallet { get; set; }
 
     public bool SignerAvailable { get; set; }
-    public Dictionary<ArkWalletContract, VTXO[]> Contracts { get; set; }
+    public Dictionary<ArkWalletContract, VTXO[]> Contracts { get; set; } = new();
 
     public bool LNEnabled { get; set; }
     
@@ -129,7 +129,17 @@ public class ArkController : Controller
                 }
             }else
             {
-                var wallet = await _arkWalletService.Upsert(model.Wallet);
+                ArkWallet wallet;
+                try
+                {
+                    wallet = await _arkWalletService.Upsert(model.Wallet);
+                }catch (Exception ex)
+                {
+                    
+                    TempData[WellKnownTempData.ErrorMessage] = "Could not update wallet: " + ex.Message;
+                    return View(model);
+                }
+
                 config = new ArkadePaymentMethodConfig(wallet.Id);
                 store.SetPaymentMethodConfig(_paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], config);
                 if (lnEnabled || lnConfig is null)

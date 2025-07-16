@@ -32,15 +32,14 @@ public class ArkContractInvoiceListener(
     private readonly Channel<string> _checkInvoices = Channel.CreateUnbounded<string>();
     private CompositeDisposable _leases = new();
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
+        await QueueMonitoredInvoices(cancellationToken);
         _leases.Add(eventAggregator.SubscribeAsync<InvoiceEvent>(OnInvoiceEvent));
         _leases.Add(eventAggregator.SubscribeAsync<VTXOsUpdated>(OnVTXOs));
         _leases.Add(eventAggregator.SubscribeAsync<BoltzSwapStatusChangedEvent>(HandleSwapUpdate));
 
-
         _ = PollAllInvoices(cancellationToken);
-        return Task.CompletedTask;
     }
 
     private async Task HandleSwapUpdate(BoltzSwapStatusChangedEvent arg)
@@ -180,6 +179,18 @@ public class ArkContractInvoiceListener(
     }
 
 
+    private async Task QueueMonitoredInvoices(CancellationToken cancellation)
+    {
+        foreach (var invoice in await invoiceRepository.GetMonitoredInvoices(ArkadePlugin.ArkadePaymentMethodId,
+                     cancellation))
+        {
+            if (GetListenedArkadeInvoice(invoice) is null) continue;
+            _checkInvoices.Writer.TryWrite(invoice.Id);
+            memoryCache.Set(GetCacheKey(invoice.Id), invoice, GetExpiration(invoice));
+        }
+
+    }
+
     private async Task PollAllInvoices(CancellationToken cancellation)
     {
         retry:
@@ -187,17 +198,6 @@ public class ArkContractInvoiceListener(
             return;
         try
         {
-            foreach (var invoice in await invoiceRepository.GetMonitoredInvoices(ArkadePlugin.ArkadePaymentMethodId,
-                         cancellation))
-            {
-                if (GetListenedArkadeInvoice(invoice) is null) continue;
-                _checkInvoices.Writer.TryWrite(invoice.Id);
-                memoryCache.Set(GetCacheKey(invoice.Id), invoice, GetExpiration(invoice));
-            }
-
-            logger.LogInformation("Checking if any payment arrived on Arkade while the server was offline... done.");
-
-
             while (await _checkInvoices.Reader.WaitToReadAsync(cancellation) &&
                    _checkInvoices.Reader.TryRead(out var invoiceId))
             {

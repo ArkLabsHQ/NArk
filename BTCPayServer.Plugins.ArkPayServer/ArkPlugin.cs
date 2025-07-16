@@ -67,8 +67,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<AsyncKeyedLocker>();
         
         serviceCollection.AddSingleton<ArkadeWalletSignerProvider>();
-        serviceCollection.AddSingleton<ArkadeTweakedContractSweeper>();
-        serviceCollection.AddSingleton<ArkadeHTLCContractSweeper>();
+        serviceCollection.AddSingleton<ArkadeContractSweeper>();
         serviceCollection.AddDbContext<ArkPluginDbContext>((provider, o) =>
         {
             var factory = provider.GetRequiredService<ArkPluginDbContextFactory>();
@@ -85,9 +84,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<ArkContractInvoiceListener>();
         serviceCollection.AddHostedService<ArkWalletService>(provider => provider.GetRequiredService<ArkWalletService>());
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
-        serviceCollection.AddHostedService<ArkadeTweakedContractSweeper>(provider => provider.GetRequiredService<ArkadeTweakedContractSweeper>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
-        serviceCollection.AddHostedService<ArkadeHTLCContractSweeper>(provider => provider.GetRequiredService<ArkadeHTLCContractSweeper>());
+        serviceCollection.AddHostedService<ArkadeContractSweeper>(provider => provider.GetRequiredService<ArkadeContractSweeper>());
         
         // Register the Boltz swap services
         serviceCollection.AddSingleton<BoltzSwapSubscriptionService>();
