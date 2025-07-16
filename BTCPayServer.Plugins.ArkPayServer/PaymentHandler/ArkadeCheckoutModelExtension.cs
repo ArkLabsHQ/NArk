@@ -1,4 +1,5 @@
-﻿using BTCPayServer.Payments;
+﻿using BTCPayServer.Data;
+using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
 
 namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
@@ -32,7 +33,14 @@ public class ArkadeCheckoutModelExtension: ICheckoutModelExtension
             .Replace("LIGHTNING=","lightning=")
             .Replace("ARK=","ark=");
         context.Model.InvoiceBitcoinUrl = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper);
-        
+        if (context.Store.GetStoreBlob().OnChainWithLnInvoiceFallback)
+        {
+            var ln = PaymentTypes.LN.GetPaymentMethodId("BTC");
+            var lnurl = PaymentTypes.LNURL.GetPaymentMethodId("BTC");
+            var onchain = PaymentTypes.CHAIN.GetPaymentMethodId("BTC");
+            var pmis = new List<PaymentMethodId> { ln, lnurl, onchain };
+            context.Model.AvailablePaymentMethods.Where(method => pmis.Contains(method.PaymentMethodId)).ToList().ForEach(method => method.Displayed = false);
+        }
         //
         // context.Model.InvoiceBitcoinUrl = _paymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper);
         // context.Model.InvoiceBitcoinUrlQR = context.Model.InvoiceBitcoinUrl;
