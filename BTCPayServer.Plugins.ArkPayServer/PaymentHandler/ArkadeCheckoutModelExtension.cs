@@ -27,7 +27,10 @@ public class ArkadeCheckoutModelExtension: ICheckoutModelExtension
         
         context.Model.CheckoutBodyComponentName = BitcoinCheckoutModelExtension.CheckoutBodyComponentName;
         context.Model.ShowRecommendedFee = false;
-        context.Model.InvoiceBitcoinUrlQR = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper).ToUpperInvariant().Replace("BITCOIN:","bitcoin:");
+        context.Model.InvoiceBitcoinUrlQR = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper).ToUpperInvariant()
+            .Replace("BITCOIN:","bitcoin:")
+            .Replace("LIGHTNING=","lightning=")
+            .Replace("ARK=","ark=");
         context.Model.InvoiceBitcoinUrl = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper);
         
         //
