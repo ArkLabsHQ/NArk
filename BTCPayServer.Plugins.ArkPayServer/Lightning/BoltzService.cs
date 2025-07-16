@@ -50,7 +50,8 @@ public class BoltzService(
 
     private Task OnVTXOs(VTXOsUpdated arg)
     {
-        throw new NotImplementedException();
+        // TODO
+        return Task.CompletedTask;
     }
 
     private async Task<LightningSwapUpdated?> PollSwapStatus(LightningSwap swap)
