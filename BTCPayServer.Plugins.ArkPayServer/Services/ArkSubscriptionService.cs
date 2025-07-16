@@ -96,7 +96,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             if (_subscribedScripts.Add(contract))
             {
                 _logger.LogInformation("Manually subscribing to contract: {Contract}", contract);
-                await SynchronizeSubscriptionWithIndexerAsync(cancellationToken);
+                await SynchronizeSubscriptionWithIndexerAsync(null,cancellationToken);
                 await ProcessUpdates([contract], cancellationToken);
             }
             else
@@ -109,7 +109,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             if (_subscribedScripts.Remove(contract))
             {
                 _logger.LogInformation("Manually unsubscribing from contract: {Contract}", contract);
-                await SynchronizeSubscriptionWithIndexerAsync(cancellationToken);
+                await SynchronizeSubscriptionWithIndexerAsync([contract],cancellationToken);
             }
             else
             {
@@ -305,7 +305,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
            Vtxos = results.ToArray()
        });
     }
-    private async Task SynchronizeSubscriptionWithIndexerAsync(CancellationToken cancellationToken)
+    private async Task SynchronizeSubscriptionWithIndexerAsync(string[]? removed, CancellationToken cancellationToken)
     {
         if (_subscribedScripts.Count == 0)
         {
@@ -333,6 +333,14 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
                 await StopListening();
             }
             _subscriptionId = newSubscriptionId;
+            if (removed?.Any() is true)
+            {
+                await _indexerClient.UnsubscribeForScriptsAsync(new UnsubscribeForScriptsRequest
+                {
+                    SubscriptionId = _subscriptionId,
+                    Scripts = { removed! }
+                }, cancellationToken: cancellationToken);
+            }
             _logger.LogInformation("[Manual] Successfully updated subscription with ID: {SubscriptionId}", _subscriptionId);
 
             await StartListening(cancellationToken);
