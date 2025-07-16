@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
@@ -7,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk.Wallet.Boltz;
+using NBXplorer;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
@@ -14,25 +16,74 @@ namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 /// Hosted service that continuously monitors Boltz swaps and fires events when status changes occur.
 /// This replaces the polling mechanism and provides a centralized way to track swap status.
 /// </summary>
-public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILogger<BoltzSwapSubscriptionService> logger)
-    : IHostedService, IDisposable
+public class BoltzSwapSubscriptionService : IHostedService, IDisposable
 {
     private BoltzWebsocketClient? _webSocketClient;
     private readonly ConcurrentDictionary<string, byte> _activeSwaps = new();
     private CancellationTokenSource? _cancellationTokenSource;
+    private readonly EventAggregator _eventAggregator;
+    private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
+    private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
+    private readonly BoltzClient _boltzClient;
+    private readonly ILogger<BoltzSwapSubscriptionService> _logger;
+    private readonly CompositeDisposable _leases = new();
+    
+    readonly SemaphoreSlim _lock = new(1);
+
+    /// <summary>
+    /// Hosted service that continuously monitors Boltz swaps and fires events when status changes occur.
+    /// This replaces the polling mechanism and provides a centralized way to track swap status.
+    /// </summary>
+    public BoltzSwapSubscriptionService(
+        EventAggregator eventAggregator,
+        BTCPayNetworkProvider btcPayNetworkProvider,
+        ArkPluginDbContextFactory arkPluginDbContextFactory,
+        BoltzClient boltzClient, ILogger<BoltzSwapSubscriptionService> logger)
+    {
+        _eventAggregator = eventAggregator;
+        _btcPayNetworkProvider = btcPayNetworkProvider;
+        _arkPluginDbContextFactory = arkPluginDbContextFactory;
+        _boltzClient = boltzClient;
+        _logger = logger;
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Starting Boltz swap monitoring service");
+        _logger.LogInformation("Starting Boltz swap monitoring service");
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         
+        _leases.Add(_eventAggregator.SubscribeAsync<LightningSwapUpdated>(OnLightningSwapUpdated));
         _ = InitiateMonitoring();
         return Task.CompletedTask;
     }
 
+    private async Task OnLightningSwapUpdated(LightningSwapUpdated arg)
+    {
+        await _lock.WaitAsync();
+        try
+        {
+            var active = ArkLightningClient.Map(arg.Swap, _btcPayNetworkProvider.BTC.NBitcoinNetwork).Status == LightningInvoiceStatus.Unpaid;
+            var swapId = arg.Swap.SwapId;
+            if(active)
+            {
+                _activeSwaps.TryAdd(swapId, 0);
+                await _webSocketClient!.SubscribeAsync([swapId]);
+            }
+            else
+            {
+                _activeSwaps.TryRemove(swapId, out _);
+                await _webSocketClient!.UnsubscribeAsync([swapId]);
+            }
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        logger.LogInformation("Stopping Boltz swap monitoring service");
+        _logger.LogInformation("Stopping Boltz swap monitoring service");
 
         if (_cancellationTokenSource is not null)
         {
@@ -43,6 +94,7 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
         {
             await _webSocketClient.DisposeAsync();
         }
+        _leases.Dispose();
     }
 
     private async Task InitiateMonitoring()
@@ -51,10 +103,7 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
         {
             try
             {
-                using var scope = serviceProvider.CreateScope();
-                var dbContextFactory = scope.ServiceProvider.GetRequiredService<ArkPluginDbContextFactory>();
-                
-                await using var dbContext = dbContextFactory.CreateContext();
+                await using var dbContext = _arkPluginDbContextFactory.CreateContext();
                 
                 // Get all active swaps that need monitoring
                 var activeSwaps = await dbContext.LightningSwaps
@@ -65,74 +114,76 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Error monitoring Boltz swaps");
+                _logger.LogError(ex, "Error monitoring Boltz swaps");
             }
         }
     }
 
     public async Task MonitorSwaps(params string[] swapIds)
     {
-        if (_webSocketClient == null)
+        await _lock.WaitAsync();
+        try
         {
-            // TODO: get URI this from BoltzClient instead
-            var wsUri = new Uri("wss://api.boltz.exchange/v2/ws");
-            _webSocketClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsUri, _cancellationTokenSource?.Token ?? CancellationToken.None);
-            _webSocketClient.OnAnyEventReceived += OnWebSocketEvent;
+            if (_webSocketClient == null)
+            {
+                var wsUri =  _boltzClient.DeriveWebSocketUri();
+                _webSocketClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsUri, _cancellationTokenSource?.Token ?? CancellationToken.None);
+                _webSocketClient.OnAnyEventReceived += OnWebSocketEvent;
+            }
+        
+            foreach (var swapId in swapIds)
+            {
+                _activeSwaps.TryAdd(swapId, 0);
+            }
+            await _webSocketClient.SubscribeAsync(swapIds, _cancellationTokenSource!.Token);
+        }
+        finally
+        {
+            _lock.Release();
         }
         
-        foreach (var swapId in swapIds)
-        {
-            _activeSwaps.TryAdd(swapId, 0);
-        }
-        await _webSocketClient.SubscribeAsync(swapIds, _cancellationTokenSource!.Token);
     }
 
     private async Task OnWebSocketEvent(WebSocketResponse response)
     {
         try
         {
-            if (response.Event == "update" && response.Channel == "swap.update" && response.Args.Count > 0)
+            if (response.Event == "update" && response is {Channel: "swap.update", Args.Count: > 0})
             {
                 var swapUpdate = response.Args[0];
                 if (swapUpdate != null)
                 {
-                    var id = swapUpdate["id"]?.ToString();
-                    var status = swapUpdate["status"]?.ToString();
-                    
-                    if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(status))
-                    {
-                        var inactive = status == "invoice.paid" || status == "invoice.expired" || status == "invoice.canceled";
-                        
-                        
-                        
-                        using var scope = serviceProvider.CreateScope();
-                        var dbContextFactory = scope.ServiceProvider.GetRequiredService<ArkPluginDbContextFactory>();
-                        
-                       var swap = await HandleReverseSwapUpdate(dbContextFactory, id, status);
-                        
-                        var eventAggregator = scope.ServiceProvider.GetRequiredService<EventAggregator>();
-                        var evnt = new BoltzSwapStatusChangedEvent(id, status, !inactive, swap?.ContractScript, swap?.WalletId);
-                        eventAggregator.Publish(evnt);
-                        
-                        // TODO: Unsubscribe for the swap, depending on the status
-                    }
+                    var id = swapUpdate["id"]!.GetValue<string>();
+                    var status = swapUpdate["status"]!.GetValue<string>();
+                    _eventAggregator.Publish(new BoltzSwapUpdate(id, status));
+                    // if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(status))
+                    // {
+                    //     var inactive = status == "invoice.paid" || status == "invoice.expired" || status == "invoice.canceled";
+                    //     
+                    //     
+                    //     
+                    //    var swap = await HandleReverseSwapUpdate(id, status);
+                    //     
+                    //     var evnt = new BoltzSwapStatusChangedEvent(id, status, !inactive, swap?.ContractScript, swap?.WalletId);
+                    //     _eventAggregator.Publish(evnt);
+                    // }
                 }
             }
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error processing WebSocket event {@response}", response);
+            _logger.LogError(ex, "Error processing WebSocket event {@response}", response);
         }
     }
     
-    private async Task<LightningSwap?> HandleReverseSwapUpdate(ArkPluginDbContextFactory dbContextFactory, string swapId, string status)
+    private async Task<LightningSwap?> HandleReverseSwapUpdate(string swapId, string status)
     {
         
-        logger.LogInformation("Processing reverse swap {SwapId} status update to: {Status}", swapId, status);
+        _logger.LogInformation("Processing reverse swap {SwapId} status update to: {Status}", swapId, status);
         
         try
         {
-            await using var dbContext = dbContextFactory.CreateContext();
+            await using var dbContext = _arkPluginDbContextFactory.CreateContext();
             
             // Find the swap in the database
             var swap = await dbContext.LightningSwaps
@@ -140,7 +191,7 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
                 
             if (swap == null)
             {
-                logger.LogWarning("Reverse swap {SwapId} not found in database", swapId);
+                _logger.LogWarning("Reverse swap {SwapId} not found in database", swapId);
                 return null;
             }
             
@@ -152,26 +203,24 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
             if (status == "invoice.paid" && swap.SettledAt == null)
             {
                 swap.SettledAt = DateTimeOffset.UtcNow;
-                logger.LogInformation("Reverse swap {SwapId} marked as settled", swapId);
+                _logger.LogInformation("Reverse swap {SwapId} marked as settled", swapId);
             }
             
             await dbContext.SaveChangesAsync();
             
-            logger.LogInformation("Updated reverse swap {SwapId} status from {OldStatus} to {NewStatus}", 
+            _logger.LogInformation("Updated reverse swap {SwapId} status from {OldStatus} to {NewStatus}", 
                 swapId, oldStatus, status);
                 
-            // TODO: If status is "invoice.paid", trigger VTXO creation
-            // Andrew: As long as the contract is created and active, we should detect the vtxo automatically
             if (status == "invoice.paid")
             {
-                logger.LogInformation("Reverse swap {SwapId} paid - VTXO creation should be triggered", swapId);
+                _logger.LogInformation("Reverse swap {SwapId} paid - VTXO creation should be triggered", swapId);
             }
 
             return swap;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to process reverse swap {SwapId} status update", swapId);
+            _logger.LogError(ex, "Failed to process reverse swap {SwapId} status update", swapId);
             throw;
         }
     }
@@ -180,6 +229,9 @@ public class BoltzSwapSubscriptionService(IServiceProvider serviceProvider, ILog
     {
         _cancellationTokenSource?.Cancel();
         _cancellationTokenSource?.Dispose();
-        _webSocketClient.DisposeAsync();
+        if (_webSocketClient is not null)
+        {
+            _webSocketClient.DisposeAsync().GetAwaiter().GetResult();
+        }
     }
 }

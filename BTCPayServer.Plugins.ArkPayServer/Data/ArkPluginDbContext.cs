@@ -7,10 +7,10 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
 {
     public DbSet<ArkWallet> Wallets { get; set; }
     public DbSet<ArkWalletContract> WalletContracts { get; set; }
-    // public DbSet<ArkStoredTransaction> Transactions { get; set; }
     public DbSet<VTXO> Vtxos { get; set; }
     public DbSet<LightningSwap> LightningSwaps { get; set; }
     // public DbSet<BoardingAddress> BoardingAddresses { get; set; }
+    // public DbSet<ArkStoredTransaction> Transactions { get; set; }
     
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

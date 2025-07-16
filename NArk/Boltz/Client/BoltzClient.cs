@@ -34,8 +34,9 @@ public partial class BoltzClient
     /// <param name="baseHttpUri">The base HTTP URI of the Boltz API.</param>
     /// <returns>The corresponding WebSocket URI.</returns>
     /// <exception cref="ArgumentNullException">Thrown when baseHttpUri is null.</exception>
-    public static Uri DeriveWebSocketUri(Uri? baseHttpUri)
+    public Uri DeriveWebSocketUri()
     {
+        var baseHttpUri = _httpClient.BaseAddress;
         if (baseHttpUri == null)
         {
             throw new ArgumentNullException(nameof(baseHttpUri), "HttpClient.BaseAddress cannot be null when WebSocket URI is not explicitly provided.");

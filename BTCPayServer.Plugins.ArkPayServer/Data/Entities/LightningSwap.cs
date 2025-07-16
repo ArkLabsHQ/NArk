@@ -29,28 +29,25 @@ public class LightningSwap
     // Navigation property
     public ArkWalletContract? Contract { get; set; }
     
-    public string Status { get; set; } = "created";
+    public string Status { get; set; } 
     
     public string? TransactionId { get; set; }
     
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     
     public DateTimeOffset? SettledAt { get; set; }
-    
-    public bool IsInvoiceReturned { get; set; } = false;
 
     public static void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<LightningSwap>(entity =>
         {
-            entity.HasKey(e => e.SwapId);
+            entity.HasKey(e => new { e.SwapId, e.WalletId});
             entity.Property(e => e.WalletId).IsRequired();
             entity.Property(e => e.SwapType).IsRequired();
             entity.Property(e => e.Invoice).IsRequired();
             entity.Property(e => e.LockupAddress).IsRequired();
-            entity.Property(e => e.Status).IsRequired().HasDefaultValue("created");
+            entity.Property(e => e.Status).IsRequired();
             entity.Property(e => e.CreatedAt).IsRequired();
-            entity.Property(e => e.IsInvoiceReturned).IsRequired().HasDefaultValue(false);
             
             // Configure foreign key relationship to ArkWalletContract
             entity.HasOne(e => e.Contract)
@@ -59,4 +56,6 @@ public class LightningSwap
                   .OnDelete(DeleteBehavior.SetNull);
         });
     }
+    
+    
 }

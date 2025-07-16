@@ -94,7 +94,7 @@ public class BoltzSwapService
             _logger.LogWarning("Address mismatch: computed {ComputedAddress}, Boltz expects {BoltzAddress}", 
                 claimAddress, response.LockupAddress);
             // TODO: Temporarily ignore this, since we use a mocked response from Boltz
-            //throw new InvalidOperationException($"Address mismatch: computed {claimAddress}, Boltz expects {response.LockupAddress}");
+            throw new InvalidOperationException($"Address mismatch: computed {claimAddress}, Boltz expects {response.LockupAddress}");
         }
 
         _logger.LogInformation("Successfully created reverse swap with ID: {SwapId}, lockup address: {LockupAddress}", 
@@ -114,22 +114,6 @@ public class BoltzSwapService
         };
     }
 
-    public async Task<SwapStatusResponse?> GetSwapStatusAsync(string swapId, CancellationToken cancellationToken = default)
-    {
-        _logger.LogDebug("Getting swap status for swap ID: {SwapId}", swapId);
-        var status = await _boltzClient.GetSwapStatusAsync(swapId);
-        
-        if (status != null)
-        {
-            _logger.LogDebug("Received swap status for {SwapId}: {Status}", swapId, status.Status);
-        }
-        else
-        {
-            _logger.LogWarning("Failed to get swap status for {SwapId} - null response", swapId);
-        }
-        
-        return status;
-    }
 
     public async Task<SubmarineClaimDetailsResponse?> GetClaimDetailsAsync(
         string swapId,

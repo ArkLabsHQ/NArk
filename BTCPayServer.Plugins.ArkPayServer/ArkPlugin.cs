@@ -93,8 +93,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<BoltzSwapSubscriptionService>();
         serviceCollection.AddSingleton<BoltzSwapService>();
         serviceCollection.AddHostedService<BoltzSwapSubscriptionService>(provider => provider.GetRequiredService<BoltzSwapSubscriptionService>());
-        serviceCollection.AddSingleton<BoltzSwapListener>();
-        serviceCollection.AddHostedService<BoltzSwapListener>(provider => provider.GetRequiredService<BoltzSwapListener>());
+        serviceCollection.AddSingleton<BoltzService>();
+        serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
 
         
         serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/Ark/ArkLNSetupTabhead.cshtml");

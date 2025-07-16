@@ -2,7 +2,9 @@
 using BTCPayServer.Client.Models;
 using BTCPayServer.Data;
 using BTCPayServer.Events;
+using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
+using BTCPayServer.Plugins.ArkPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
@@ -37,18 +39,20 @@ public class ArkContractInvoiceListener(
         await QueueMonitoredInvoices(cancellationToken);
         _leases.Add(eventAggregator.SubscribeAsync<InvoiceEvent>(OnInvoiceEvent));
         _leases.Add(eventAggregator.SubscribeAsync<VTXOsUpdated>(OnVTXOs));
-        _leases.Add(eventAggregator.SubscribeAsync<BoltzSwapStatusChangedEvent>(HandleSwapUpdate));
+        _leases.Add(eventAggregator.SubscribeAsync<LightningSwapUpdated>(HandleSwapUpdate));
 
         _ = PollAllInvoices(cancellationToken);
     }
 
-    private async Task HandleSwapUpdate(BoltzSwapStatusChangedEvent arg)
+    private async Task HandleSwapUpdate(LightningSwapUpdated lightningSwapUpdated)
     {
-        if(arg.Script is null || arg.WalletId is null)
+        if(lightningSwapUpdated.Swap.ContractScript is null || lightningSwapUpdated.Swap.WalletId is null)
             return;
-        
-        await arkWalletService.ToggleContract(arg.WalletId, arg.Script,
-            arg.Active);
+
+        var active = ArkLightningClient.Map(lightningSwapUpdated.Swap, btcPayNetworkProvider.BTC.NBitcoinNetwork)
+            .Status == LightningInvoiceStatus.Unpaid;
+        await arkWalletService.ToggleContract(lightningSwapUpdated.Swap.WalletId , lightningSwapUpdated.Swap.ContractScript,
+            active);
         
     }
 
