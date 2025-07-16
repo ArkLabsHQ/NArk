@@ -227,8 +227,13 @@ public class BoltzSwapSubscriptionService : IHostedService, IDisposable
 
     public void Dispose()
     {
-        _cancellationTokenSource?.Cancel();
+        if (_cancellationTokenSource is not null && !_cancellationTokenSource.IsCancellationRequested)
+        {
+            _cancellationTokenSource?.Cancel();
+        }
+        
         _cancellationTokenSource?.Dispose();
+        
         if (_webSocketClient is not null)
         {
             _webSocketClient.DisposeAsync().GetAwaiter().GetResult();
