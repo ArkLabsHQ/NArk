@@ -99,7 +99,15 @@ public class ArkadeContractSweeper : IHostedService
                     if (wallet is null)
                         continue;
 
+                    try
+                    {
                     await SweepWalletCoins(wallet, group.Select(x => (x.Vtxo, x.Contract)).ToArray(), signer);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error while sweeping vtxos for wallet {wallet.Id}");
+                    }
+
                 }
                 
                 using var cts2 = new CancellationTokenSource(TimeSpan.FromMinutes(5));
@@ -154,6 +162,8 @@ public class ArkadeContractSweeper : IHostedService
 
             var sum = coins.Sum(x => x.TxOut.Value);
 
+            if (sum == 0)
+                continue;
             var contract =
                 await _walletService.DerivePaymentContractAsync(new DeriveContractRequest(publicKey));
             var txout = new TxOut(sum, contract.GetArkAddress());

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using NBitcoin;
+using NBitcoin.Secp256k1;
 
 namespace NArk.Services
 {
@@ -40,7 +41,7 @@ namespace NArk.Services
             //
             // // Sign and create witness
             // _logger.LogDebug("Signing checkpoint transaction for input {InputIndex}", input.Index);
-            var sig = await coin.Signer.Sign(
+            var (sig, key) = await coin.Signer.Sign(
                 hash, 
                 coin.Contract is TweakedArkPaymentContract tweaked ? tweaked.Tweak : null, 
                 cancellationToken);
@@ -56,7 +57,9 @@ namespace NArk.Services
            }
            witness.Add(Op.GetPushOp(leaf.Script.ToBytes()));
            witness.Add(Op.GetPushOp(coin.Contract.GetTaprootSpendInfo().GetControlBlock(leaf).ToBytes()));
-           var checkpointInput = 
+           var us =await coin.Signer.GetPublicKey(cancellationToken);
+           receivedCheckpointTx.Inputs[(int) input.Index].SetTaprootScriptSpendSignature(us, leaf.LeafHash, sig);
+        
            receivedCheckpointTx.Inputs[(int) input.Index].FinalScriptWitness = new WitScript(witness.ToArray());
            
            return receivedCheckpointTx;
@@ -228,9 +231,9 @@ public async Task ConstructAndSubmitArkTransaction(
                     new TaprootExecutionData((int)checkpointInput.Index, tapleaf.LeafHash));
                 
                 _logger.LogDebug("Signing Ark transaction for input {InputIndex}", checkpointInput.Index);
-                var sig = await coin.Signer.Sign(hash, null, cancellationToken);
+                var (sig, ourKey) = await coin.Signer.Sign(hash, null, cancellationToken);
                 
-                var ourKey = ( (NofNMultisigTapScript)contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single().Condition).Owners.First();
+                // var ourKey = ( (NofNMultisigTapScript)contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single().Condition).Owners.First();
                 checkpointInput.SetTaprootScriptSpendSignature(ourKey, tapleaf.LeafHash, sig);
                 
             }

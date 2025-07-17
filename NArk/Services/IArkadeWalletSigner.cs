@@ -5,6 +5,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public interface IArkadeWalletSigner
 {
-    Task<SecpSchnorrSignature> Sign( uint256 data, byte[]? tweak = null,
+    Task<ECXOnlyPubKey> GetPublicKey(CancellationToken cancellationToken = default);
+    Task<(SecpSchnorrSignature, ECXOnlyPubKey)> Sign( uint256 data, byte[]? tweak = null,
         CancellationToken cancellationToken = default);
 }

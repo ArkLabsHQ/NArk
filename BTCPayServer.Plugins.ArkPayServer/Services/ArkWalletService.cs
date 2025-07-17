@@ -123,13 +123,12 @@ public class ArkWalletService(
     //         .ToListAsync(cancellationToken);
     // }
 
-    public async Task<ArkWallet> Upsert(string wallet)
+    public async Task<ArkWallet> Upsert(string wallet, CancellationToken cancellationToken = default)
     {
         
         
         var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(wallet);
 
-        await walletService.DerivePaymentContractAsync(new DeriveContractRequest(publicKey));
         await using var dbContext = dbContextFactory.CreateContext();
         
         
@@ -139,7 +138,22 @@ public class ArkWalletService(
             Wallet = wallet,
         }).RunAndReturnAsync();
         LoadWalletSigner(publicKey.ToHex(), wallet);
-        return res.Single();
+        
+      await   DeriveNewContract(publicKey.ToHex(), async wallet =>
+      {
+          var contract =
+              await walletService.DerivePaymentContractAsync(new DeriveContractRequest(wallet.PublicKey),
+                  cancellationToken);
+          return (new ArkWalletContract
+          {
+              WalletId = publicKey.ToHex(),
+              Active = true,
+              ContractData = contract.GetContractData(),
+              Script = contract.GetArkAddress().ScriptPubKey.ToHex(),
+              Type = contract.Type,
+          }, contract);
+      }, cancellationToken);
+      return res.Single();
     }
 
     public async Task ToggleContract(string detailsWalletId, ArkContract detailsContract, bool active)
@@ -328,10 +342,19 @@ public class ArkWalletService(
         {
             _key = key;
         }
-        public Task<SecpSchnorrSignature> Sign(uint256 data, byte[]? tweak = null, CancellationToken cancellationToken = default)
+
+        public Task<ECXOnlyPubKey> GetPublicKey(CancellationToken cancellationToken = default)
         {
-            var signer  = tweak is null ? _key : _key.TweakAdd(tweak);
-            return Task.FromResult(signer.SignBIP340(data.ToBytes()));
+            return Task.FromResult(_key.CreateXOnlyPubKey());
+        }
+
+        public Task<(SecpSchnorrSignature, ECXOnlyPubKey)> Sign(uint256 data, byte[]? tweak = null,
+            CancellationToken cancellationToken = default)
+        {
+            var signer = tweak is null ? _key : _key.TweakAdd(tweak);
+
+            return Task.FromResult((signer.SignBIP340(data.ToBytes())
+                , signer.CreateXOnlyPubKey()));
         }
     }
 }
