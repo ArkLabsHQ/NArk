@@ -134,12 +134,12 @@ if [ -n "$container" ]; then
     nigiri faucet "$boarding_address"
     
     # Wait a bit for the transaction to be processed
-    sleep 5
+    # sleep 5
     
-    # Settle the wallet
-    log "Settling wallet..."
-    docker exec "$container" ark settle --password secret
-    log "✓ Ark setup completed successfully!"
+    # # Settle the wallet in the background
+    # log "Settling wallet in background..."
+    # docker exec "$container" ark settle --password secret &
+    # log "✓ Ark setup initiated successfully!"
   else
     log "Failed to get boarding address"
   fi
