@@ -111,7 +111,7 @@ public class ArkadeContractSweeper : IHostedService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error while sweeping HTLCs");
+                _logger.LogError(ex, "Error while sweeping vtxos");
             }
         }
     }
@@ -132,19 +132,19 @@ public class ArkadeContractSweeper : IHostedService
             switch (arkCoin.Contract)
             {
                 case TweakedArkPaymentContract tweaked:
-                    if (tweaked.OriginalUser == publicKey)
+                    if (tweaked.OriginalUser.ToBytes().SequenceEqual(publicKey.ToBytes()))
                     {
                         coins.Add(arkCoin);
                     }
 
                     break;
                 case VHTLCContract htlc:
-                    if (htlc.Receiver == publicKey && htlc.Preimage is not null)
+                    if (htlc.Preimage is not null && htlc.Receiver.ToBytes().SequenceEqual(publicKey.ToBytes()) )
                     {
                         coins.Add(arkCoin);
                     }
-                    else if (htlc.Sender == publicKey && htlc.RefundLocktime.IsTimeLock &&
-                             htlc.RefundLocktime.Date < DateTime.UtcNow)
+                    else if (htlc.RefundLocktime.IsTimeLock &&
+                             htlc.RefundLocktime.Date < DateTime.UtcNow && htlc.Sender.ToBytes().SequenceEqual(publicKey.ToBytes()) )
                     {
                         coins.Add(arkCoin);
                     }
