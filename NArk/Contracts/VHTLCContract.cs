@@ -98,7 +98,7 @@ public class VHTLCContract : ArkContract
         var hashLock = new HashLockTapScript(Hash);
         var receiverMultisig = new NofNMultisigTapScript([Receiver]);
         return new CollaborativePathArkTapScript(Server,
-            new CompositeTapScript(hashLock, receiverMultisig));
+            new CompositeTapScript(hashLock, new VerifyTapScript() ,receiverMultisig));
     }
 
     public WitScript ClaimWitness(SecpSchnorrSignature server,byte[] preimage, SecpSchnorrSignature receiver)
