@@ -42,7 +42,7 @@ services:
 
   # Lightning swap services
   boltz-lnd:
-    image: lightninglabs/lnd:v0.19.1-beta
+    image: lightninglabs/lnd:v0.19.2-beta
     restart: unless-stopped
     container_name: boltz-lnd
     command:
@@ -76,6 +76,41 @@ services:
     ports:
       - '9736:9735'
       - '10010:10009'
+  lnd:
+    image: lightninglabs/lnd:v0.19.2-beta
+    restart: unless-stopped
+    container_name: lnd
+    command:
+      - '--bitcoin.regtest'
+      - '--bitcoin.node=bitcoind'
+      - '--maxpendingchannels=10'
+      - '--rpclisten=0.0.0.0:10009'
+      - '--bitcoind.rpchost=bitcoin:18443'
+      - '--bitcoind.rpcuser=admin1'
+      - '--bitcoind.rpcpass=123'
+      - '--bitcoind.zmqpubrawblock=tcp://bitcoin:28332'
+      - '--bitcoind.zmqpubrawtx=tcp://bitcoin:28333'
+      - '--db.bolt.auto-compact'
+      - '--db.prune-revocation'
+      - '--alias=Ark Labs User'
+      - '--tlsextradomain=lnd'
+      - '--protocol.option-scid-alias'
+      - '--protocol.wumbo-channels'
+      - '--accept-keysend'
+      - '--minchansize=25000'
+      - '--noseedbackup'
+      - '--gc-canceled-invoices-on-startup'
+      - '--coin-selection-strategy=random'
+      - '--protocol.custom-message=513'
+      - '--protocol.custom-nodeann=39'
+      - '--protocol.custom-init=39'
+      - '--no-rest-tls'
+      - '--restcors=*'
+    volumes:
+      - ./volumes/ark/lnd_user:/root/.lnd
+    ports:
+      - '9735:9735'
+      - '10009:10009'
 
   boltz-fulmine:
     image: ghcr.io/arklabshq/fulmine:v0.2.0-rc.0
