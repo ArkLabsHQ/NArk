@@ -82,6 +82,7 @@ public class ArkadeContractSweeper : IHostedService
                     )
                     .ToListAsync(_cts.Token);
 
+                _logger.LogInformation($"Found {vtxosAndContracts.Count} VTXOs to sweep.");
                 var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
 
                 var walletsToCheck = groupedByWallet.Select(g => g.Key);

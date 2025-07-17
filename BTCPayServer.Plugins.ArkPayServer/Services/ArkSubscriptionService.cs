@@ -282,7 +282,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             Amount = (long)vtxo.Amount,
             IsNote = vtxo.IsSwept,
             SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt),
-            SpentByTransactionId = vtxo.SpentBy,
+            SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy)? null: vtxo.SpentBy,
             Script = vtxo.Script
         };
         
