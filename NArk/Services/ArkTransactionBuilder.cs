@@ -48,19 +48,18 @@ namespace NArk.Services
             
            var (leaf, condition, locktime) =  GetCollaborativePathLeaf(coin.Contract);
 
-           var witness = new List<Op>();
-           witness.Add(Op.GetPushOp(serverSig.signature.ToBytes()));
-           witness.Add(Op.GetPushOp(sig.ToBytes()));
-           if(condition != null)
-           {
-               witness.AddRange(condition.Pushes.Select(Op.GetPushOp));
-           }
-           witness.Add(Op.GetPushOp(leaf.Script.ToBytes()));
-           witness.Add(Op.GetPushOp(coin.Contract.GetTaprootSpendInfo().GetControlBlock(leaf).ToBytes()));
+           // var witness = new List<Op>();
+           // witness.Add(Op.GetPushOp(serverSig.signature.ToBytes()));
+           // witness.Add(Op.GetPushOp(sig.ToBytes()));
+           // if(condition != null)
+           // {
+           //     witness.AddRange(condition.Pushes.Select(Op.GetPushOp));
+           // }
+           // witness.Add(Op.GetPushOp(leaf.Script.ToBytes()));
+           // witness.Add(Op.GetPushOp(coin.Contract.GetTaprootSpendInfo().GetControlBlock(leaf).ToBytes()));
            var us =await coin.Signer.GetPublicKey(cancellationToken);
            receivedCheckpointTx.Inputs[(int) input.Index].SetTaprootScriptSpendSignature(us, leaf.LeafHash, sig);
         
-           receivedCheckpointTx.Inputs[(int) input.Index].FinalScriptWitness = new WitScript(witness.ToArray());
            
            return receivedCheckpointTx;
         }
@@ -169,8 +168,8 @@ public async Task ConstructAndSubmitArkTransaction(
                 checkpoint.SetFeeWeight(0);
                 checkpoint.AddCoin(coin);
                 checkpoint.DustPrevention = false;
-                checkpoint.Send(p2a, Money.Zero);
                 checkpoint.SendAllRemaining(checkpointContract.GetArkAddress());
+                checkpoint.Send(p2a, Money.Zero);
                 checkpoint.SetLockTime(tapLeaf.locktime ?? LockTime.Zero);
 
                 var checkpointTx = checkpoint.BuildPSBT(false, PSBTVersion.PSBTv0);
@@ -179,10 +178,7 @@ public async Task ConstructAndSubmitArkTransaction(
                 var psbtInput = checkpointTx.Inputs.FindIndexedInput(coin.Outpoint)!;
                 // Add Ark PSBT fields
                 psbtInput.Unknown.SetArkField(coin.Contract.GetTapTree());
-                
-
                 psbtInput.SetTaprootLeafScript(coin.Contract.GetTaprootSpendInfo(), tapLeaf.Leaf);
-                
                 checkpoints.Add(checkpointTx);
                 
                 // Create checkpoint coin for the Ark transaction

@@ -10,12 +10,11 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler
     public class ArkadeCheckoutCheatModeExtension : ICheckoutCheatModeExtension
     {
         private readonly Cheater _cheater;
-        public ArkadeCheckoutCheatModeExtension(Cheater cheater, BTCPayNetwork network)
+        public ArkadeCheckoutCheatModeExtension(Cheater cheater)
         {
             _cheater = cheater;
-            Network = network;
         }
-        public BTCPayNetwork Network { get; }
+        public BTCPayNetwork Network { get; } 
 
         public bool Handle(PaymentMethodId paymentMethodId) => paymentMethodId == ArkadePlugin.ArkadePaymentMethodId;
 
@@ -62,7 +61,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler
                     StartInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = "docker",
-                        Arguments = $"exec -i arkd ark send --to {destination} --amount {amt}",
+                        Arguments = $"exec -i ark ark send --to {destination} --amount {amt}",
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,

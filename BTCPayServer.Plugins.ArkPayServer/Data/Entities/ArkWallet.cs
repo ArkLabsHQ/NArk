@@ -14,13 +14,18 @@ public class ArkWallet
 
     public ECXOnlyPubKey PublicKey => ArkExtensions.GetXOnlyPubKeyFromWallet(Wallet);
 
+    public List<ArkSwap> Swaps { get; set; }
+
     internal static void OnModelCreating(ModelBuilder builder)
     {
         var entity = builder.Entity<ArkWallet>();
         entity.HasKey(w => w.Id);
         entity.HasIndex(w => w.Wallet).IsUnique();
         entity.HasMany(w => w.Contracts)
-            .WithOne()
-            .HasForeignKey(c => c.WalletId);
+            .WithOne(contract => contract.Wallet)
+            .HasForeignKey(contract => contract.WalletId);
+        entity.HasMany(w => w.Swaps)
+            .WithOne(contract => contract.Wallet)
+            .HasForeignKey(contract => contract.WalletId);
     }
 }

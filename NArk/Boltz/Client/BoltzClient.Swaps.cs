@@ -99,6 +99,7 @@ public partial class BoltzClient
         //     Id = Guid.NewGuid().ToString()
         // };
         var response = await PostAsJsonAsync("swap/reverse", request);
+        
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ReverseResponse>();
     }

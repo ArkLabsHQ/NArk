@@ -68,7 +68,7 @@ if [ "$CLEAN" = true ]; then
 fi
 
   log "Starting Nigiri with Ark support..."
-  nigiri start
+    nigiri start 
   
   # Use docker-compose.ark.yml for custom ark configuration
   log "Starting custom ark configuration from docker-compose.ark.yml..."
@@ -134,42 +134,42 @@ if [ -n "$container" ]; then
     nigiri faucet "$boarding_address"
     
     # Wait a bit for the transaction to be processed
-    # sleep 5
+     sleep 5
     
-    # # Settle the wallet in the background
-    # log "Settling wallet in background..."
-    # docker exec "$container" ark settle --password secret &
-    # log "✓ Ark setup initiated successfully!"
+     # Settle the wallet in the background
+     log "Settling wallet in background..."
+     docker exec "$container" ark settle --password secret &
+     log "✓ Ark setup initiated successfully!"
   else
     log "Failed to get boarding address"
   fi
 
-  # Setup LND for Lightning swaps
-  log "Setting up LND for Lightning swaps..."
-  sleep 10  # Give LND time to start
+  # # Setup LND for Lightning swaps
+  # log "Setting up LND for Lightning swaps..."
+  # sleep 10  # Give LND time to start
 
-  # Create wallet in LND if needed
-  log "Creating LND wallet..."
-  docker exec boltz-lnd lncli --network=regtest create 2>/dev/null || true
+  # # Create wallet in LND if needed
+  # log "Creating LND wallet..."
+  # docker exec boltz-lnd lncli --network=regtest create 2>/dev/null || true
 
-  # Unlock wallet if needed
-  log "Unlocking LND wallet..."
-  docker exec boltz-lnd lncli --network=regtest unlock --password="" 2>/dev/null || true
+  # # Unlock wallet if needed
+  # log "Unlocking LND wallet..."
+  # docker exec boltz-lnd lncli --network=regtest unlock --password="" 2>/dev/null || true
 
-  # Fund LND wallet
-  log "Getting LND address..."
-  ln_address=$(docker exec boltz-lnd lncli --network=regtest newaddress p2wkh | jq -r '.address')
-  log "LND address: $ln_address"
-  log "Funding LND wallet..."
-  nigiri faucet "$ln_address" 1
+  # # Fund LND wallet
+  # log "Getting LND address..."
+  # ln_address=$(docker exec boltz-lnd lncli --network=regtest newaddress p2wkh | jq -r '.address')
+  # log "LND address: $ln_address"
+  # log "Funding LND wallet..."
+  # nigiri faucet "$ln_address" 1
 
-  # Wait for confirmation
-  log "Waiting for LND funding confirmation..."
-  sleep 10
+  # # Wait for confirmation
+  # log "Waiting for LND funding confirmation..."
+  # sleep 10
 
-  # Check LND balance
-  log "LND balance:"
-  docker exec boltz-lnd lncli --network=regtest walletbalance
+  # # Check LND balance
+  # log "LND balance:"
+  # docker exec boltz-lnd lncli --network=regtest walletbalance
 else
   log "Ark container not running; wallet not setup"
 fi

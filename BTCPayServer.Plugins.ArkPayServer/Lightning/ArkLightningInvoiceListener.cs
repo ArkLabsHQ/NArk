@@ -1,6 +1,5 @@
 using System.Threading.Channels;
 using BTCPayServer.Lightning;
-using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -30,10 +29,10 @@ public class ArkLightningInvoiceListener : ILightningInvoiceListener
         _network = network;
         _cancellationToken = cancellationToken;
         
-        _leases.Add(eventAggregator.SubscribeAsync<LightningSwapUpdated>(OnInvoicePaid));
+        _leases.Add(eventAggregator.SubscribeAsync<ArkSwapUpdated>(OnInvoicePaid));
     }
 
-    private async Task OnInvoicePaid(LightningSwapUpdated e)
+    private async Task OnInvoicePaid(ArkSwapUpdated e)
     {
         if(e.Swap.WalletId != _walletId)
             return;
@@ -69,24 +68,6 @@ public class ArkLightningInvoiceListener : ILightningInvoiceListener
 
         return null;
     }
-
-    // private static LightningInvoice CreateLightningInvoiceFromSwap(LightningSwap swap)
-    // {
-    //     // Parse the BOLT11 invoice to get the amount and other details
-    //     var bolt11 = BOLT11PaymentRequest.Parse(swap.Invoice, Network.Main);
-    //    
-    //     return new LightningInvoice
-    //     {
-    //         Id = swap.SwapId,
-    //         Amount = bolt11.MinimumAmount,
-    //         Status = LightningInvoiceStatus.Paid,
-    //         BOLT11 = swap.Invoice,
-    //         PaidAt = swap.SettledAt,
-    //         PaymentHash = bolt11.PaymentHash?.ToString(),
-    //         Preimage = swap.PreimageHash
-    //     };
-    // }
-
     public void Dispose()
     {
         _leases.Dispose();

@@ -69,6 +69,9 @@ public class BoltzSwapService
             throw new InvalidOperationException("Boltz did not provide refund public key");
         }
         
+        
+        
+        
         var sender = response.RefundPublicKey.ToECXOnlyPubKey();
         _logger.LogDebug("Using sender key: {SenderKey}", response.RefundPublicKey);
 
@@ -77,10 +80,10 @@ public class BoltzSwapService
             sender: sender,
             receiver: receiver,
             preimage: preimage,
-            refundLocktime: new LockTime(80 * 600), // TODO: Don't know
-            unilateralClaimDelay: new Sequence((uint)response.TimeoutBlockHeight),
-            unilateralRefundDelay: new Sequence((uint)response.TimeoutBlockHeight),
-            unilateralRefundWithoutReceiverDelay: new Sequence((uint)response.TimeoutBlockHeight)
+            refundLocktime: new LockTime(response.TimeoutBlockHeights.Refund),
+            unilateralClaimDelay: new Sequence((uint)response.TimeoutBlockHeights.UnilateralClaim),
+            unilateralRefundDelay: new Sequence((uint)response.TimeoutBlockHeights.UnilateralRefund),
+            unilateralRefundWithoutReceiverDelay: new Sequence((uint)response.TimeoutBlockHeights.UnilateralRefundWithoutReceiver)
         );
         
         // Get the claim address and validate it matches Boltz's lockup address
@@ -102,15 +105,10 @@ public class BoltzSwapService
         
         return new ReverseSwapResult
         {
-            SwapId = response.Id,
-            Invoice = response.Invoice,
-            LockupAddress = response.LockupAddress,
-            OnchainAmount = response.OnchainAmount,
-            TimeoutBlockHeight = response.TimeoutBlockHeight,
-            ClaimAddress = claimAddress,
-            Preimage = preimage,
-            PreimageHash = preimageHash,
-            VHTLCContract = vhtlcContract
+            Contract = vhtlcContract,
+            Swap = response,
+            Address = arkAddress,
+            Hash =preimageHash
         };
     }
 
@@ -146,13 +144,11 @@ public class BoltzSwapService
 
 public class ReverseSwapResult
 {
-    public string SwapId { get; set; } = null!;
-    public string Invoice { get; set; } = null!;
-    public string LockupAddress { get; set; } = null!;
-    public long OnchainAmount { get; set; }
-    public long TimeoutBlockHeight { get; set; }
-    public string? ClaimAddress { get; set; }
-    public byte[] Preimage { get; set; } = null!;
-    public byte[] PreimageHash { get; set; } = null!;
-    public VHTLCContract VHTLCContract { get; set; } = null!;
+    public required VHTLCContract Contract { get; set; }
+
+    public required ReverseResponse Swap { get; set; }
+
+    public required ArkAddress Address { get; set; }
+
+    public byte[] Hash { get; set; }
 }

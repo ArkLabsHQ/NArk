@@ -23,6 +23,50 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkSwap", b =>
+                {
+                    b.Property<string>("SwapId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("WalletId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ContractScript")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long>("ExpectedAmount")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Hash")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Invoice")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SwapType")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("SwapId", "WalletId");
+
+                    b.HasIndex("WalletId");
+
+                    b.HasIndex("ContractScript", "WalletId");
+
+                    b.ToTable("Swaps", "BTCPayServer.Plugins.Ark");
+                });
+
             modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWallet", b =>
                 {
                     b.Property<string>("Id")
@@ -66,61 +110,6 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                     b.ToTable("WalletContracts", "BTCPayServer.Plugins.Ark");
                 });
 
-            modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.LightningSwap", b =>
-                {
-                    b.Property<string>("SwapId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("WalletId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ClaimAddress")
-                        .HasColumnType("text");
-
-                    b.Property<string>("ContractScript")
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Invoice")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("LockupAddress")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<long>("OnchainAmount")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("PreimageHash")
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset?>("SettledAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("SwapType")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<long>("TimeoutBlockHeight")
-                        .HasColumnType("bigint");
-
-                    b.Property<string>("TransactionId")
-                        .HasColumnType("text");
-
-                    b.HasKey("SwapId", "WalletId");
-
-                    b.HasIndex("ContractScript", "WalletId");
-
-                    b.ToTable("LightningSwaps", "BTCPayServer.Plugins.Ark");
-                });
-
             modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.VTXO", b =>
                 {
                     b.Property<string>("TransactionId")
@@ -150,6 +139,25 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                     b.ToTable("Vtxos", "BTCPayServer.Plugins.Ark");
                 });
 
+            modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkSwap", b =>
+                {
+                    b.HasOne("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWallet", "Wallet")
+                        .WithMany("Swaps")
+                        .HasForeignKey("WalletId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWalletContract", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractScript", "WalletId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Contract");
+
+                    b.Navigation("Wallet");
+                });
+
             modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWalletContract", b =>
                 {
                     b.HasOne("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWallet", "Wallet")
@@ -161,19 +169,11 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                     b.Navigation("Wallet");
                 });
 
-            modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.LightningSwap", b =>
-                {
-                    b.HasOne("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWalletContract", "Contract")
-                        .WithMany()
-                        .HasForeignKey("ContractScript", "WalletId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Contract");
-                });
-
             modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.Entities.ArkWallet", b =>
                 {
                     b.Navigation("Contracts");
+
+                    b.Navigation("Swaps");
                 });
 #pragma warning restore 612, 618
         }

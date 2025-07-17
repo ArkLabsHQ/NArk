@@ -5,6 +5,7 @@ using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NArk;
 using NBitcoin;
 using NodeInfo = BTCPayServer.Lightning.NodeInfo;
 
@@ -26,10 +27,11 @@ public class ArkLightningClient(Network network,
     {
         await using var dbContext = dbContextFactory.CreateContext();
         // Find by payment hash - we need to parse all BOLT11 invoices to match
-        var reverseSwap = await dbContext.LightningSwaps
+        var reverseSwap = await dbContext.Swaps
+            .Include(s => s.Contract)
             .FirstOrDefaultAsync(rs =>
                     rs.WalletId == walletId &&
-                    rs.SwapType == "reverse" &&
+                    rs.SwapType == ArkSwapType.ReverseSubmarine &&
                     rs.SwapId == invoiceId,
                 cancellationToken: cancellation);
 
@@ -45,11 +47,12 @@ public class ArkLightningClient(Network network,
         await using var dbContext = dbContextFactory.CreateContext();
         var paymentHashStr = paymentHash.ToString();
         // Find by payment hash - we need to parse all BOLT11 invoices to match
-        var reverseSwap = await dbContext.LightningSwaps
+        var reverseSwap = await dbContext.Swaps
+                .Include(s => s.Contract)
             .FirstOrDefaultAsync(rs =>
                     rs.WalletId == walletId &&
-                    rs.SwapType == "reverse" &&
-                    rs.PreimageHash == paymentHashStr,
+                    rs.SwapType == ArkSwapType.ReverseSubmarine &&
+                    rs.Hash == paymentHashStr,
                 cancellationToken: cancellation);
 
         if(reverseSwap == null)
@@ -59,29 +62,33 @@ public class ArkLightningClient(Network network,
         return Map(reverseSwap, network);
     }
 
-    public static LightningInvoice Map(LightningSwap reverseSwap, Network network)
+    public static LightningInvoice Map(ArkSwap reverseSwap, Network network)
     {
         var bolt11 = BOLT11PaymentRequest.Parse(reverseSwap.Invoice, network); 
         
         // Map Boltz status to Lightning status
         var lightningStatus = reverseSwap.Status switch
         {
-            "invoice.settled" => LightningInvoiceStatus.Paid,
-            "invoice.expired" or "swap.expired" or "transaction.failed" or "transaction.refunded"=> LightningInvoiceStatus.Expired,
-            _ => LightningInvoiceStatus.Unpaid
+           ArkSwapStatus.Settled => LightningInvoiceStatus.Paid,
+           ArkSwapStatus.Failed => LightningInvoiceStatus.Expired,
+           ArkSwapStatus.Pending => LightningInvoiceStatus.Unpaid,
+           _ => throw new NotSupportedException()
         };
-        
+
+        VHTLCContract? contract =
+            reverseSwap.Contract is null? null :
+            ArkContract.Parse(reverseSwap.Contract.Type, reverseSwap.Contract.ContractData) as VHTLCContract;
         return new LightningInvoice
         {
             Id = reverseSwap.SwapId,
-            Amount = LightMoney.Satoshis(reverseSwap.OnchainAmount),
+            Amount = bolt11.MinimumAmount,
             Status = lightningStatus,
             ExpiresAt = bolt11.ExpiryDate,
             BOLT11 = reverseSwap.Invoice,
-            PaymentHash = reverseSwap.PreimageHash,
-            PaidAt = reverseSwap.SettledAt,
-            
-            AmountReceived = lightningStatus == LightningInvoiceStatus.Paid ? LightMoney.Satoshis(reverseSwap.OnchainAmount) : null
+            PaymentHash = bolt11.PaymentHash.ToString(),
+            PaidAt = lightningStatus == LightningInvoiceStatus.Paid ? reverseSwap.UpdatedAt : null,
+            AmountReceived = lightningStatus == LightningInvoiceStatus.Paid ? LightMoney.Satoshis(reverseSwap.ExpectedAmount) : null,
+            Preimage = contract?.Preimage?.ToHex(),
         };
     }
 
@@ -94,14 +101,15 @@ public class ArkLightningClient(Network network,
     {
         await using var dbContext = dbContextFactory.CreateContext();
         
-        var reverseSwaps = await dbContext.LightningSwaps
-            .Where(rs => rs.SwapType == "reverse" &&  
-                         rs.WalletId == walletId)
+        var reverseSwaps = await dbContext.Swaps
+            .Include(s => s.Contract)
+            .Where(rs => rs.SwapType ==  ArkSwapType.ReverseSubmarine && rs.WalletId == walletId)
+            .Where(rs => request.PendingOnly == null || !request.PendingOnly.Value  || rs.Status == ArkSwapStatus.Pending)
             .OrderByDescending(rs => rs.CreatedAt)
             .Skip((int)request.OffsetIndex.GetValueOrDefault(0))
             .ToListAsync(cancellation);
         
-        var scripts = reverseSwaps.Select(rs => rs.ContractScript).ToArray();
+        // var scripts = reverseSwaps.Select(rs => rs.ContractScript).ToArray();
         
         // var vtxos = await dbContext.Vtxos.Where(v => scripts.Contains(v.Script)).ToDictionaryAsync(v => v.Script, v => v, cancellation);
         var invoices = new List<LightningInvoice>();

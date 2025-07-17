@@ -63,8 +63,14 @@ public class ArkController : Controller
         {
             return View(new ArkStoreWalletViewModel());
         }
+        
         var walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
-
+        if (walletInfo is null)
+        {
+            
+            TempData[WellKnownTempData.ErrorMessage] = "Wallet not found in records anymore. Please re-import the wallet.";
+            return await SetupStore(storeId, new ArkStoreWalletViewModel());
+        }
 
         var lnPmi = PaymentTypes.LN.GetPaymentMethodId("BTC");
         var lnConfig =store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(lnPmi, _paymentMethodHandlerDictionary);
