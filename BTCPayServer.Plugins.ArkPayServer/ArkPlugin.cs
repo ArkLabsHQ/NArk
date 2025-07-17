@@ -90,9 +90,9 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddHostedService<ArkadeContractSweeper>(provider => provider.GetRequiredService<ArkadeContractSweeper>());
         
         // Register the Boltz swap services
-        serviceCollection.AddSingleton<BoltzSwapSubscriptionService>();
+        // serviceCollection.AddSingleton<BoltzSwapSubscriptionService>();
         serviceCollection.AddSingleton<BoltzSwapService>();
-        serviceCollection.AddHostedService<BoltzSwapSubscriptionService>(provider => provider.GetRequiredService<BoltzSwapSubscriptionService>());
+        // serviceCollection.AddHostedService<BoltzSwapSubscriptionService>(provider => provider.GetRequiredService<BoltzSwapSubscriptionService>());
         serviceCollection.AddSingleton<BoltzService>();
         serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
 

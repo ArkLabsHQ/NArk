@@ -3,16 +3,9 @@ using BTCPayServer.Lightning;
 using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
-using NArk;
-using NArk.Services;
-using NArk.Wallet.Boltz;
 using NBitcoin;
-using NBitcoin.DataEncoders;
-
 using NodeInfo = BTCPayServer.Lightning.NodeInfo;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
@@ -28,7 +21,6 @@ public class ArkLightningClient(Network network,
     EventAggregator eventAggregator,
     ILogger<ArkLightningInvoiceListener> logger) : IExtendedLightningClient
 {
-    private readonly BoltzService _boltzService = boltzService;
 
     public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
     {
@@ -197,7 +189,7 @@ public class ArkLightningClient(Network network,
 
     public async Task<LightningInvoice> CreateInvoice(CreateInvoiceParams createInvoiceRequest, CancellationToken cancellation = default)
     {
-        var swap = await _boltzService.CreateReverseSwap(walletId, createInvoiceRequest.Amount,
+        var swap = await boltzService.CreateReverseSwap(walletId, createInvoiceRequest.Amount,
             cancellation);
         return Map(swap, network);
     }
