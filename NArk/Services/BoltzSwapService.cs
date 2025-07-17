@@ -46,7 +46,7 @@ public class BoltzSwapService
             From = "BTC",
             To = "ARK", 
             InvoiceAmount = invoiceAmount,
-            ClaimPublicKey = Encoders.Hex.EncodeData(receiver.ToBytes()), // Receiver will claim the VTXO
+            ClaimPublicKey = receiver.ToCompressedEvenYHex(), // Receiver will claim the VTXO
             PreimageHash = Encoders.Hex.EncodeData(preimageHash),
             AcceptZeroConf = true
         };
@@ -85,7 +85,7 @@ public class BoltzSwapService
         
         // Get the claim address and validate it matches Boltz's lockup address
         var arkAddress = vhtlcContract.GetArkAddress();
-        var claimAddress = arkAddress.GetAddress(operatorTerms.Network).ToString();
+        var claimAddress = arkAddress.ToString(mainnet: operatorTerms.Network == Network.Main);
         _logger.LogDebug("Generated claim address: {ClaimAddress}", claimAddress);
         
         // Validate that our computed address matches what Boltz expects

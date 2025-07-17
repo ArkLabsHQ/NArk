@@ -87,7 +87,7 @@ public abstract class ArkContract
     public TaprootSpendInfo GetTaprootSpendInfo()
     {
         var spendInfo = TaprootSpendInfo.WithHuffmanTree(
-            new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToHex().ToECXOnlyPubKey().ToBytes()), 
+            new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToECXOnlyPubKey().ToBytes()), 
             GetTapTree().Select(x => ((uint)0, x)).ToArray());
         
         return spendInfo;
