@@ -41,6 +41,13 @@ fi
 # Create and prepare volume directories for ark
 log "Setting up volume directories..."
 mkdir -p "$SCRIPT_DIR/volumes/ark"
+mkdir -p "$SCRIPT_DIR/volumes/ark/cors"
+
+# Copy CORS configuration file if it exists
+if [ -f "$SCRIPT_DIR/cors.nginx.conf" ]; then
+  log "Copying CORS configuration..."
+  cp "$SCRIPT_DIR/cors.nginx.conf" "$SCRIPT_DIR/volumes/ark/cors/cors.nginx.conf"
+fi
 
 # Clean volumes if requested
 if [ "$CLEAN" = true ]; then
@@ -66,6 +73,7 @@ fi
   # Use docker-compose.ark.yml for custom ark configuration
   log "Starting custom ark configuration from docker-compose.ark.yml..."
   docker compose -f docker-compose.ark.yml up -d
+  
 log "Nigiri containers running:"
 docker ps \
   --filter "name=ark" \
@@ -73,8 +81,6 @@ docker ps \
   --filter "name=arkd-wallet" \
   --filter "name=nigiri" \
   --format "table {{.Names}}\t{{.Status}}"
-
-
 
 # 5. Start BTCPayServer dependencies
 log "Starting BTCPayServer dependency containers..."
@@ -137,8 +143,44 @@ if [ -n "$container" ]; then
   else
     log "Failed to get boarding address"
   fi
+
+  # Setup LND for Lightning swaps
+  log "Setting up LND for Lightning swaps..."
+  sleep 10  # Give LND time to start
+
+  # Create wallet in LND if needed
+  log "Creating LND wallet..."
+  docker exec boltz-lnd lncli --network=regtest create 2>/dev/null || true
+
+  # Unlock wallet if needed
+  log "Unlocking LND wallet..."
+  docker exec boltz-lnd lncli --network=regtest unlock --password="" 2>/dev/null || true
+
+  # Fund LND wallet
+  log "Getting LND address..."
+  ln_address=$(docker exec boltz-lnd lncli --network=regtest newaddress p2wkh | jq -r '.address')
+  log "LND address: $ln_address"
+  log "Funding LND wallet..."
+  nigiri faucet "$ln_address" 1
+
+  # Wait for confirmation
+  log "Waiting for LND funding confirmation..."
+  sleep 10
+
+  # Check LND balance
+  log "LND balance:"
+  docker exec boltz-lnd lncli --network=regtest walletbalance
 else
   log "Ark container not running; wallet not setup"
 fi
 
 log "✅ Development environment ready."
+log "\nServices available at:\n"
+log "Ark wallet: http://localhost:6060"
+log "Ark daemon: http://localhost:7070"
+log "Boltz API: http://localhost:9001"
+log "Boltz WebSocket: ws://localhost:9004"
+log "CORS proxy: http://localhost:9069"
+log "Fulmine: http://localhost:7002"
+log "LND gRPC: localhost:10010"
+log "Chopsticks (Bitcoin explorer): http://localhost:3000"

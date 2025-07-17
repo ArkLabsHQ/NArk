@@ -1,4 +1,4 @@
-﻿name: nigiri
+name: nigiri
 services:
   ark-wallet:
     container_name: ark-wallet
@@ -39,6 +39,177 @@ services:
     ports:
       - "7070:7070"
     restart: unless-stopped
+
+  # Lightning swap services
+  boltz-lnd:
+    image: lightninglabs/lnd:v0.19.1-beta
+    restart: unless-stopped
+    container_name: boltz-lnd
+    command:
+      - '--bitcoin.regtest'
+      - '--bitcoin.node=bitcoind'
+      - '--maxpendingchannels=10'
+      - '--rpclisten=0.0.0.0:10009'
+      - '--bitcoind.rpchost=bitcoin:18443'
+      - '--bitcoind.rpcuser=admin1'
+      - '--bitcoind.rpcpass=123'
+      - '--bitcoind.zmqpubrawblock=tcp://bitcoin:28332'
+      - '--bitcoind.zmqpubrawtx=tcp://bitcoin:28333'
+      - '--db.bolt.auto-compact'
+      - '--db.prune-revocation'
+      - '--alias=Ark Labs'
+      - '--tlsextradomain=boltz-lnd'
+      - '--protocol.option-scid-alias'
+      - '--protocol.wumbo-channels'
+      - '--accept-keysend'
+      - '--minchansize=25000'
+      - '--noseedbackup'
+      - '--gc-canceled-invoices-on-startup'
+      - '--coin-selection-strategy=random'
+      - '--protocol.custom-message=513'
+      - '--protocol.custom-nodeann=39'
+      - '--protocol.custom-init=39'
+      - '--no-rest-tls'
+      - '--restcors=*'
+    volumes:
+      - ./volumes/ark/lnd:/root/.lnd
+    ports:
+      - '9736:9735'
+      - '10010:10009'
+
+  boltz-fulmine:
+    image: ghcr.io/arklabshq/fulmine:v0.2.0-rc.0
+    container_name: boltz-fulmine
+    environment:
+      - FULMINE_ARK_SERVER=http://arkd:7070
+      - FULMINE_ESPLORA_URL=http://chopsticks:3000
+      - FULMINE_NO_MACAROONS=true
+    ports:
+      - 7002:7000
+      - 7003:7001
+    volumes:
+      - ./volumes/ark/fulmine:/app/data
+    restart: unless-stopped
+
+  boltz-postgres:
+    image: postgres:15.4
+    container_name: boltz-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: boltz
+      POSTGRES_HOST_AUTH_METHOD: trust
+    expose:
+      - '5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  boltz:
+    image: boltz/boltz:ark@sha256:068988a643db4058af7016222e22b88270d8a020e1552d2c9e1c644a9793851b
+    container_name: boltz
+    restart: unless-stopped
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+      - '9004:9004'
+    expose:
+      - '9001'
+    environment:
+      BOLTZ_CONFIG: |
+        loglevel = "debug"
+        network = "regtest"
+        [ark]
+        host = "boltz-fulmine"
+        port = 7000
+
+        [api]
+        host = "0.0.0.0"
+        port = 9001
+        cors = "*"
+
+        [grpc]
+        host = "0.0.0.0"
+        port = 9000
+
+        [sidecar]
+        [sidecar.grpc]
+        host = "0.0.0.0"
+        port = 9003
+
+        [sidecar.ws]
+        host = "0.0.0.0"
+        port = 9004
+
+        [sidecar.api]
+        host = "0.0.0.0"
+        port = 9005
+
+        [postgres]
+        host = "boltz-postgres"
+        port = 5432
+        database = "boltz"
+        username = "postgres"
+        password = "postgres"
+
+        [swap]
+        deferredClaimSymbols = [ "BTC" ]
+
+        [[pairs]]
+        base = "ARK"
+        quote = "BTC"
+        rate = 1
+        fee = 0.4
+        swapInFee = 0.01
+        invoiceExpiry = 361
+        maxSwapAmount = 4294967
+        minSwapAmount = 1000
+
+        [pairs.timeoutDelta]
+        reverse = 1440
+        chain=1440
+        swapMinimal = 1440
+        swapMaximal = 2880
+        swapTaproot = 10080
+
+        [[currencies]]
+        symbol = "BTC"
+        network = "bitcoinRegtest"
+        minWalletBalance = 10000000
+        minLocalBalance = 10000000
+        minRemoteBalance = 10000000
+        maxSwapAmount = 4294967
+        minSwapAmount = 50000
+        maxZeroConfAmount = 100000
+        preferredWallet = "lnd"
+
+        [currencies.chain]
+        host = "bitcoin"
+        port = 18443
+        user = "admin1"
+        password = "123"
+
+        [currencies.lnd]
+        host = "boltz-lnd"
+        port = 10009
+        certpath = "/home/boltz/.lnd/tls.cert"
+        macaroonpath = "/home/boltz/.lnd/data/chain/bitcoin/regtest/admin.macaroon"
+    volumes:
+      - ./volumes/ark/boltz:/home/boltz/.boltz
+      - ./volumes/ark/lnd:/home/boltz/.lnd
+    entrypoint: sh -c 'echo "$$BOLTZ_CONFIG" > /home/boltz/.boltz/boltz.config && boltzd --datadir /home/boltz/.boltz --configpath /home/boltz/.boltz/boltz.config'
+
+  cors:
+    image: nginx:alpine
+    container_name: cors
+    volumes:
+      - ./volumes/ark/cors/cors.nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - '9069:9069'
+
+volumes:
+  postgres_data:
+    name: ark_postgres_data
 
 networks:
   default:
