@@ -3,7 +3,6 @@ using Ark.V1;
 using AsyncKeyedLock;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using BTCPayServer.Services.Invoices;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -14,47 +13,33 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 {
-    private readonly BTCPayNetworkProvider _btcPayNetworkProvider;
     private readonly AsyncKeyedLocker _asyncKeyedLocker;
     private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
     private readonly IndexerService.IndexerServiceClient _indexerClient;
-    // private readonly ArkadePaymentMethodHandler _arkadePaymentMethodHandler;
-    // private readonly InvoiceRepository _invoiceRepository;
     private readonly EventAggregator _eventAggregator;
-    // private readonly PaymentService _paymentService;
     private readonly ILogger<ArkSubscriptionService> _logger;
 
     private Task _processingTask;
     private CancellationTokenSource? _cts;
     private readonly Channel<bool> _checkContractsChannel = Channel.CreateUnbounded<bool>();
 
-    private string _subscriptionId;
+    private string _subscriptionId = "";
     private HashSet<string> _subscribedScripts = new();
     private Task? _listeningTask;
     private CancellationTokenSource _listeningCts;
-    private readonly Network _network;
 
     public ArkSubscriptionService(
-        BTCPayNetworkProvider btcPayNetworkProvider,
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
         IndexerService.IndexerServiceClient indexerClient,
-        // ArkadePaymentMethodHandler arkadePaymentMethodHandler,
-        // InvoiceRepository invoiceRepository,
-        PaymentService paymentService,
         EventAggregator eventAggregator,
         ILogger<ArkSubscriptionService> logger)
     {
-        _btcPayNetworkProvider = btcPayNetworkProvider;
         _asyncKeyedLocker = asyncKeyedLocker;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
         _indexerClient = indexerClient;
-        // _arkadePaymentMethodHandler = arkadePaymentMethodHandler;
-        // _invoiceRepository = invoiceRepository;
-        // _paymentService = paymentService;
         _eventAggregator = eventAggregator;
         _logger = logger;
-        _network = _btcPayNetworkProvider.BTC.NBitcoinNetwork;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -111,7 +96,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             if (_subscribedScripts.Add(contract))
             {
                 _logger.LogInformation("Manually subscribing to contract: {Contract}", contract);
-                await SynchronizeSubscriptionWithIndexerAsync(cancellationToken);
+                await SynchronizeSubscriptionWithIndexerAsync(null,cancellationToken);
                 await ProcessUpdates([contract], cancellationToken);
             }
             else
@@ -124,7 +109,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             if (_subscribedScripts.Remove(contract))
             {
                 _logger.LogInformation("Manually unsubscribing from contract: {Contract}", contract);
-                await SynchronizeSubscriptionWithIndexerAsync(cancellationToken);
+                await SynchronizeSubscriptionWithIndexerAsync([contract],cancellationToken);
             }
             else
             {
@@ -132,6 +117,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             }
         }
     }
+    
 
     private async Task ProcessingLoop(CancellationToken cancellationToken)
     {
@@ -164,13 +150,19 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         using var keyLocker = await _asyncKeyedLocker.LockAsync("UpdateSubscription", cancellationToken);
 
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();
-        var activeContracts = await dbContext.WalletContracts
-            .Where(c => c.Active)
-            .Select(c => c.Script)
+        var allContracts = await dbContext.WalletContracts
+            // .Where(c => c.Active)
+            .Select(c => new { c.Script, c.Active })
             .ToListAsync(cancellationToken);
 
-        var activeScripts = new HashSet<string>(activeContracts);
+        var allScripts = allContracts.Select(c => c.Script).ToHashSet();
 
+        await ProcessUpdates(allScripts.ToArray(), cancellationToken);
+        var activeScripts = allContracts
+            .Where(c => c.Active)
+            .Select(c => c.Script)
+            .ToHashSet();
+        
         if (activeScripts.SetEquals(_subscribedScripts))
         {
             _logger.LogDebug("No change in active contracts, skipping subscription update.");
@@ -189,7 +181,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         {
             _logger.LogInformation("No active contracts. Stopping listener.");
             await StopListening();
-            _subscriptionId = null;
+            _subscriptionId = "";
             return;
         }
 
@@ -290,7 +282,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             Amount = (long)vtxo.Amount,
             IsNote = vtxo.IsSwept,
             SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt),
-            SpentByTransactionId = vtxo.SpentBy,
+            SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy)? null: vtxo.SpentBy,
             Script = vtxo.Script
         };
         
@@ -298,6 +290,8 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
     private async Task ProcessUpdates(string[] scripts, CancellationToken cancellationToken)
     {
+        if(scripts.Length == 0)
+            return;
         // var handler = _arkadePaymentMethodHandler;
         var request = new GetVtxosRequest();
         request.Scripts.AddRange(scripts);
@@ -311,21 +305,21 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
            Vtxos = results.ToArray()
        });
     }
-    
-
-    private async Task SynchronizeSubscriptionWithIndexerAsync(CancellationToken cancellationToken)
+    private async Task SynchronizeSubscriptionWithIndexerAsync(string[]? removed, CancellationToken cancellationToken)
     {
         if (_subscribedScripts.Count == 0)
         {
             _logger.LogInformation("[Manual] No active scripts. Stopping listener and clearing subscription.");
             await StopListening();
-            _subscriptionId = null;
+            _subscriptionId = "";
             return;
         }
 
         _logger.LogInformation("[Manual] Updating remote subscription with {Count} scripts.", _subscribedScripts.Count);
 
-        var req = new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId };
+        var req = _subscriptionId is null ?
+            new SubscribeForScriptsRequest() :
+            new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId };
         req.Scripts.AddRange(_subscribedScripts);
 
         try
@@ -339,6 +333,14 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
                 await StopListening();
             }
             _subscriptionId = newSubscriptionId;
+            if (removed?.Any() is true)
+            {
+                await _indexerClient.UnsubscribeForScriptsAsync(new UnsubscribeForScriptsRequest
+                {
+                    SubscriptionId = _subscriptionId,
+                    Scripts = { removed! }
+                }, cancellationToken: cancellationToken);
+            }
             _logger.LogInformation("[Manual] Successfully updated subscription with ID: {SubscriptionId}", _subscriptionId);
 
             await StartListening(cancellationToken);

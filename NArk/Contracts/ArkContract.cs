@@ -4,29 +4,6 @@ using NBitcoin.Secp256k1;
 
 namespace NArk;
 
-public class GenericArkContract: ArkContract
-{
-    private readonly IEnumerable<ScriptBuilder> _scriptBuilders;
-    private readonly Dictionary<string, string> _contractData;
-
-    public GenericArkContract(ECXOnlyPubKey server, IEnumerable<ScriptBuilder> scriptBuilders, Dictionary<string, string> contractData = null) : base(server)
-    {
-        _scriptBuilders = scriptBuilders;
-        _contractData = contractData;
-    }
-
-    public override string Type { get; } = "generic";
-    public override IEnumerable<ScriptBuilder> GetScriptBuilders()
-    {
-        return _scriptBuilders;
-    }
-
-    public override Dictionary<string, string> GetContractData()
-    {
-       return _contractData;
-    }
-}
-
 public abstract class ArkContract
 {
     
@@ -35,7 +12,7 @@ public abstract class ArkContract
     static ArkContract()
     {
         Parsers.Add(new GenericArkContractParser(ArkPaymentContract.ContractType, ArkPaymentContract.Parse));
-        Parsers.Add(new GenericArkContractParser(TweakedArkPaymentContract.ContractType, TweakedArkPaymentContract.Parse));
+        Parsers.Add(new GenericArkContractParser(HashLockedArkPaymentContract.ContractType, HashLockedArkPaymentContract.Parse));
         Parsers.Add(new GenericArkContractParser(VHTLCContract.ContractType, VHTLCContract.Parse));
         Parsers.Add(new GenericArkContractParser(ArkNoteContract.ContractType, ArkNoteContract.Parse));
         
@@ -82,9 +59,19 @@ public abstract class ArkContract
 
         return new ArkAddress(ECXOnlyPubKey.Create(spendInfo.OutputPubKey.ToBytes()), Server);
     }
+    
 
-    public TaprootSpendInfo GetTaprootSpendInfo()
+    public virtual TaprootSpendInfo GetTaprootSpendInfo()
     {
+
+        var builder = TaprootConstants.WithTree2(GetTapScriptList());
+    
+        return builder.Finalize( new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToECXOnlyPubKey().ToBytes()));
+    }
+
+    public TapScript[] GetTapScriptList()
+    {
+        
         var leaves = GetScriptBuilders().ToArray();
         if (!leaves.OfType<CollaborativePathArkTapScript>().Any())
             throw new ArgumentException("At least one collaborative path is required");
@@ -92,12 +79,8 @@ public abstract class ArkContract
             throw new ArgumentException("At least one unilateral path is required");
         if(leaves.Any(x => x is not CollaborativePathArkTapScript && x is not UnilateralPathArkTapScript))
             throw new ArgumentException("Only collaborative and unilateral paths are allowed");
-        
-        var spendInfo = TaprootSpendInfo.WithHuffmanTree(
-            new TaprootInternalPubKey(TaprootConstants.UnspendableKey), 
-            leaves.Select(x => ((uint)0, x.Build())).ToArray());
-        
-        return spendInfo;
+
+        return leaves.Select(x => x.Build()).ToArray();
     }
     
     public override string ToString()

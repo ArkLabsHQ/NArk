@@ -13,7 +13,9 @@ using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NArk;
+using NArk.Services;
 using NArk.Wallet.Boltz;
 using NBitcoin;
 
@@ -55,7 +57,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
                 ? "https://signet.boltz.exchange"
                 : networkType == ChainName.Regtest
-                    ? "https://localhost:9001"
+                    ? "http://localhost:9001/v2/"
                     : null;
         
         SetupBtcPayPluginServices(serviceCollection);
@@ -65,7 +67,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<AsyncKeyedLocker>();
         
         serviceCollection.AddSingleton<ArkadeWalletSignerProvider>();
-        serviceCollection.AddSingleton<ArkadeTweakedContractSweeper>();
+        serviceCollection.AddSingleton<ArkadeContractSweeper>();
         serviceCollection.AddDbContext<ArkPluginDbContext>((provider, o) =>
         {
             var factory = provider.GetRequiredService<ArkPluginDbContextFactory>();
@@ -74,21 +76,36 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddStartupTask<ArkPluginMigrationRunner>();
 
         serviceCollection.AddSingleton<ArkWalletService>();
+        serviceCollection.AddSingleton<ArkTransactionBuilder>(provider => new ArkTransactionBuilder(provider.GetRequiredService<BTCPayNetworkProvider>().BTC.NBitcoinNetwork, provider.GetRequiredService<ILogger<ArkTransactionBuilder>>()));
+        serviceCollection.AddSingleton<ArkadeCheckoutModelExtension>();
+        serviceCollection.AddSingleton<ArkadeCheckoutCheatModeExtension>();
+        serviceCollection.AddSingleton<ICheckoutModelExtension>(provider => provider.GetRequiredService<ArkadeCheckoutModelExtension>());
+        serviceCollection.AddSingleton<ICheckoutCheatModeExtension>(provider => provider.GetRequiredService<ArkadeCheckoutCheatModeExtension>());
         serviceCollection.AddSingleton<IArkadeMultiWalletSigner>(provider => provider.GetRequiredService<ArkWalletService>());
         serviceCollection.AddSingleton<ArkSubscriptionService>();
         serviceCollection.AddSingleton<ArkContractInvoiceListener>();
+        serviceCollection.AddHostedService<ArkWalletService>(provider => provider.GetRequiredService<ArkWalletService>());
         serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
-        serviceCollection.AddHostedService<ArkadeTweakedContractSweeper>(provider => provider.GetRequiredService<ArkadeTweakedContractSweeper>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
+        serviceCollection.AddHostedService<ArkadeContractSweeper>(provider => provider.GetRequiredService<ArkadeContractSweeper>());
+        
+        // Register the Boltz swap services
+        // serviceCollection.AddSingleton<BoltzSwapSubscriptionService>();
+        serviceCollection.AddSingleton<BoltzSwapService>();
+        // serviceCollection.AddHostedService<BoltzSwapSubscriptionService>(provider => provider.GetRequiredService<BoltzSwapSubscriptionService>());
+        serviceCollection.AddSingleton<BoltzService>();
+        serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
 
+        
+        serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/Ark/ArkLNSetupTabhead.cshtml");
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");
         // Display Ark as a wallet type in navigation sidebar
         serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
         
         // Display ARK instructions in the Lightning setup screen
         serviceCollection.AddUIExtension(
-            location: "ln-payment-method-setup-custom",
-            partialViewName: "/Views/Lightning/SetupArkLightningNode.cshtml");
+            location: "ln-payment-method-setup-tab",
+            partialViewName: "/Views/Lightning/LNPaymentMethodSetupTab.cshtml");
         
         // Use NArk SDK Services
         serviceCollection.AddArkServices(new ArkConfiguration(
@@ -100,15 +117,14 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     private static void SetupBtcPayPluginServices(IServiceCollection serviceCollection)
     {
         // Register ArkConnectionStringHandler so LightningClientFactoryService can create the client
-        serviceCollection.AddSingleton<Func<BoltzClient, ILightningConnectionStringHandler>>(
-            http => new ArkLightningConnectionStringHandler(http));
+        serviceCollection.AddSingleton<ILightningConnectionStringHandler, ArkLightningConnectionStringHandler>();
         serviceCollection.AddSingleton<ArkadePaymentLinkExtension>();
         serviceCollection.AddSingleton<IPaymentLinkExtension>(provider => provider.GetRequiredService<ArkadePaymentLinkExtension>());
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
-
         
         serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
     }
+    
     public override void Execute(IApplicationBuilder applicationBuilder, IServiceProvider provider)
     {
         base.Execute(applicationBuilder, provider);

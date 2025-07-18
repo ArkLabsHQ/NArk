@@ -1,30 +1,32 @@
-﻿using System.Diagnostics.CodeAnalysis;
-using BTCPayServer.Lightning;
+﻿using BTCPayServer.Lightning;
+using BTCPayServer.Plugins.ArkPayServer.Data;
+using BTCPayServer.Plugins.ArkPayServer.Services;
+using Microsoft.Extensions.DependencyInjection;
+using NArk.Services;
 using NArk.Wallet.Boltz;
 using NBitcoin;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;
 
-/// Handles strings such as "type=ark;wallet-id=WALLETID"
-public class ArkLightningConnectionStringHandler(BoltzClient client) : ILightningConnectionStringHandler
+public class ArkLightningConnectionStringHandler(IServiceProvider serviceProvider) : ILightningConnectionStringHandler
 {
     public ILightningClient? Create(string connectionString, Network network, out string? error)
     {
         var kv = LightningConnectionStringHelper.ExtractValues(connectionString, out var type);
-        if (type != "ark")
+        if (type != "arkade")
         {
-            error = "The key 'type' must be set to 'ark' for ArkLightning connection strings";
+            error = "The key 'type' must be set to 'arkade' for ArkLightning connection strings";
             return null;
         }
 
-        if (!kv.TryGetValue("walletid", out var walletId))
+        if (!kv.TryGetValue("wallet-id", out var walletId))
         {
-            error = "The key 'walletid' is mandatory for ArkLightning connection strings";
+            error = "The key 'wallet-id' is mandatory for ArkLightning connection strings";
             return null;
         }
 
         error = null;
-        return new ArkLightningClient(walletId, client);
+        return ActivatorUtilities.CreateInstance<ArkLightningClient>(serviceProvider, network, walletId);
     }
 }
 

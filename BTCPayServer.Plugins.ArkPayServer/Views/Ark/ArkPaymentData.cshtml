@@ -51,10 +51,13 @@
             @foreach (var payment in payments)
             {
                 <tr >
-	                <td>@payment.Address</td>
-	                <td>@payment.Outpoint</td>
-	                <td>@payment.ReceivedTime</td>
-	                <td>@payment.Contract</td>
+	                <td>
+		                <vc:truncate-center text="@payment.Address"  classes="truncate-center-id" />
+		                
+	                </td>
+	                <td><vc:truncate-center text="@payment.Outpoint"  classes="truncate-center-id" /></td>
+	                <td>@payment.ReceivedTime.ToBrowserDate()</td>
+	                <td>  <vc:truncate-center text="@payment.Contract"  classes="truncate-center-id" /></td>
 	                
                     
                     <td class="payment-value text-end text-nowrap">

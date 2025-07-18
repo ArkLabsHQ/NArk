@@ -51,17 +51,30 @@ public static class ArkExtensions
     
     public static ECXOnlyPubKey ServerKey(this GetInfoResponse response)
     {
-        // Convert hex string to bytes
-        var bytes = Convert.FromHexString(response.SignerPubkey);
+        return response.SignerPubkey.ToECXOnlyPubKey();
+    }
+    
+    public static ECXOnlyPubKey ToECXOnlyPubKey(this string pubKeyHex)
+    {
+        var pubKey = new PubKey(pubKeyHex);
+        return pubKey.ToECXOnlyPubKey();
+    }
+    
+    public static ECXOnlyPubKey ToECXOnlyPubKey(this byte[] pubKeyBytes)
+    {
+        var pubKey = new PubKey(pubKeyBytes);
+        return pubKey.ToECXOnlyPubKey();
+    }
 
-        // If the server returns a standard compressed key (33 bytes),
-        // remove the first byte (02 or 03) to get the 32-byte x-only key.
-        if (bytes.Length == 33 && (bytes[0] == 0x02 || bytes[0] == 0x03))
-        {
-            bytes = bytes[1..];
-        }
-
-        return ECXOnlyPubKey.Create(bytes);
+    public static ECXOnlyPubKey ToECXOnlyPubKey(this PubKey pubKey)
+    {
+        var xOnly = pubKey.TaprootInternalKey.ToBytes();
+        return ECXOnlyPubKey.Create(xOnly);
+    }
+    
+    public static string ToCompressedEvenYHex(this ECXOnlyPubKey xOnlyPubKey)
+    {
+        return "02" + xOnlyPubKey.ToHex();
     }
     
     public static Sequence UnilateralExitSequence(this GetInfoResponse response)

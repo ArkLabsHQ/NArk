@@ -3,6 +3,7 @@ using BTCPayServer.Payments;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Services;
 using Microsoft.Extensions.DependencyInjection;
+using NArk.Services;
 using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -13,6 +14,7 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
 {
     private readonly ChainName _networkType;
     private readonly IServiceProvider _serviceProvider;
+    private readonly IOperatorTermsService _operatorTermsService;
     private  ArkWalletService _arkWalletService => _serviceProvider.GetRequiredService<ArkWalletService>();
 
     public ArkadePaymentMethodHandler(BTCPayServerEnvironment btcPayServerEnvironment,
@@ -20,12 +22,22 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
     {
         _networkType = btcPayServerEnvironment.NetworkType;
         _serviceProvider = serviceProvider;
+        _operatorTermsService = serviceProvider.GetRequiredService<IOperatorTermsService>();
     }
 
     public PaymentMethodId PaymentMethodId => ArkadePlugin.ArkadePaymentMethodId;
 
     public async Task ConfigurePrompt(PaymentMethodContext context)
     {
+        try
+        {
+            await _operatorTermsService.GetOperatorTerms(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+        }
+        catch
+        {
+            throw new PaymentMethodUnavailableException("Ark operator unavailable");
+        }
+
         var store = context.Store;
 
         if (ParsePaymentMethodConfig(store.GetPaymentMethodConfigs()[PaymentMethodId]) is not ArkadePaymentMethodConfig

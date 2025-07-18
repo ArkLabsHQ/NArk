@@ -33,12 +33,18 @@ public class BoltzWebsocketClient : IAsyncDisposable
         _webSocketUri = webSocketUri ?? throw new ArgumentNullException(nameof(webSocketUri));
     }
 
+    /// <summary>
+    /// Creates and connects a new BoltzWebsocketClient instance.
+    /// </summary>
+    /// <param name="webSocketUri">The WebSocket URI to connect to.</param>
+    /// <param name="cancellationToken">Cancellation token for the connection attempt.</param>
+    /// <returns>A connected BoltzWebsocketClient instance.</returns>
     public static async Task<BoltzWebsocketClient> CreateAndConnectAsync(Uri webSocketUri,
         CancellationToken cancellationToken = default)
     {
-        var listener = new BoltzWebsocketClient(webSocketUri);
-        await listener.ConnectAsync(cancellationToken);
-        return listener;
+        var client = new BoltzWebsocketClient(webSocketUri);
+        await client.ConnectAsync(cancellationToken);
+        return client;
     }
 
     /// <summary>
@@ -60,7 +66,10 @@ public class BoltzWebsocketClient : IAsyncDisposable
             _webSocket?.Dispose();
             _webSocket = new ClientWebSocket();
 
-            await _receiveLoopCts?.CancelAsync();
+            if (_receiveLoopCts is not null)
+            {
+                await _receiveLoopCts.CancelAsync();
+            }
             _receiveLoopCts?.Dispose();
             _receiveLoopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
@@ -152,7 +161,6 @@ public class BoltzWebsocketClient : IAsyncDisposable
     {
         _ = await SendRequest("subscribe", "swap.update", swapIds, cancellationToken);
     }
-
     
     /// <summary>
     /// Subscribes to WebSocket updates for specific swap IDs.
@@ -162,10 +170,6 @@ public class BoltzWebsocketClient : IAsyncDisposable
         _ = await SendRequest("subscribe", "swap.update", swapIds, cancellationToken);
     }
     
-    
-    
-    
-
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         var buffer = new ArraySegment<byte>(new byte[8192]);

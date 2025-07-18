@@ -4,15 +4,6 @@ using NBitcoin.Secp256k1;
 
 namespace NArk;
 
-public class ArkCoin : Coin
-{
-    public ArkCoin(ArkContract contract, OutPoint outpoint, TxOut txout) : base(outpoint, txout)
-    {
-        Contract = contract;
-    }
-    public ArkContract Contract { get; set; }
-}
-
 public class ArkAddress: TaprootPubKey
 {
     static ArkAddress()
@@ -64,6 +55,13 @@ public class ArkAddress: TaprootPubKey
         var encoder = mainnet ? MainnetEncoder : TestnetEncoder;
         byte[] bytes = [ Convert.ToByte(Version), ..ServerKey.ToBytes(), ..ToBytes() ];
         return encoder.EncodeData(bytes, Bech32EncodingType.BECH32M);
+    }
+
+    public static ArkAddress FromScriptPubKey(Script scriptPubKey, ECXOnlyPubKey serverKey)
+    {
+        var k = PayToTaprootTemplate.Instance.ExtractScriptPubKeyParameters(scriptPubKey);
+        var pubKey = ECXOnlyPubKey.Create(k.ToBytes());
+        return new ArkAddress(pubKey, serverKey);
     }
 
     public static ArkAddress Parse(string address)

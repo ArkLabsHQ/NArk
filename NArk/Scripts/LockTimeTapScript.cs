@@ -15,7 +15,7 @@ public class LockTimeTapScript : ScriptBuilder
 
     public override IEnumerable<Op> BuildScript()
     {
-        yield return Op.GetPushOp(LockTime.ToBytes());
+        yield return Op.GetPushOp(LockTime.Value);
         yield return OpcodeType.OP_CHECKLOCKTIMEVERIFY;
         yield return OpcodeType.OP_DROP;
     }

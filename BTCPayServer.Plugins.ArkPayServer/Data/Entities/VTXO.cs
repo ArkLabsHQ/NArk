@@ -19,6 +19,7 @@ public class VTXO
     internal static void OnModelCreating(ModelBuilder builder)
     {
         var entity = builder.Entity<VTXO>();
+        entity.Property(vtxo => vtxo.SpentByTransactionId).HasDefaultValue(null);
         
         entity.HasKey(e => new { e.TransactionId, e.TransactionOutputIndex });
     }

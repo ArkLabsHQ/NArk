@@ -2,6 +2,7 @@ using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Payments;
+using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using Microsoft.AspNetCore.Mvc;
 using BTCPayServer.Plugins.ArkPayServer.Services;
@@ -19,7 +20,9 @@ public class ArkStoreWalletViewModel
     public string? Wallet { get; set; }
 
     public bool SignerAvailable { get; set; }
-    public Dictionary<ArkWalletContract, VTXO[]> Contracts { get; set; }
+    public Dictionary<ArkWalletContract, VTXO[]> Contracts { get; set; } = new();
+
+    public bool LNEnabled { get; set; }
     
     
 }
@@ -60,26 +63,43 @@ public class ArkController : Controller
         {
             return View(new ArkStoreWalletViewModel());
         }
-        var walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
         
+        var walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
+        if (walletInfo is null)
+        {
+            
+            TempData[WellKnownTempData.ErrorMessage] = "Wallet not found in records anymore. Please re-import the wallet.";
+            return await SetupStore(storeId, new ArkStoreWalletViewModel());
+        }
 
+        var lnPmi = PaymentTypes.LN.GetPaymentMethodId("BTC");
+        var lnConfig =store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(lnPmi, _paymentMethodHandlerDictionary);
+       
         return View(new ArkStoreWalletViewModel()
         {
             Wallet = config.WalletId,
             SignerAvailable = await _walletSignerProvider.GetSigner(config.WalletId, HttpContext.RequestAborted) is not null,
-            Contracts = walletInfo
+            Contracts = walletInfo,
+            LNEnabled = lnConfig?.ConnectionString?.StartsWith("type=arkade") is true
         });
     }
 
     [HttpPost("stores/{storeId}")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-    public async Task<IActionResult> SetupStore(string storeId, ArkStoreWalletViewModel model, string? action = null)
+    public async Task<IActionResult> SetupStore(string storeId, ArkStoreWalletViewModel model, string? command = null)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
             return NotFound();
 
-        if (action == "create")
+        var generatedKey = "";
+        
+        var lnPmi = PaymentTypes.LN.GetPaymentMethodId("BTC");
+        var lnConfig =store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(lnPmi, _paymentMethodHandlerDictionary);
+
+        var lnEnabled = lnConfig?.ConnectionString?.StartsWith("type=arkade") is true;
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+        if (command == "create")
         {
             var key = RandomUtils.GetBytes(32)!;
             var encoder = Encoders.Bech32("nsec");
@@ -87,24 +107,70 @@ public class ArkController : Controller
             encoder.StrictLength = false;
             var npub = encoder.EncodeData(key, Bech32EncodingType.BECH32);
             model.Wallet = npub;
+            generatedKey = "Your new wallet key is: " + npub;
+            
+        }else if (command == "enable-ln" && config?.WalletId != null)
+        {
+            lnConfig = new LightningPaymentMethodConfig()
+            {
+                ConnectionString = $"type=arkade;wallet-id={config.WalletId}",
+
+            };
+            store.SetPaymentMethodConfig(_paymentMethodHandlerDictionary[lnPmi], lnConfig);
+            await _storeRepository.UpdateStore(store);
+            TempData[WellKnownTempData.SuccessMessage] = "Lightning enabled";
+            return RedirectToAction(nameof(SetupStore), new { storeId });
+            
         }
-        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+
         if (model.Wallet != config?.WalletId )
         {
             if (string.IsNullOrEmpty(model.Wallet))
             {
                 store.SetPaymentMethodConfig(ArkadePlugin.ArkadePaymentMethodId, null);
+                if (lnEnabled)
+                {
+                    store.SetPaymentMethodConfig(lnPmi, null);
+                }
             }else
             {
-                var wallet = await _arkWalletService.Upsert(model.Wallet);
+                ArkWallet wallet;
+                try
+                {
+                    wallet = await _arkWalletService.Upsert(model.Wallet);
+                }catch (Exception ex)
+                {
+                    
+                    TempData[WellKnownTempData.ErrorMessage] = "Could not update wallet: " + ex.Message;
+                    return View(model);
+                }
+
                 config = new ArkadePaymentMethodConfig(wallet.Id);
                 store.SetPaymentMethodConfig(_paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], config);
+                if (lnEnabled || lnConfig is null)
+                {
+                    lnConfig = new LightningPaymentMethodConfig()
+                    {
+                        ConnectionString = $"type=arkade;wallet-id={wallet.Id}",
+
+                    };
+                    store.SetPaymentMethodConfig(_paymentMethodHandlerDictionary[lnPmi], lnConfig);
+                }
             }
             
         }
         await _storeRepository.UpdateStore(store);
-        TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method successfully {(string.IsNullOrEmpty(config?.WalletId) ? "enabled" : "updated")}.";
+        if (string.IsNullOrEmpty(generatedKey))
+        {
+            TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method successfully {(string.IsNullOrEmpty(config?.WalletId) ? "enabled" : "updated")}.";
 
+        }
+        else
+        {
+            TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method successfully generated. {generatedKey}";
+        }
+       
         return RedirectToAction("SetupStore", new { storeId });
     }
     

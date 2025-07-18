@@ -1,4 +1,4 @@
-﻿using NBitcoin;
+using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
@@ -66,7 +66,7 @@ public class VHTLCContract : ArkContract
             { "sender", Sender.ToHex() },
             { "receiver", Receiver.ToHex() },
             { "hash", Encoders.Hex.EncodeData(Hash.ToBytes()) },
-            { "refundLocktime", RefundLocktime.ToString() },
+            { "refundLocktime", RefundLocktime.Value.ToString() },
             { "unilateralClaimDelay", UnilateralClaimDelay.Value.ToString() },
             { "unilateralRefundDelay", UnilateralRefundDelay.Value.ToString() },
             { "unilateralRefundWithoutReceiverDelay", UnilateralRefundWithoutReceiverDelay.Value.ToString() }
@@ -92,50 +92,46 @@ public class VHTLCContract : ArkContract
     }
     
 
-    private ScriptBuilder CreateClaimScript()
+    public ScriptBuilder CreateClaimScript()
     {
         // claim (preimage + receiver)
         var hashLock = new HashLockTapScript(Hash);
         var receiverMultisig = new NofNMultisigTapScript([Receiver]);
         return new CollaborativePathArkTapScript(Server,
-            new CompositeTapScript(hashLock, receiverMultisig));
+            new CompositeTapScript(hashLock, new VerifyTapScript() ,receiverMultisig));
     }
 
-    private ScriptBuilder CreateCooperativeScript()
+    public ScriptBuilder CreateCooperativeScript()
     {
         // refund (sender + receiver + server)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
-        return new CollaborativePathArkTapScript(Server,
-            new CompositeTapScript(senderReceiverMultisig));
+        return new CollaborativePathArkTapScript(Server, senderReceiverMultisig);
     }
-
-    private ScriptBuilder CreateRefundWithoutReceiverScript()
+    public ScriptBuilder CreateRefundWithoutReceiverScript()
     {
-        // refundWithoutReceiver (at refundLocktime, sender + receiver + server)
-        var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
+        // refundWithoutReceiver (at refundLocktime, sender  + server)
+        var senderReceiverMultisig = new NofNMultisigTapScript([Sender]);
         var lockTime = new LockTimeTapScript(RefundLocktime);
         return new CollaborativePathArkTapScript(Server,
             new CompositeTapScript(lockTime, senderReceiverMultisig));
     }
 
-    private ScriptBuilder CreateUnilateralClaimScript()
+
+    public ScriptBuilder CreateUnilateralClaimScript()
     {
         // unilateralClaim (preimage + receiver after unilateralClaimDelay)
         var hashLock = new HashLockTapScript(Hash);
         var receiverMultisig = new NofNMultisigTapScript([Receiver]);
         return new UnilateralPathArkTapScript(UnilateralClaimDelay,
-            new CompositeTapScript(hashLock, receiverMultisig));
+            receiverMultisig, hashLock);
     }
-
-    private ScriptBuilder CreateUnilateralRefundScript()
+    public ScriptBuilder CreateUnilateralRefundScript()
     {
         // unilateralRefund (sender + receiver after unilateralRefundDelay)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
-        return new UnilateralPathArkTapScript(UnilateralRefundDelay,
-            new CompositeTapScript(senderReceiverMultisig));
+        return new UnilateralPathArkTapScript(UnilateralRefundDelay, senderReceiverMultisig);
     }
-
-    private ScriptBuilder CreateUnilateralRefundWithoutReceiverScript()
+    public ScriptBuilder CreateUnilateralRefundWithoutReceiverScript()
     {
         // unilateralRefundWithoutReceiver (sender after unilateralRefundWithoutReceiverDelay)
         return new UnilateralPathArkTapScript(UnilateralRefundWithoutReceiverDelay,
