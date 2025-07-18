@@ -9,6 +9,56 @@ log() {
   echo -e "${green}[$(date '+%H:%M:%S')] ${msg}${reset}"
 }
 
+setup_fulmine_wallet() {
+  log "Setting up Fulmine wallet..."
+  
+  # Generate Seed
+  log "Generating seed..."
+  local seed_response=$(curl -s -X GET http://localhost:7003/api/v1/wallet/genseed)
+  local private_key=$(echo "$seed_response" | jq -r '.nsec')
+  log "Generated private key: $private_key"
+
+  # Create Wallet
+  log "Creating Fulmine wallet..."
+  curl -X POST http://localhost:7003/api/v1/wallet/create \
+       -H "Content-Type: application/json" \
+       -d "{\"private_key\": \"$private_key\", \"password\": \"password\", \"server_url\": \"http://arkd:7070\"}"
+
+  # Unlock Wallet
+  log "Unlocking Fulmine wallet..."
+  curl -X POST http://localhost:7003/api/v1/wallet/unlock \
+       -H "Content-Type: application/json" \
+       -d '{"password": "password"}'
+
+  # Get Wallet Status
+  log "Checking Fulmine wallet status..."
+  local status_response=$(curl -s -X GET http://localhost:7003/api/v1/wallet/status)
+  log "Wallet status: $status_response"
+
+  # Get wallet address
+  log "Getting Fulmine wallet address..."
+  local address_response=$(curl -s -X GET http://localhost:7003/api/v1/address)
+  local fulmine_address=$(echo "$address_response" | jq -r '.address' | sed 's/bitcoin://' | sed 's/?ark=.*//')
+  log "Fulmine address: $fulmine_address"
+
+  # Fund fulmine
+  log "Funding Fulmine wallet..."
+  nigiri faucet "$fulmine_address" 0.01
+  
+  # Wait for transaction to be processed
+  sleep 5
+
+  # Settle the transaction
+  log "Settling Fulmine wallet..."
+  curl -X GET http://localhost:7003/api/v1/settle
+
+  # Get transaction history
+  log "Getting transaction history..."
+  curl -X GET http://localhost:7003/api/v1/transactions
+  
+  log "✓ Fulmine wallet setup completed successfully!"
+}
+
 # Argument parsing
 CLEAN=false
 while [[ $# -gt 0 ]]; do
@@ -143,6 +193,9 @@ if [ -n "$container" ]; then
   else
     log "Failed to get boarding address"
   fi
+  
+  # 7. Setup Fulmine wallet
+  setup_fulmine_wallet
 
   # # Setup LND for Lightning swaps
   # log "Setting up LND for Lightning swaps..."
