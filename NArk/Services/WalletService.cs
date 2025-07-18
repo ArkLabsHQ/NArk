@@ -14,10 +14,10 @@ public class WalletService : IWalletService
     
     public WalletService(
         IOperatorTermsService operatorTermsService,
-        ILogger<WalletService> logger = null)
+        ILogger<WalletService> logger)
     {
         _operatorTermsService = operatorTermsService;
-        _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<WalletService>.Instance;
+        _logger = logger;
     }
     
     public async Task<ArkContract> DerivePaymentContractAsync(DeriveContractRequest request, CancellationToken cancellationToken = default)
@@ -33,8 +33,8 @@ public class WalletService : IWalletService
             return new ArkPaymentContract(operatorTerms.SignerKey, operatorTerms.UnilateralExit, request.User);
         }
       
-        _logger.LogDebug("Creating TweakedArkPaymentContract with tweak {Tweak}", request.Tweak.ToHex());
-        return new TweakedArkPaymentContract(
+        _logger.LogDebug("Creating HashLockedArkPaymentContract with tweak {Tweak}", request.Tweak.ToHex());
+        return new HashLockedArkPaymentContract(
             operatorTerms.SignerKey, 
             operatorTerms.UnilateralExit, 
             request.User, 

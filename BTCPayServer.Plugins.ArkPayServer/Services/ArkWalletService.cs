@@ -348,13 +348,10 @@ public class ArkWalletService(
             return Task.FromResult(_key.CreateXOnlyPubKey());
         }
 
-        public Task<(SecpSchnorrSignature, ECXOnlyPubKey)> Sign(uint256 data, byte[]? tweak = null,
-            CancellationToken cancellationToken = default)
+        public Task<(SecpSchnorrSignature, ECXOnlyPubKey)> Sign(uint256 data, CancellationToken cancellationToken = default)
         {
-            var signer = tweak is null ? _key : _key.TweakAdd(tweak);
-
-            return Task.FromResult((signer.SignBIP340(data.ToBytes())
-                , signer.CreateXOnlyPubKey()));
+            return Task.FromResult((_key.SignBIP340(data.ToBytes())
+                , _key.CreateXOnlyPubKey()));
         }
     }
 }

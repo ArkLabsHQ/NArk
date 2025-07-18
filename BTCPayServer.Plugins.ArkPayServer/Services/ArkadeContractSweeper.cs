@@ -62,7 +62,7 @@ public class ArkadeContractSweeper : IHostedService
 
     private async Task PollForVTXOToSweep()
     {
-        string[] allowedContractTypes = {VHTLCContract.ContractType, TweakedArkPaymentContract.ContractType};
+        string[] allowedContractTypes = {VHTLCContract.ContractType, HashLockedArkPaymentContract.ContractType};
 
         while (!_cts.IsCancellationRequested)
         {
@@ -101,7 +101,7 @@ public class ArkadeContractSweeper : IHostedService
 
                     try
                     {
-                    await SweepWalletCoins(wallet, group.Select(x => (x.Vtxo, x.Contract)).ToArray(), signer);
+                        await SweepWalletCoins(wallet, group.Select(x => (x.Vtxo, x.Contract)).ToArray(), signer);
                     }
                     catch (Exception ex)
                     {
@@ -139,20 +139,16 @@ public class ArkadeContractSweeper : IHostedService
             var arkCoin = ToArkCoin(vtxo.Contract, vtxo.Vtxo, signer);
             switch (arkCoin.Contract)
             {
-                case TweakedArkPaymentContract tweaked:
-                    if (tweaked.OriginalUser.ToBytes().SequenceEqual(publicKey.ToBytes()))
+                case HashLockedArkPaymentContract hashLockedArkPaymentContract:
+                    if (hashLockedArkPaymentContract.User.ToBytes().SequenceEqual(publicKey.ToBytes()))
                     {
                         coins.Add(arkCoin);
                     }
 
                     break;
                 case VHTLCContract htlc:
-                    if (htlc.Preimage is not null && htlc.Receiver.ToBytes().SequenceEqual(publicKey.ToBytes()) )
-                    {
-                        coins.Add(arkCoin);
-                    }
-                    else if (htlc.RefundLocktime.IsTimeLock &&
-                             htlc.RefundLocktime.Date < DateTime.UtcNow && htlc.Sender.ToBytes().SequenceEqual(publicKey.ToBytes()) )
+                    if (htlc.Preimage is not null && htlc.Receiver.ToBytes().SequenceEqual(publicKey.ToBytes()) || htlc.RefundLocktime.IsTimeLock &&
+                        htlc.RefundLocktime.Date < DateTime.UtcNow && htlc.Sender.ToBytes().SequenceEqual(publicKey.ToBytes()) )
                     {
                         coins.Add(arkCoin);
                     }

@@ -4,29 +4,6 @@ using NBitcoin.Secp256k1;
 
 namespace NArk;
 
-public class GenericArkContract: ArkContract
-{
-    private readonly IEnumerable<ScriptBuilder> _scriptBuilders;
-    private readonly Dictionary<string, string> _contractData;
-
-    public GenericArkContract(ECXOnlyPubKey server, IEnumerable<ScriptBuilder> scriptBuilders, Dictionary<string, string> contractData = null) : base(server)
-    {
-        _scriptBuilders = scriptBuilders;
-        _contractData = contractData;
-    }
-
-    public override string Type { get; } = "generic";
-    public override IEnumerable<ScriptBuilder> GetScriptBuilders()
-    {
-        return _scriptBuilders;
-    }
-
-    public override Dictionary<string, string> GetContractData()
-    {
-       return _contractData;
-    }
-}
-
 public abstract class ArkContract
 {
     
@@ -35,7 +12,7 @@ public abstract class ArkContract
     static ArkContract()
     {
         Parsers.Add(new GenericArkContractParser(ArkPaymentContract.ContractType, ArkPaymentContract.Parse));
-        Parsers.Add(new GenericArkContractParser(TweakedArkPaymentContract.ContractType, TweakedArkPaymentContract.Parse));
+        Parsers.Add(new GenericArkContractParser(HashLockedArkPaymentContract.ContractType, HashLockedArkPaymentContract.Parse));
         Parsers.Add(new GenericArkContractParser(VHTLCContract.ContractType, VHTLCContract.Parse));
         Parsers.Add(new GenericArkContractParser(ArkNoteContract.ContractType, ArkNoteContract.Parse));
         
@@ -84,17 +61,17 @@ public abstract class ArkContract
     }
     
 
-    public TaprootSpendInfo GetTaprootSpendInfo()
+    public virtual TaprootSpendInfo GetTaprootSpendInfo()
     {
-        var spendInfo = TaprootSpendInfo.WithHuffmanTree(
-            new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToECXOnlyPubKey().ToBytes()), 
-            GetTapTree().Select(x => ((uint)0, x)).ToArray());
-        
-        return spendInfo;
+
+        var builder = TaprootConstants.WithTree2(GetTapScriptList());
+    
+        return builder.Finalize( new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToECXOnlyPubKey().ToBytes()));
     }
 
-    public TapScript[] GetTapTree()
+    public TapScript[] GetTapScriptList()
     {
+        
         var leaves = GetScriptBuilders().ToArray();
         if (!leaves.OfType<CollaborativePathArkTapScript>().Any())
             throw new ArgumentException("At least one collaborative path is required");

@@ -101,38 +101,12 @@ public class VHTLCContract : ArkContract
             new CompositeTapScript(hashLock, new VerifyTapScript() ,receiverMultisig));
     }
 
-    public WitScript ClaimWitness(SecpSchnorrSignature server,byte[] preimage, SecpSchnorrSignature receiver)
-    {
-        var tapLeaf = CreateClaimScript().Build();
-        
-        return new WitScript(
-            Op.GetPushOp(server.ToBytes()),
-            Op.GetPushOp(preimage),
-            Op.GetPushOp(receiver.ToBytes()),
-            Op.GetPushOp(tapLeaf.Script.ToBytes()),
-            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
-    }
-
     public ScriptBuilder CreateCooperativeScript()
     {
         // refund (sender + receiver + server)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
-        return new CollaborativePathArkTapScript(Server,
-            new CompositeTapScript(senderReceiverMultisig));
+        return new CollaborativePathArkTapScript(Server, senderReceiverMultisig);
     }
-
-    public WitScript CooperativeWitness(SecpSchnorrSignature server, SecpSchnorrSignature sender, SecpSchnorrSignature receiver)
-    {
-        var tapLeaf = CreateCooperativeScript().Build();
-        
-        return new WitScript(
-            Op.GetPushOp(server.ToBytes()),
-            Op.GetPushOp(sender.ToBytes()),
-            Op.GetPushOp(receiver.ToBytes()),
-            Op.GetPushOp(tapLeaf.Script.ToBytes()),
-            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
-    }
-
     public ScriptBuilder CreateRefundWithoutReceiverScript()
     {
         // refundWithoutReceiver (at refundLocktime, sender  + server)
@@ -142,16 +116,6 @@ public class VHTLCContract : ArkContract
             new CompositeTapScript(lockTime, senderReceiverMultisig));
     }
 
-    public WitScript RefundWithoutReceiverWitness(SecpSchnorrSignature server, SecpSchnorrSignature sender)
-    {
-        var tapLeaf = CreateRefundWithoutReceiverScript().Build();
-        
-        return new WitScript(
-            Op.GetPushOp(server.ToBytes()),
-            Op.GetPushOp(sender.ToBytes()),
-            Op.GetPushOp(tapLeaf.Script.ToBytes()),
-            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
-    }
 
     public ScriptBuilder CreateUnilateralClaimScript()
     {
@@ -161,50 +125,16 @@ public class VHTLCContract : ArkContract
         return new UnilateralPathArkTapScript(UnilateralClaimDelay,
             receiverMultisig, hashLock);
     }
-
-    public WitScript UnilateralClaimWitness(byte[] preimage, SecpSchnorrSignature receiver)
-    {
-        var tapLeaf = CreateUnilateralClaimScript().Build();
-        
-        return new WitScript(
-            Op.GetPushOp(preimage),
-            Op.GetPushOp(receiver.ToBytes()),
-            Op.GetPushOp(tapLeaf.Script.ToBytes()),
-            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
-    }
-
     public ScriptBuilder CreateUnilateralRefundScript()
     {
         // unilateralRefund (sender + receiver after unilateralRefundDelay)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
         return new UnilateralPathArkTapScript(UnilateralRefundDelay, senderReceiverMultisig);
     }
-
-    public WitScript UnilateralRefundWitness(SecpSchnorrSignature sender, SecpSchnorrSignature receiver)
-    {
-        var tapLeaf = CreateUnilateralRefundScript().Build();
-        
-        return new WitScript(
-            Op.GetPushOp(sender.ToBytes()),
-            Op.GetPushOp(receiver.ToBytes()),
-            Op.GetPushOp(tapLeaf.Script.ToBytes()),
-            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
-    }
-
     public ScriptBuilder CreateUnilateralRefundWithoutReceiverScript()
     {
         // unilateralRefundWithoutReceiver (sender after unilateralRefundWithoutReceiverDelay)
         return new UnilateralPathArkTapScript(UnilateralRefundWithoutReceiverDelay,
             new NofNMultisigTapScript([Sender]));
-    }
-
-    public WitScript UnilateralRefundWithoutReceiverWitness(SecpSchnorrSignature sender)
-    {
-        var tapLeaf = CreateUnilateralRefundWithoutReceiverScript().Build();
-        
-        return new WitScript(
-            Op.GetPushOp(sender.ToBytes()),
-            Op.GetPushOp(tapLeaf.Script.ToBytes()),
-            Op.GetPushOp(GetTaprootSpendInfo().GetControlBlock(tapLeaf).ToBytes()));
     }
 }
