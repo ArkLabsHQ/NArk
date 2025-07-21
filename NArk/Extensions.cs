@@ -11,8 +11,15 @@ public static class Extensions
         key.WriteToSpan(bytes);
         return new Key(bytes.ToArray());
     }
-    public static ECPrivKey ToEcPrivKey(this Key key)
+    public static ECPrivKey ToKey(this Key key)
     {
         return ECPrivKey.Create(key.ToBytes());
     }
+
+    public static ECXOnlyPubKey GetXOnlyPubKey(this Key key)
+    {
+        return key.ToKey().CreateXOnlyPubKey();
+    }
+
+
 }

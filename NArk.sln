@@ -18,6 +18,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BTCPayServer.Rating", "subm
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "BTCPayServer", "BTCPayServer", "{E011E3DC-8374-44FC-8D60-4935E854BCBB}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NArk.Tests", "NArk.Tests\NArk.Tests.csproj", "{84FA132B-F9C2-48B5-89FA-7B46D0D028D2}"
+EndProject
 
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -57,6 +59,10 @@ Global
 		{4FB69019-D06C-4A99-892E-CA04E65DB908}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4FB69019-D06C-4A99-892E-CA04E65DB908}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{4FB69019-D06C-4A99-892E-CA04E65DB908}.Release|Any CPU.Build.0 = Release|Any CPU
+		{84FA132B-F9C2-48B5-89FA-7B46D0D028D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{84FA132B-F9C2-48B5-89FA-7B46D0D028D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{84FA132B-F9C2-48B5-89FA-7B46D0D028D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{84FA132B-F9C2-48B5-89FA-7B46D0D028D2}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2464FC73-75E8-4254-A900-2090FB4D1EDD} = {E011E3DC-8374-44FC-8D60-4935E854BCBB}

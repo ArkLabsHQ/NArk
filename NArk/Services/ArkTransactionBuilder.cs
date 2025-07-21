@@ -297,7 +297,7 @@ public async Task ConstructAndSubmitArkTransaction(
             return contract switch
             {
                 HashLockedArkPaymentContract hashLockedArkPaymentContract => (
-                    hashLockedArkPaymentContract.CollaborativePath().Build(), null, null),
+                    hashLockedArkPaymentContract.CreateClaimScript().Build(), new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage!)), null),
                 ArkPaymentContract arkContract => (arkContract.CollaborativePath().Build(), null, null),
                 VHTLCContract {Preimage: not null} claimHtlc => (claimHtlc.CreateClaimScript().Build(),
                     new WitScript(Op.GetPushOp(claimHtlc.Preimage!)), null),

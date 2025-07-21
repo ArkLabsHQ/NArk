@@ -38,6 +38,7 @@ public class WalletService : IWalletService
             operatorTerms.SignerKey, 
             operatorTerms.UnilateralExit, 
             request.User, 
-            request.Tweak);
+            request.Tweak,
+            HashLockTypeOption.RIPEMD160);
     }
 }

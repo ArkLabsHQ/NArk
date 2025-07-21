@@ -34,6 +34,12 @@ public class VHTLCContract : ArkContract
         Sequence  unilateralRefundWithoutReceiverDelay)
         : base(server)
     {
+        if(refundLocktime.Value == 0)
+            throw new ArgumentException("refundLocktime must be greater than 0");
+
+        ValidTimeLock(unilateralClaimDelay, nameof(unilateralClaimDelay));
+        ValidTimeLock(unilateralRefundDelay, nameof(unilateralRefundDelay));
+        ValidTimeLock(unilateralRefundWithoutReceiverDelay, nameof(unilateralRefundWithoutReceiverDelay));
         Sender = sender;
         Receiver = receiver;
         Hash = hash;
@@ -41,6 +47,14 @@ public class VHTLCContract : ArkContract
         UnilateralClaimDelay = unilateralClaimDelay;
         UnilateralRefundDelay = unilateralRefundDelay;
         UnilateralRefundWithoutReceiverDelay = unilateralRefundWithoutReceiverDelay;
+    }
+
+    private void ValidTimeLock(Sequence sequence, string fieldName)
+    {
+        if(sequence.Value == 0)
+            throw new ArgumentException($"{fieldName} timelock must be greater than 0");
+        if (sequence.LockType == SequenceLockType.Time && sequence.LockPeriod.TotalSeconds % 512 != 0 || sequence.LockType == SequenceLockType.Time && sequence.LockPeriod.TotalSeconds < 512)
+            throw new ArgumentException($"{fieldName} timelock in seconds must be a multiple of 512 and greater than 512");
     }
 
     public override string Type => ContractType;
@@ -81,12 +95,20 @@ public class VHTLCContract : ArkContract
         var server = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["server"]));
         var sender = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["sender"]));
         var receiver = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["receiver"]));
-        var hash = Convert.FromHexString(contractData["hash"]); 
+        var hash = new uint160(Convert.FromHexString(contractData["hash"])); 
         var refundLocktime = new LockTime(uint.Parse(contractData["refundLocktime"]));
         var unilateralClaimDelay = new Sequence(uint.Parse(contractData["unilateralClaimDelay"]));
         var unilateralRefundDelay = new Sequence(uint.Parse(contractData["unilateralRefundDelay"]));
         var unilateralRefundWithoutReceiverDelay = new Sequence(uint.Parse(contractData["unilateralRefundWithoutReceiverDelay"]));
-        
+        if (contractData.TryGetValue("preimage", out var preimage))
+        {
+            var preimageBytes = Convert.FromHexString(preimage);
+            if (hash != Hashes.Hash160(preimageBytes))
+            {
+                throw new FormatException("preimage does not match hash");
+            }
+            return new VHTLCContract(server, sender, receiver, preimageBytes, refundLocktime, unilateralClaimDelay, unilateralRefundDelay, unilateralRefundWithoutReceiverDelay);
+        }
         
         return new VHTLCContract(server, sender, receiver, hash, refundLocktime, unilateralClaimDelay, unilateralRefundDelay, unilateralRefundWithoutReceiverDelay);
     }

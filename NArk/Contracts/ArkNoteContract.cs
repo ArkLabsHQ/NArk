@@ -21,7 +21,7 @@ public class ArkNoteContract: ArkContract
 
     public override IEnumerable<ScriptBuilder> GetScriptBuilders()
     {
-        yield return new ArkNoteScriptBuilder(Hash);
+        yield return new HashLockTapScript(Hash, HashLockTypeOption.SHA256);
     }
 
     public override Dictionary<string, string> GetContractData()
@@ -35,22 +35,5 @@ public class ArkNoteContract: ArkContract
     {
         var preimage = Encoders.Hex.DecodeData(arg["preimage"]);
         return new ArkNoteContract(preimage);
-    }
-}
-
-public class ArkNoteScriptBuilder: ScriptBuilder
-{
-    public byte[] Hash { get; }
-
-    public ArkNoteScriptBuilder(byte[] hash)
-    {
-        Hash = hash;
-    }
-
-    public override IEnumerable<Op> BuildScript()
-    {
-        yield return OpcodeType.OP_SHA256;
-       yield return Op.GetPushOp(Hash);
-        yield return OpcodeType.OP_EQUAL;
     }
 }
