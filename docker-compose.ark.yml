@@ -141,7 +141,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   boltz:
-    image: boltz/boltz:ark@sha256:76bb0cdd29bec717dd8ab5a007b1aa25033b4956b4eb7c157a992def4c01aa67
+    image: boltz/boltz:ark@sha256:e896e67d36b1e67b4af8fd89af1d4bc7895d94b05f1c538edf116a2c48d35c38
     container_name: boltz
     restart: unless-stopped
     ports:
