@@ -101,7 +101,7 @@ public class UnitTest1
             new Sequence(10),
             UserPubKey,
             _preimage,
-            HashLockTypeOption.RIPEMD160
+            HashLockTypeOption.HASH160
         );
 
         var data = contract.GetContractData();

@@ -1,156 +1,89 @@
-﻿using System.Reflection;
+using System.Collections.Concurrent;
+using System.Reflection;
 using NBitcoin;
 
 namespace NArk;
 
 public static class TaprootConstants
 {
-    public static byte[] UnspendableKey =
-        Convert.FromHexString("0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0");
+	public static readonly string UnspendableKeyHex =
+		"0250929b74c1a04954b78b4b6035e97a5e078a5a0f28ec96d547bfee9ace803ac0";
 
-    public static List<TaprootNodeInfo> Branch(this TaprootBuilder builder)
-    {
-	    // Get the Branch property using reflection (it might be private/internal)
-	    PropertyInfo branchProperty = typeof(TaprootBuilder).GetProperty("Branch",
-		    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
+	public static readonly byte[] UnspendableKey = Convert.FromHexString(UnspendableKeyHex);
 
-	    List<TaprootNodeInfo>? branch;
-	    if (branchProperty == null)
-	    {
-		    // If it's not a property, try to get it as a field
-		    FieldInfo branchField = typeof(TaprootBuilder).GetField("Branch",
-			    BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance);
-
-		    if (branchField == null)
-		    {
-			    throw new InvalidOperationException("Could not find Branch property or field");
-		    }
-
-		    branch = (List<TaprootNodeInfo>) branchField.GetValue(builder);
-
-
-	    }
-	    else
-	    {
-
-		    branch = (List<TaprootNodeInfo>) branchProperty.GetValue(builder);
-	    }
-
-	    return branch;
-    }
-    
-    public static TaprootBuilder WithTree2(params TapScript[] leaves)
+	private static T Property<T>(this object obj, string propertyName)
 	{
-		if (leaves == null) throw new ArgumentNullException(nameof(leaves));
-		if (leaves.Length == 0) throw new ArgumentException("Leaves has 0 length.", nameof(leaves));
-
-		// If there's only a single leaf, that becomes our root
-		if (leaves.Length == 1)
-		{
-			var singleLeafNode = TaprootNodeInfo.NewLeaf(leaves[0]);
-			var builder = new TaprootBuilder();
-			builder.Branch().Add(singleLeafNode);
-			return builder;
-		}
-		
-		// Helper for generating binary tree from list, with weights
-		// Convert TapScript array to weighted tree nodes
-		var lst = leaves.Select(script => new WeightedTreeNode 
-		{ 
-			Script = script, 
-			Weight = 1 // Default weight
-		}).ToList();
-		
-		// We have at least 2 elements => can create branch
-		while (lst.Count >= 2)
-		{
-			// Sort: elements with smallest weight are at the end of queue
-			lst.Sort((a, b) => b.Weight.CompareTo(a.Weight));
-			
-			var b = lst[^1];
-			lst.RemoveAt(lst.Count - 1);
-			
-			var a = lst[^1];
-			lst.RemoveAt(lst.Count - 1);
-			
-			var weight = a.Weight + b.Weight;
-			lst.Add(new WeightedTreeNode
-			{
-				Weight = weight,
-				Children = [a, b]
-			});
-		}
-		
-		// At this point there is always 1 element in lst
-		var root = lst[0];
-		
-		// Build TaprootNodeInfo from the weighted tree
-		var rootNode = BuildTaprootNodeFromWeightedTree(root);
-		
-		// Create TaprootBuilder and add the root node
-		var resultBuilder = new TaprootBuilder();
-		resultBuilder.Branch().Add(rootNode);
-		return resultBuilder;
+		return (T) obj.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(obj);
 	}
-	
-	private class WeightedTreeNode
+
+	public static List<TaprootNodeInfo?> Branch(this TaprootBuilder builder) =>
+		builder.Property<List<TaprootNodeInfo>>("Branch");
+
+	public static List<uint256> MerkleBranch(this TaprootScriptLeaf leaf) =>
+		leaf.Property<List<uint256>>("MerkleBranch");
+
+	public static ConcurrentDictionary<TapScript, List<List<uint256>>>
+		ScriptToMerkleProofMap(this TaprootSpendInfo info) =>
+		info.Property<ConcurrentDictionary<TapScript, List<List<uint256>>>>("ScriptToMerkleProofMap");
+
+	/// <summary>
+	/// Creates a TaprootBuilder using an algorithm similar to the AssembleTaprootScriptTree from the Bitcoin Core implementation.
+	/// This builds a balanced binary tree by pairing leaves sequentially instead of using weight-based pairing.
+	/// </summary>
+	/// <param name="leaves">The TapScript leaves to include in the tree</param>
+	/// <returns>A TaprootBuilder with the constructed tree</returns>
+	public static TaprootBuilder WithTree(this TapScript[] leaves)
 	{
-		public TapScript? Script { get; set; }
-		public int Weight { get; set; }
-		public List<WeightedTreeNode>? Children { get; set; }
-	}
-	
-	private static TaprootNodeInfo BuildTaprootNodeFromWeightedTree(WeightedTreeNode node)
-	{
-		if (node.Script != null)
-		{
-			// Leaf node
-			return TaprootNodeInfo.NewLeaf(node.Script);
-		}
-		else if (node.Children != null && node.Children.Count == 2)
-		{
-			// Branch node
-			var leftNode = BuildTaprootNodeFromWeightedTree(node.Children[0]);
-			var rightNode = BuildTaprootNodeFromWeightedTree(node.Children[1]);
-			
-			// Combine using the + operator like WithTree does
-			return leftNode + rightNode;
-		}
-		
-		throw new InvalidOperationException("Invalid tree node structure");
-	}
-    
-
-    public static readonly LexicographicComparer uint256Comparer = new();
-    public static readonly TapScriptComparer TapScriptComparer = new();
-    
-}
-
-public class TapScriptComparer : IComparer<TapScript>
-{
-    public int Compare(TapScript? x, TapScript? y)
-    {
-        return TaprootConstants.uint256Comparer.Compare(x?.LeafHash, y?.LeafHash);
-    }
-}
-
-public class LexicographicComparer : IComparer<uint256>
-{
-    public int Compare(uint256 x, uint256 y)
-    {
-        if (x == null && y == null) return 0;
-        if (x == null) return -1;
-        if (y == null) return 1;
-        
-        var bytesX = x.ToBytes();
-        var bytesY = y.ToBytes();
-        
-        for (int i = 0; i < Math.Min(bytesX.Length, bytesY.Length); i++)
+        ArgumentNullException.ThrowIfNull(leaves);
+        switch (leaves.Length)
         {
-            int comparison = bytesX[i].CompareTo(bytesY[i]);
-            if (comparison != 0) return comparison;
+	        case 0:
+		        throw new ArgumentException("Leaves has 0 length.", nameof(leaves));
+	        // If there's only a single leaf, that becomes our root
+	        case 1:
+	        {
+		        var singleLeafNode = TaprootNodeInfo.NewLeaf(leaves[0]);
+		        var builder = new TaprootBuilder();
+		        builder.Branch().Add(singleLeafNode);
+		        return builder;
+	        }
         }
-        
-        return bytesX.Length.CompareTo(bytesY.Length);
-    }
+
+        // Create initial branches by pairing sequential leaves
+		var branches = new List<TaprootNodeInfo?>();
+		for (var i = 0; i < leaves.Length; i += 2)
+		{
+			// If there's only a single leaf left, then we'll merge this
+			// with the last branch we have.
+			if (i == leaves.Length - 1)
+			{
+				branches[^1] += TaprootNodeInfo.NewLeaf(leaves[i]);
+				continue;
+			}
+			// While we still have leaves left, we'll combine two of them
+			// into a new branch node.
+			branches.Add(TaprootNodeInfo.NewLeaf(leaves[i]) + TaprootNodeInfo.NewLeaf(leaves[i + 1]));
+		}
+
+		// In this second phase, we'll merge all the leaf branches we have one
+		// by one until we have our final root.
+		while (branches.Count != 0)
+		{
+			// When we only have a single branch left, then that becomes
+			// our root.   
+			if (branches.Count() == 1)
+			{
+				var builder = new TaprootBuilder();
+				builder.Branch().Add(branches.Single()!);
+				return builder;
+			}
+
+			var left = branches[0]!;
+			var right = branches[1]!;
+			branches = [..branches[2..], left+right];
+
+		}
+
+		throw new InvalidOperationException("This should never happen");
+	}
 }

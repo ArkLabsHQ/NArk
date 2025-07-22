@@ -3,7 +3,7 @@
 namespace NArk;
 public enum HashLockTypeOption
 {
-    RIPEMD160,
+    HASH160,
     SHA256,
 }
 
@@ -12,11 +12,11 @@ public class HashLockTapScript : ScriptBuilder
     public byte[] Hash { get; }
     public HashLockTypeOption HashLockType { get; }
 
-    public HashLockTapScript(uint160 hash): this(hash.ToBytes(), HashLockTypeOption.RIPEMD160)
+    public HashLockTapScript(uint160 hash): this(hash.ToBytes(false), HashLockTypeOption.HASH160)
     {
         
     }
-    public HashLockTapScript(uint256 hash): this(hash.ToBytes(), HashLockTypeOption.SHA256)
+    public HashLockTapScript(uint256 hash): this(hash.ToBytes(false), HashLockTypeOption.SHA256)
     {
         
     }
@@ -29,9 +29,9 @@ public class HashLockTapScript : ScriptBuilder
 
     public override IEnumerable<Op> BuildScript()
     {
-        if (HashLockType == HashLockTypeOption.RIPEMD160)
+        if (HashLockType == HashLockTypeOption.HASH160)
         {
-            yield return OpcodeType.OP_RIPEMD160;
+            yield return OpcodeType.OP_HASH160;
         }
         else
         {

@@ -79,7 +79,7 @@ public class VHTLCContract : ArkContract
             { "server", Server.ToHex() },
             { "sender", Sender.ToHex() },
             { "receiver", Receiver.ToHex() },
-            { "hash", Encoders.Hex.EncodeData(Hash.ToBytes()) },
+            { "hash", Hash.ToString() },
             { "refundLocktime", RefundLocktime.Value.ToString() },
             { "unilateralClaimDelay", UnilateralClaimDelay.Value.ToString() },
             { "unilateralRefundDelay", UnilateralRefundDelay.Value.ToString() },
@@ -95,7 +95,7 @@ public class VHTLCContract : ArkContract
         var server = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["server"]));
         var sender = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["sender"]));
         var receiver = ECXOnlyPubKey.Create(Convert.FromHexString(contractData["receiver"]));
-        var hash = new uint160(Convert.FromHexString(contractData["hash"])); 
+        var hash = new uint160(contractData["hash"]); 
         var refundLocktime = new LockTime(uint.Parse(contractData["refundLocktime"]));
         var unilateralClaimDelay = new Sequence(uint.Parse(contractData["unilateralClaimDelay"]));
         var unilateralRefundDelay = new Sequence(uint.Parse(contractData["unilateralRefundDelay"]));
