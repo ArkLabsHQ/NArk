@@ -199,7 +199,7 @@ public async Task ConstructAndSubmitArkTransaction(
             arkTx.SetVersion(3);
             arkTx.SetFeeWeight(0);
             arkTx.DustPrevention = false;
-            arkTx.Send(p2a, Money.Zero);
+            // arkTx.Send(p2a, Money.Zero);
             arkTx.AddCoins(checkpointCoins);
             
             foreach (var output in outputs)
@@ -208,9 +208,13 @@ public async Task ConstructAndSubmitArkTransaction(
             }
             
             var tx =  arkTx.BuildPSBT(false, PSBTVersion.PSBTv0);
+            var gtx = tx.GetGlobalTransaction();
+            gtx.Outputs.Add(new TxOut(Money.Zero, p2a));
+            tx = PSBT.FromTransaction(gtx, _network, PSBTVersion.PSBTv0);
+            arkTx.UpdatePSBT(tx);
+            
             
             // Sign each input in the Ark transaction
-            var gtx = tx.GetGlobalTransaction();
             var precomputedTransactionData =
                 gtx.PrecomputeTransactionData(checkpointCoins.Select(x => x.TxOut).ToArray());
                 
