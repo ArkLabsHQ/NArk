@@ -17,6 +17,8 @@ public class ArkWalletContract
     
     public ArkWallet Wallet { get; set; }
     public string WalletId { get; set; }
+    
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     internal static void OnModelCreating(ModelBuilder builder)
     {

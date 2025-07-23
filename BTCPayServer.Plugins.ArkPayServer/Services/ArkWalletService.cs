@@ -207,9 +207,8 @@ public class ArkWalletService(
             var filtered = vtxos.Where(vtxo1 => vtxo1.Script == contract.Script).ToArray();
             result.Add(contract, filtered);
         }
-
+        wallet.Contracts = wallet.Contracts.OrderBy(c => c.CreatedAt).ToList();
         return result;
-
     }
 
     //
