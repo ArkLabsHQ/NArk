@@ -22,7 +22,7 @@ public class BoltzWebsocketClient : IAsyncDisposable
     /// <summary>
     /// Occurs for any WebSocket event, providing a common event object.
     /// </summary>
-    public event Func<WebSocketResponse, Task>? OnAnyEventReceived;
+    public event Func<WebSocketResponse?, Task>? OnAnyEventReceived;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="BoltzWebsocketClient"/> class.
@@ -44,6 +44,7 @@ public class BoltzWebsocketClient : IAsyncDisposable
     {
         var client = new BoltzWebsocketClient(webSocketUri);
         await client.ConnectAsync(cancellationToken);
+        
         return client;
     }
 
@@ -65,7 +66,6 @@ public class BoltzWebsocketClient : IAsyncDisposable
 
             _webSocket?.Dispose();
             _webSocket = new ClientWebSocket();
-
             if (_receiveLoopCts is not null)
             {
                 await _receiveLoopCts.CancelAsync();
@@ -159,7 +159,7 @@ public class BoltzWebsocketClient : IAsyncDisposable
     /// </summary>
     public async Task UnsubscribeAsync(string[] swapIds, CancellationToken cancellationToken = default)
     {
-        _ = await SendRequest("subscribe", "swap.update", swapIds, cancellationToken);
+        _ = await SendRequest("unsubscribe", "swap.update", swapIds, cancellationToken);
     }
     
     /// <summary>
@@ -173,39 +173,53 @@ public class BoltzWebsocketClient : IAsyncDisposable
     private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
     {
         var buffer = new ArraySegment<byte>(new byte[8192]);
-        try
-        {
+        
             while (_webSocket is { State: WebSocketState.Open } && !cancellationToken.IsCancellationRequested)
             {
-                using var ms = new MemoryStream();
-                WebSocketReceiveResult result;
-                do
+                try
                 {
-                    if (cancellationToken.IsCancellationRequested) break;
-                    result = await _webSocket.ReceiveAsync(buffer, cancellationToken);
-
-                    if (result.MessageType == WebSocketMessageType.Close)
+                    using var ms = new MemoryStream();
+                    WebSocketReceiveResult result;
+                    do
                     {
-                        break;
+                        if (cancellationToken.IsCancellationRequested) break;
+                        result = await _webSocket.ReceiveAsync(buffer, cancellationToken);
+
+                        if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            break;
+                        }
+
+                        if (buffer.Array != null) ms.Write(buffer.Array, buffer.Offset, result.Count);
+                    } while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested);
+
+                    if (cancellationToken.IsCancellationRequested) break;
+
+
+                    ms.Seek(0, SeekOrigin.Begin);
+                    try
+                    {
+                        var response =
+                            await JsonSerializer.DeserializeAsync<WebSocketResponse>(ms,
+                                cancellationToken: cancellationToken);
+                        
+                        _ = OnAnyEventReceived?.Invoke(response);
+                    }
+                    catch
+                    {
+                        
+                        _ = OnAnyEventReceived?.Invoke(null);
                     }
 
-                    if (buffer.Array != null) ms.Write(buffer.Array, buffer.Offset, result.Count);
-                } while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested);
-
-                if (cancellationToken.IsCancellationRequested) break;
-
-
-                ms.Seek(0, SeekOrigin.Begin);
-                var response =
-                    await JsonSerializer.DeserializeAsync<WebSocketResponse>(ms, cancellationToken: cancellationToken);
-                _ = OnAnyEventReceived?.Invoke(response);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                }
             }
 
-            await _receiveLoopCts.CancelAsync();
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+            await (_receiveLoopCts != null ? _receiveLoopCts.CancelAsync() : Task.CompletedTask);
+        
+       
     }
 
 
@@ -226,6 +240,60 @@ public class BoltzWebsocketClient : IAsyncDisposable
             _operationSemaphore.Release(); // Release the semaphore
 
             _operationSemaphore.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Waits until the WebSocket connection is disconnected.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the wait operation.</param>
+    /// <returns>A task that completes when the WebSocket is disconnected.</returns>
+    public async Task WaitUntilDisconnected(CancellationToken cancellationToken)
+    {
+        if (_webSocket is not {State: WebSocketState.Open})
+        {
+            return; // Already disconnected or never connected
+        }
+
+        var tcs = new TaskCompletionSource<bool>();
+        
+        // Set up cancellation
+        await using var registration = cancellationToken.Register(() => tcs.TrySetCanceled());
+        
+        // Set up an event handler to monitor connection state
+        Task connectionStateHandler(WebSocketResponse _) 
+        {
+            if (_webSocket is not {State: WebSocketState.Open})
+            {
+                tcs.TrySetResult(true);
+            }
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            OnAnyEventReceived += connectionStateHandler;
+            
+            // If the connection drops without any events, the receive loop will terminate
+            // We'll check the state periodically to handle this case
+            while (!cancellationToken.IsCancellationRequested && 
+                   _webSocket != null && 
+                   _webSocket.State == WebSocketState.Open)
+            {
+                await Task.Delay(500, cancellationToken);
+                
+                // If connection dropped, complete the task
+                if (_webSocket == null || _webSocket.State != WebSocketState.Open)
+                {
+                    tcs.TrySetResult(true);
+                }
+            }
+            
+            await tcs.Task;
+        }
+        finally
+        {
+            OnAnyEventReceived -= connectionStateHandler;
         }
     }
 }
