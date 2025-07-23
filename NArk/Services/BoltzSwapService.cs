@@ -69,9 +69,6 @@ public class BoltzSwapService
             throw new InvalidOperationException("Boltz did not provide refund public key");
         }
         
-        
-        
-        
         var sender = response.RefundPublicKey.ToECXOnlyPubKey();
         _logger.LogDebug("Using sender key: {SenderKey}", response.RefundPublicKey);
 

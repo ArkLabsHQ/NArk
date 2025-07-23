@@ -47,17 +47,10 @@ namespace NArk.Services
                 cancellationToken);
             
            var (leaf, condition, locktime) =  GetCollaborativePathLeaf(coin.Contract);
-
-           // var witness = new List<Op>();
-           // witness.Add(Op.GetPushOp(serverSig.signature.ToBytes()));
-           // witness.Add(Op.GetPushOp(sig.ToBytes()));
-           // if(condition != null)
-           // {
-           //     witness.AddRange(condition.Pushes.Select(Op.GetPushOp));
-           // }
-           // witness.Add(Op.GetPushOp(leaf.Script.ToBytes()));
-           // witness.Add(Op.GetPushOp(coin.Contract.GetTaprootSpendInfo().GetControlBlock(leaf).ToBytes()));
-           // var us =await coin.Signer.GetPublicKey(cancellationToken);
+           if (condition is not null)
+           {
+               receivedCheckpointTx.Inputs[(int) input.Index].Unknown.SetArkField(condition);
+           }
            receivedCheckpointTx.Inputs[(int) input.Index].SetTaprootScriptSpendSignature(key, leaf.LeafHash, sig);
         
            
@@ -301,7 +294,7 @@ public async Task ConstructAndSubmitArkTransaction(
             return contract switch
             {
                 HashLockedArkPaymentContract hashLockedArkPaymentContract => (
-                    hashLockedArkPaymentContract.CreateClaimScript().Build(), new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage!)), null),
+                    hashLockedArkPaymentContract.CreateClaimScript().Build(), new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null),
                 ArkPaymentContract arkContract => (arkContract.CollaborativePath().Build(), null, null),
                 VHTLCContract {Preimage: not null} claimHtlc => (claimHtlc.CreateClaimScript().Build(),
                     new WitScript(Op.GetPushOp(claimHtlc.Preimage!)), null),
