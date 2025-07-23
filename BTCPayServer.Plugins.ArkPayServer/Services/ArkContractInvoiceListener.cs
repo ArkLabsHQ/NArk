@@ -23,7 +23,7 @@ public class ArkContractInvoiceListener(
     IMemoryCache memoryCache,
     InvoiceRepository invoiceRepository,
     ArkadePaymentMethodHandler arkadePaymentMethodHandler,
-    OperatorTermsService operatorTermsService,
+    IOperatorTermsService operatorTermsService,
     EventAggregator eventAggregator,
     ArkWalletService arkWalletService,
     PaymentService paymentService,
