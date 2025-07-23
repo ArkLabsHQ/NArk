@@ -39,7 +39,7 @@ public class ArkSwap
             
             // Configure foreign key relationship to ArkWalletContract
             entity.HasOne(e => e.Contract)
-                .WithMany()
+                .WithMany(wallet => wallet.Swaps)
                 .HasForeignKey(e => new {e.ContractScript, e.WalletId});
             entity.HasOne(e => e.Wallet)
                 .WithMany(wallet => wallet.Swaps)

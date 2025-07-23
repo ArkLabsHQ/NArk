@@ -63,7 +63,7 @@ public class ArkController : Controller
             return View(new ArkStoreWalletViewModel());
         }
         
-        var walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
+        Dictionary<ArkWalletContract, VTXO[]> walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
         if (walletInfo is null)
         {
             

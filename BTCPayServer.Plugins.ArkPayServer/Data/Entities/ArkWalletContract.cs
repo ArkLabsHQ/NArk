@@ -20,6 +20,8 @@ public class ArkWalletContract
     
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
+    public List<ArkSwap> Swaps { get; set; }
+
     internal static void OnModelCreating(ModelBuilder builder)
     {
         var entity = builder.Entity<ArkWalletContract>();

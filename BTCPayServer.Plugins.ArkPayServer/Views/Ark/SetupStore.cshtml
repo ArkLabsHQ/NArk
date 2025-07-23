@@ -164,6 +164,40 @@
                         </td>
                     </tr>
                 }
+                @if(contract.Key.Swaps.Any())
+                {
+                    <tr>
+                        <td colspan="3" class="border-top-0">
+                            <table class="table table-hover">
+                                <thead>
+                                <tr>
+                                    <th text-translate="true">Swap</th>
+                                    <th text-translate="true">Status</th>
+                                    <th text-translate="true">Invoice</th>
+                                    
+                                </tr>
+                                </thead>
+                                <tbody>
+                                @foreach (var swap in contract.Key.Swaps)
+                                {
+                                    <tr>
+                                        <td>
+                                            @swap.SwapId
+                                        </td>
+                                        <td>
+                                            @swap.Status
+                                        </td>
+                                        <td>
+                                            <vc:truncate-center text="@swap.Invoice.ToString()" classes="truncate-center-id"/>
+
+                                        </td>
+                                    </tr>
+                                }
+                                </tbody>
+                            </table>
+                        </td>
+                    </tr>
+                }
             }
             </tbody>
         </table>

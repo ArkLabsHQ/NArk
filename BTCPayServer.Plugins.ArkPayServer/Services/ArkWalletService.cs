@@ -136,10 +136,12 @@ public class ArkWalletService(
         }
     }
 
-    public async Task<Dictionary<ArkWalletContract, VTXO[]>?> GetWalletInfo(string walletId)
+    public async Task<Dictionary<ArkWalletContract, VTXO[]>> GetWalletInfo(string walletId)
     {
         await using var dbContext = dbContextFactory.CreateContext();
-        var wallet = await dbContext.Wallets.Include(w => w.Contracts).FirstOrDefaultAsync(w => w.Id == walletId);
+        var wallet = await dbContext.Wallets.Include(w => w.Contracts)
+            .ThenInclude(contract => contract.Swaps)
+            .FirstOrDefaultAsync(w => w.Id == walletId);
         if (wallet is null)
         {
             return null;
@@ -151,7 +153,7 @@ public class ArkWalletService(
         var result = new Dictionary<ArkWalletContract, VTXO[]>();
         foreach (var contract in wallet.Contracts)
         {
-            var filtered = vtxos.Where(vtxo1 => vtxo1.Script == contract.Script).ToArray();
+            var filtered = vtxos.Where(vtxo1 => vtxo1.Script == contract.Script).OrderBy(vtxo1 => vtxo1.SeenAt).ToArray();
             result.Add(contract, filtered);
         }
         wallet.Contracts = wallet.Contracts.OrderBy(c => c.CreatedAt).ToList();
