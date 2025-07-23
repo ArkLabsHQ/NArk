@@ -3,6 +3,8 @@ using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
 using NArk;
+using NArk.Contracts;
+using NArk.Scripts;
 
 namespace NArk.Tests;
 
