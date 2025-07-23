@@ -52,7 +52,7 @@ namespace NArk.Services
                receivedCheckpointTx.Inputs[(int) input.Index].Unknown.SetArkField(condition);
            }
            receivedCheckpointTx.Inputs[(int) input.Index].SetTaprootScriptSpendSignature(key, leaf.LeafHash, sig);
-        
+           receivedCheckpointTx.UpdateFrom(checkpointTx);
            
            return receivedCheckpointTx;
         }
@@ -83,10 +83,9 @@ public async Task ConstructAndSubmitArkTransaction(
             // Submit the transaction
             var submitRequest = new Ark.V1.SubmitTxRequest
             {
-                SignedArkTx = arkTx.ToBase64()
+                SignedArkTx = arkTx.ToBase64(),
+                CheckpointTxs = { checkpoints.Select(x => x.ToBase64()) }
             };
-            submitRequest.CheckpointTxs.AddRange(checkpoints.Select(x => x.ToBase64()));
-            
             _logger.LogDebug("Sending SubmitTx request to Ark service");
             var response = await arkServiceClient.SubmitTxAsync(submitRequest, cancellationToken: cancellationToken);
             _logger.LogDebug("Received SubmitTx response with Ark txid: {ArkTxid}", response.ArkTxid);
@@ -243,48 +242,37 @@ public async Task ConstructAndSubmitArkTransaction(
         /// </summary>
         private ArkContract CreateCheckpointContract(ArkContract inputContract)
         {
-            return inputContract switch
+            var server = inputContract.Server;
+            var delay = inputContract.GetScriptBuilders().OfType<UnilateralPathArkTapScript>().First().Timeout;
+            var user = inputContract switch
             {
-                HashLockedArkPaymentContract hashLockedArkPaymentContract => CreateCheckpointContract(hashLockedArkPaymentContract),
-                VHTLCContract htlc => CreateCheckpointContract(htlc),
-                _ => throw new NotSupportedException($"Contract type {inputContract.GetType().Name} not supported")
+                HashLockedArkPaymentContract hashLockedArkPaymentContract => hashLockedArkPaymentContract.User,
+                ArkPaymentContract arkPaymentContract => arkPaymentContract.User,
+                VHTLCContract htlc => 
+                    htlc.Preimage != null
+                        ?htlc.Receiver
+                        : htlc.Sender,
             };
+            
+            return CreateCheckpointContract(delay, server, user);
+            
         }
 
-        /// <summary>
-        /// Creates a checkpoint contract for a tweaked payment contract
-        /// </summary>
-        private GenericArkContract CreateCheckpointContract(HashLockedArkPaymentContract contract)
-        {
-            var scriptBuilders = new List<ScriptBuilder>();
-            var delay = contract.GetScriptBuilders().OfType<UnilateralPathArkTapScript>().First().Timeout;
-            
-            var ownerScript = new NofNMultisigTapScript([contract.User]);
-            var serverScript = new NofNMultisigTapScript([contract.Server]);
-            
-            scriptBuilders.Add(new UnilateralPathArkTapScript(delay, serverScript));
-            scriptBuilders.Add(new CollaborativePathArkTapScript(contract.Server, ownerScript));
-            
-            return new GenericArkContract(contract.Server, scriptBuilders);
-        }
-
-        /// <summary>
-        /// Creates a checkpoint contract for an HTLC contract
-        /// </summary>
-        private GenericArkContract CreateCheckpointContract(VHTLCContract htlc)
+        
+        private GenericArkContract CreateCheckpointContract(Sequence unilateralDelay, ECXOnlyPubKey server, ECXOnlyPubKey user)
         {
             var scriptBuilders = new List<ScriptBuilder>();
 
-            var serverScript = new NofNMultisigTapScript([htlc.Server]);
-            scriptBuilders.Add(new UnilateralPathArkTapScript(htlc.UnilateralClaimDelay, serverScript));
-            // Determine if this is a claim path or refund path based on the preimage
-            scriptBuilders.Add(
-                htlc.Preimage != null
-                    ? new CollaborativePathArkTapScript(htlc.Server, new NofNMultisigTapScript([htlc.Sender]))
-                    : new CollaborativePathArkTapScript(htlc.Server, new NofNMultisigTapScript([htlc.Receiver])));
-            return new GenericArkContract(htlc.Server, scriptBuilders);
-
+            var ownerScript = new NofNMultisigTapScript([user]);
+            var serverScript = new NofNMultisigTapScript([server]);
+            
+            scriptBuilders.Add(new UnilateralPathArkTapScript(unilateralDelay, serverScript));
+            scriptBuilders.Add(new CollaborativePathArkTapScript(server, ownerScript));
+            
+            return new GenericArkContract(server, scriptBuilders);
         }
+        
+        
 
         /// <summary>
         /// Gets the collaborative path leaf for a contract
