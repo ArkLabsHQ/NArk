@@ -67,11 +67,8 @@ public class SwapTransaction
     [JsonPropertyName("id")]
     public string? Id { get; set; }
 
-    [JsonPropertyName("hex")]
-    public string? Hex { get; set; }
-
     [JsonPropertyName("eta")]
-    public string? Eta { get; set; } // Could be string like "pending" or a timestamp/blockheight
+    public int? Eta { get; set; } // Could be string like "pending" or a timestamp/blockheight
 }
 
 public class SwapFailureDetails
