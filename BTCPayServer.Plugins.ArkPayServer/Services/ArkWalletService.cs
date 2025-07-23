@@ -22,7 +22,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 public class ArkWalletService(
     AsyncKeyedLocker asyncKeyedLocker,
     ArkPluginDbContextFactory dbContextFactory,
-    ArkService.ArkServiceClient arkClient,
+    IOperatorTermsService operatorTermsService,
     ArkSubscriptionService arkSubscriptionService,
     IWalletService walletService,
     ILogger<ArkWalletService> logger) : IHostedService, IArkadeMultiWalletSigner
@@ -79,15 +79,26 @@ public class ArkWalletService(
         return contract.Value.Item2;
     }
 
-    public async Task<ArkWallet> Upsert(string wallet, CancellationToken cancellationToken = default)
+    public async Task<ArkWallet> Upsert(string wallet, string? destination, CancellationToken cancellationToken = default)
     {
         var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(wallet);
+        if (destination is not null)
+        {
+            var addr = ArkAddress.Parse(destination);
+            var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+            if (!terms.SignerKey.ToBytes().SequenceEqual(addr.ServerKey.ToBytes()))
+            {
+                throw new InvalidOperationException("Invalid destination server key.");
+            }
+            
+        }
 
         await using var dbContext = dbContextFactory.CreateContext();
 
         var res = await dbContext.Wallets.Upsert(new ArkWallet()
         {
             Id = publicKey.ToHex(),
+            WalletDestination = destination,
             Wallet = wallet,
         }).RunAndReturnAsync();
         LoadWalletSigner(publicKey.ToHex(), wallet);
@@ -136,7 +147,7 @@ public class ArkWalletService(
         }
     }
 
-    public async Task<Dictionary<ArkWalletContract, VTXO[]>> GetWalletInfo(string walletId)
+    public async Task<(Dictionary<ArkWalletContract, VTXO[]> Contracts, string? Destination)?> GetWalletInfo(string walletId)
     {
         await using var dbContext = dbContextFactory.CreateContext();
         var wallet = await dbContext.Wallets.Include(w => w.Contracts)
@@ -157,7 +168,7 @@ public class ArkWalletService(
             result.Add(contract, filtered);
         }
         wallet.Contracts = wallet.Contracts.OrderBy(c => c.CreatedAt).ToList();
-        return result;
+        return (result, wallet.WalletDestination);
     }
 
     //

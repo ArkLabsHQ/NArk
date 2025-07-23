@@ -10,6 +10,7 @@ using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.AspNetCore.Authorization;
+using NArk;
 using NBitcoin;
 using NBitcoin.DataEncoders;
 
@@ -18,6 +19,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 public class ArkStoreWalletViewModel
 {
     public string? Wallet { get; set; }
+    public string? Destination { get; set; }
 
     public bool SignerAvailable { get; set; }
     public Dictionary<ArkWalletContract, VTXO[]> Contracts { get; set; } = new();
@@ -63,7 +65,7 @@ public class ArkController : Controller
             return View(new ArkStoreWalletViewModel());
         }
         
-        Dictionary<ArkWalletContract, VTXO[]> walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
+        var walletInfo = await _arkWalletService.GetWalletInfo(config.WalletId);
         if (walletInfo is null)
         {
             
@@ -77,8 +79,9 @@ public class ArkController : Controller
         return View(new ArkStoreWalletViewModel()
         {
             Wallet = config.WalletId,
+            Destination = walletInfo.Value.Destination,
             SignerAvailable = await _walletSignerProvider.GetSigner(config.WalletId, HttpContext.RequestAborted) is not null,
-            Contracts = walletInfo,
+            Contracts = walletInfo.Value.Contracts,
             LNEnabled = lnConfig?.ConnectionString?.StartsWith("type=arkade") is true
         });
     }
@@ -105,7 +108,26 @@ public class ArkController : Controller
             encoder.SquashBytes = true;
             encoder.StrictLength = false;
             var npub = encoder.EncodeData(key, Bech32EncodingType.BECH32);
+
+            if (!string.IsNullOrEmpty(model.Wallet) && model.Wallet.StartsWith("ark", StringComparison.InvariantCultureIgnoreCase) || model.Wallet.StartsWith("tark", StringComparison.InvariantCultureIgnoreCase))
+            
+            {
+                try
+                {
+                    ArkAddress.Parse(model.Wallet);
+                    model.Destination = model.Wallet;
+                }
+                catch (Exception e)
+                {
+                    TempData[WellKnownTempData.ErrorMessage] = "Invalid destination address";
+                    return View(model);
+                }
+            }
+            
             model.Wallet = npub;
+
+            
+            
             generatedKey = "Your new wallet key is: " + npub;
             
         }else if (command == "enable-ln" && config?.WalletId != null)
@@ -145,7 +167,7 @@ public class ArkController : Controller
                 ArkWallet wallet;
                 try
                 {
-                    wallet = await _arkWalletService.Upsert(model.Wallet);
+                    wallet = await _arkWalletService.Upsert(model.Wallet, model.Destination ,HttpContext.RequestAborted);
                 }catch (Exception ex)
                 {
                     

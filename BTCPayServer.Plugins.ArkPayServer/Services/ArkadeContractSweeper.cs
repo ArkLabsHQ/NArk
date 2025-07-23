@@ -67,7 +67,7 @@ public class ArkadeContractSweeper : IHostedService
     private async Task PollForVTXOToSweep()
     {
         await _arkSubscriptionService.StartedTask.WithCancellation(_cts.Token);
-        string[] allowedContractTypes = {VHTLCContract.ContractType, HashLockedArkPaymentContract.ContractType};
+        string[] allowedContractTypes = {VHTLCContract.ContractType, HashLockedArkPaymentContract.ContractType, ArkPaymentContract.ContractType};
 
         while (!_cts.IsCancellationRequested)
         {
@@ -131,7 +131,7 @@ if(vtxosAndContracts.Count > 0)
     private async Task SweepWalletCoins(ArkWallet wallet, (VTXO Vtxo, ArkWalletContract Contract)[] group, IArkadeWalletSigner signer)
     {
         var publicKey = wallet.PublicKey;
-
+        var destination = wallet.Destination;
         // lets find htlcs with vtxos that we can sweep
         // for example, if we are the receiver + we have the preimage, we can sweep it
         // if we are the sender + we have the preimage + timelock has passed, we can sweep it
@@ -143,6 +143,10 @@ if(vtxosAndContracts.Count > 0)
             var arkCoin = ToArkCoin(vtxo.Contract, vtxo.Vtxo, signer);
             switch (arkCoin.Contract)
             {
+                case ArkPaymentContract arkPaymentContract when destination is not null:
+                    if (arkPaymentContract.User.ToBytes().SequenceEqual(publicKey.ToBytes()))
+                        coins.Add(arkCoin);
+                    break;
                 case HashLockedArkPaymentContract hashLockedArkPaymentContract:
                     if (hashLockedArkPaymentContract.User.ToBytes().SequenceEqual(publicKey.ToBytes()))
                     {
@@ -165,9 +169,14 @@ if(vtxosAndContracts.Count > 0)
 
             if (sum == 0)
                 continue;
-            var contract =
-                await _walletService.DerivePaymentContractAsync(new DeriveContractRequest(publicKey));
-            var txout = new TxOut(sum, contract.GetArkAddress());
+            if (destination is null)
+            {
+                var destinationContract =
+                    await _walletService.DerivePaymentContractAsync(new DeriveContractRequest(publicKey));
+                destination = destinationContract.GetArkAddress();
+            }
+            
+            var txout = new TxOut(sum, destination);
             await _arkTransactionBuilder.ConstructAndSubmitArkTransaction(
                 coins,
                 [txout],

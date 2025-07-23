@@ -30,6 +30,17 @@
                 </div>
                 
             </div>
+            @if (Model.Destination != null)
+            {
+                <div class="form-group mb-3">
+                    <label asp-for="Destination" class="form-label">Destination</label>
+                    <div class="d-sm-flex">
+                        <input asp-for="Destination" class="form-control" readonly/>
+                    </div>
+                
+                </div>
+            }
+            
         }
         else
         {
@@ -42,7 +53,7 @@
 
                 <span asp-validation-for="Wallet" class="text-danger"></span>
                 <div class="form-text">
-                    Enter an nsec/npub wallet key. Entering an nsec will allow BTCPay to automatically sweep invoice payments to your wallet.
+                    Enter an nsec/npub wallet key. Entering an nsec will allow BTCPay to automatically sweep invoice payments to your wallet. 
                 </div>
             </div>
             
@@ -56,8 +67,14 @@
             <button  name="command" type="submit" value="create" class="btn btn-secondary   me-2" text-translate="true">
                 Generate Wallet 
             </button>
+            
+            <button id="page-primary" name="command" type="submit" value="save" class="btn btn-primary me-2">Set</button>
         }
-        <button id="page-primary" name="command" type="submit" value="save" class="btn btn-primary me-2">Save</button>
+        else
+        {
+            
+            @* <button id="page-primary" name="command" type="submit" value="save" class="btn btn-primary me-2">Save</button> *@
+        }
         @if (!string.IsNullOrEmpty(Model.Wallet) && !Model.LNEnabled){
             <button name="command" type="submit" value="enable-ln" class="btn btn-primary me-2">Enable Lightning</button>
         }
