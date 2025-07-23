@@ -21,7 +21,6 @@ public class ArkStoreWalletViewModel
 
     public bool SignerAvailable { get; set; }
     public Dictionary<ArkWalletContract, VTXO[]> Contracts { get; set; } = new();
-
     public bool LNEnabled { get; set; }
     
     
@@ -126,6 +125,9 @@ public class ArkController : Controller
             await _arkWalletService.UpdateBalances(config.WalletId, true);
             TempData[WellKnownTempData.SuccessMessage] = "Scripts polled";
             return RedirectToAction(nameof(SetupStore), new { storeId });
+        }else if (command == "clear" && config?.WalletId != null)
+        {
+            model.Wallet = null;
         }
 
 

@@ -293,8 +293,18 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         if(scripts.Length == 0)
             return;
         // var handler = _arkadePaymentMethodHandler;
-        var request = new GetVtxosRequest();
-        request.Scripts.AddRange(scripts);
+        var request = new GetVtxosRequest()
+        {
+            Scripts = {scripts},
+            RecoverableOnly = false,
+            SpendableOnly = false,
+            SpentOnly = false,
+            Page = new IndexerPageRequest()
+            {
+                Index = 0,
+                Size = 5000
+            }
+        };
         var vtxos = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);
 
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();
