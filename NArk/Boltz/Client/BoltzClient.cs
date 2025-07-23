@@ -44,7 +44,7 @@ public partial class BoltzClient
 
         var uriBuilder = new UriBuilder(baseHttpUri);
         uriBuilder.Scheme = baseHttpUri.Scheme == "https" ? "wss" : "ws";
-
+        uriBuilder.Port = baseHttpUri.Port == 9001 ? 9004 : baseHttpUri.Port;// special regtest case
         var path = uriBuilder.Path.TrimEnd('/');
         if (path.EndsWith("/v2"))
         {
