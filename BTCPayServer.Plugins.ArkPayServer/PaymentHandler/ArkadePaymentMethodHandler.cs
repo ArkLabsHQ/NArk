@@ -4,6 +4,7 @@ using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Services;
 using Microsoft.Extensions.DependencyInjection;
 using NArk.Services;
+using NArk.Services.Models;
 using NBitcoin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -29,14 +30,21 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
 
     public async Task ConfigurePrompt(PaymentMethodContext context)
     {
+        ArkOperatorTerms terms = null;
         try
         {
-            await _operatorTermsService.GetOperatorTerms(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+            terms=    await _operatorTermsService.GetOperatorTerms(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
         }
         catch
         {
             throw new PaymentMethodUnavailableException("Ark operator unavailable");
         }
+
+        if (Money.Coins(context.Prompt.Calculate().Due) < terms.Dust)
+        {
+            throw new PaymentMethodUnavailableException("Amount too small");
+        }
+        
 
         var store = context.Store;
 
