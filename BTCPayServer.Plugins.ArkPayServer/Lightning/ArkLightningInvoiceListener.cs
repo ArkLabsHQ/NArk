@@ -66,7 +66,7 @@ public class ArkLightningInvoiceListener : ILightningInvoiceListener
             _logger.LogError(ex, "Error waiting for invoice in wallet {WalletId}", _walletId);
         }
 
-        return null;
+        return new LightningInvoice();
     }
     public void Dispose()
     {

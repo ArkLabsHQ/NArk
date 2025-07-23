@@ -1,5 +1,4 @@
 @using BTCPayServer.Abstractions.Contracts
-@using BTCPayServer.Services
 @using NBitcoin
 @using NArk
 @model BTCPayServer.Plugins.ArkPayServer.Controllers.ArkStoreWalletViewModel
@@ -10,7 +9,7 @@
     Layout = "Views/UIStores/_LayoutWalletSetup";
     var mainnet = NetworkProvider.BTC.NBitcoinNetwork.ChainName == ChainName.Mainnet;
     var storeId = ScopeProvider.GetCurrentStoreId()!;
-    ViewData.SetActivePage("Ark", "Configure Arkade Payments", "Ark");
+    ViewData.SetActivePage("Ark", "Arkade Payments", "Ark");
 }
 
 
@@ -19,29 +18,52 @@
 
 <form asp-action="SetupStore" method="post" asp-route-storeId="@storeId">
     <div>
-        <div class="form-group mb-3">
-            <label asp-for="Wallet" class="form-label">Public Key</label>
-            <div class="d-sm-flex">
-                <input asp-for="Wallet" class="form-control" placeholder="npub.." />
+        
+        @if (!string.IsNullOrEmpty(Model.Wallet))
+        {
+            <div class="form-group mb-3">
+                <label asp-for="Wallet" class="form-label">Wallet Id</label>
+                <div class="d-sm-flex">
+                    <input asp-for="Wallet" class="form-control" readonly/>
+                </div>
+                
             </div>
-          
+        }
+        else
+        {
+            <div class="form-group mb-3">
+                <label asp-for="Wallet" class="form-label">Public Key</label>
+                <div class="d-sm-flex">
+                    <input asp-for="Wallet" class="form-control" placeholder="npub.."/>
+                </div>
+
+
+                <span asp-validation-for="Wallet" class="text-danger"></span>
+                <div class="form-text">
+                    Enter an nsec/npub wallet key. Entering an nsec will allow BTCPay to automatically sweep invoice payments to your wallet.
+                </div>
+            </div>
             
-            <span asp-validation-for="Wallet" class="text-danger"></span>
-            <div class="form-text">
-                Enter an nsec/npub wallet key. Entering an nsec will allow BTCPay to automatically sweep invoice payments to your wallet.
-            </div>
-        </div>
+        }
+        
+      
     </div>
     
     <div class="text-start mt-4">
         @if (string.IsNullOrEmpty(Model.Wallet)){
-            <button id="test" name="command" type="submit" value="create" class="btn btn-secondary text-nowrap mb-2  me-2" text-translate="true">
+            <button  name="command" type="submit" value="create" class="btn btn-secondary   me-2" text-translate="true">
                 Generate Wallet 
             </button>
         }
         <button id="page-primary" name="command" type="submit" value="save" class="btn btn-primary me-2">Save</button>
         @if (!string.IsNullOrEmpty(Model.Wallet) && !Model.LNEnabled){
             <button name="command" type="submit" value="enable-ln" class="btn btn-primary me-2">Enable Lightning</button>
+        }
+        @if (!string.IsNullOrEmpty(Model.Wallet))
+        {
+            <button name="command" type="submit" value="poll-scripts" class="btn btn-outline-primary me-2">Refresh Balance</button>
+            <button name="command" type="submit" value="clear" class="btn btn-outline-danger me-2">Clear</button>
+      
         }
     </div>
 </form>
@@ -84,7 +106,9 @@
                             <span class="text-danger" text-translate="true">Inactive</span>
                         }
                     </td>
-
+                    <td>
+                        
+                    </td>
 
                 </tr>
                 @if (contract.Value.Any())

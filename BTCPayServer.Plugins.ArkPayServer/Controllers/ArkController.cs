@@ -121,6 +121,11 @@ public class ArkController : Controller
             TempData[WellKnownTempData.SuccessMessage] = "Lightning enabled";
             return RedirectToAction(nameof(SetupStore), new { storeId });
             
+        }else if (command == "poll-scripts" && config?.WalletId != null)
+        {
+            await _arkWalletService.UpdateBalances(config.WalletId, true);
+            TempData[WellKnownTempData.SuccessMessage] = "Scripts polled";
+            return RedirectToAction(nameof(SetupStore), new { storeId });
         }
 
 

@@ -97,7 +97,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             {
                 _logger.LogInformation("Manually subscribing to contract: {Contract}", contract);
                 await SynchronizeSubscriptionWithIndexerAsync(null,cancellationToken);
-                await ProcessUpdates([contract], cancellationToken);
+                await PollScripts([contract], cancellationToken);
             }
             else
             {
@@ -157,7 +157,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
         var allScripts = allContracts.Select(c => c.Script).ToHashSet();
 
-        await ProcessUpdates(allScripts.ToArray(), cancellationToken);
+        await PollScripts(allScripts.ToArray(), cancellationToken);
         var activeScripts = allContracts
             .Where(c => c.Active)
             .Select(c => c.Script)
@@ -253,7 +253,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             {
                 if (response == null) continue;
                 _logger.LogDebug("Received update for {Count} scripts.", response.Scripts.Count);
-                await ProcessUpdates(response.Scripts.ToArray(), cancellationToken);
+                await PollScripts(response.Scripts.ToArray(), cancellationToken);
             }
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
@@ -288,7 +288,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         
     }
 
-    private async Task ProcessUpdates(string[] scripts, CancellationToken cancellationToken)
+    public async Task PollScripts(string[] scripts, CancellationToken cancellationToken)
     {
         if(scripts.Length == 0)
             return;
