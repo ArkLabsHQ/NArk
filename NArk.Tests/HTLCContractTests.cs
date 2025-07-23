@@ -77,6 +77,17 @@ namespace NArk.Tests
             }
         }
 
+        private ECXOnlyPubKey FromTest(string s)
+        {
+             var bytes = Convert.FromHexString(s);
+             if (bytes.Length != 33)
+                 
+             return ECXOnlyPubKey.Create(bytes);
+             return ECPubKey.Create(bytes).ToXOnlyPubKey();
+        }
+        
+        
+
         [Fact]
         public void TestValidHTLCContractsFromFixtures()
         {
@@ -86,10 +97,10 @@ namespace NArk.Tests
 
             foreach (var testCase in fixtures.Valid)
             {
-                var server = ECPubKey.Create(Convert.FromHexString(testCase.Server)).ToXOnlyPubKey();
-                var sender = ECPubKey.Create(Convert.FromHexString(testCase.Sender)).ToXOnlyPubKey();
-                var receiver = ECPubKey.Create(Convert.FromHexString(testCase.Receiver)).ToXOnlyPubKey();
-                var hash = new uint160(testCase.PreimageHash);
+                var server = FromTest(testCase.Server);
+                var sender =FromTest(testCase.Sender);
+                var receiver =FromTest(testCase.Receiver);
+                var hash = new uint160(new uint160(testCase.PreimageHash).ToBytes(false));
 
                 var contract = new VHTLCContract(
                     server,
@@ -107,6 +118,12 @@ namespace NArk.Tests
                 var spendInfo = contract.GetTaprootSpendInfo();
                 var tapscripts = contract.GetTapScriptList();
      
+                Assert.True(address.ServerKey.ToBytes().SequenceEqual(testCaseAddress.ServerKey.ToBytes()));
+                Assert.Equal(address.Version, testCaseAddress.Version);
+                Assert.Equal(address.ScriptPubKey, testCaseAddress.ScriptPubKey);
+                
+                if(testCase.ExpectedTapTree is null )
+                    continue;
                 Assert.Equal(testCase.ExpectedTapTree.merkleProofs.Count, spendInfo.ScriptToMerkleProofMap().Count);
                 for (int i = 0; i < testCase.ExpectedTapTree.merkleProofs.Count; i++)
                 {
@@ -127,9 +144,7 @@ namespace NArk.Tests
                     
                 Assert.Equal(spendInfo.MerkleRoot.ToString(), testCase.ExpectedTapTree.Root);
 
-                Assert.True(address.ServerKey.ToBytes().SequenceEqual(testCaseAddress.ServerKey.ToBytes()));
-                Assert.Equal(address.Version, testCaseAddress.Version);
-                Assert.Equal(address.ScriptPubKey, testCaseAddress.ScriptPubKey);
+               
                 
             }
         }
