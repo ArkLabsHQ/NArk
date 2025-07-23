@@ -22,7 +22,18 @@ public class HashLockedArkPaymentContract: ArkContract
     public ECXOnlyPubKey User { get; }
     public byte[] Preimage { get; }
 
-    public byte[] Hash => HashLockType == HashLockTypeOption.HASH160 ? Hashes.RIPEMD160(Preimage) : Hashes.SHA256(Preimage);
+    public byte[] Hash
+    {
+        get
+        {
+            return HashLockType switch
+            {
+                HashLockTypeOption.HASH160 =>        Hashes.Hash160(Preimage).ToBytes(),
+                HashLockTypeOption.SHA256 => Hashes.SHA256(Preimage),
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+    }
 
     public override string Type => ContractType;
     public const string ContractType = "HashLockPaymentContract";

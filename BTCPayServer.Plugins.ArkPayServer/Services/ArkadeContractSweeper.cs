@@ -80,7 +80,7 @@ public class ArkadeContractSweeper : IHostedService
                         (vtxo, contract) => new {Vtxo = vtxo, Contract = contract} // Select both VTXO and contract
                     )
                     .ToListAsync(_cts.Token);
-
+if(vtxosAndContracts.Count > 0)
                 _logger.LogInformation($"Found {vtxosAndContracts.Count} VTXOs to sweep.");
                 var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
 
@@ -146,7 +146,8 @@ public class ArkadeContractSweeper : IHostedService
 
                     break;
                 case VHTLCContract htlc:
-                    if (htlc.Preimage is not null && htlc.Receiver.ToBytes().SequenceEqual(publicKey.ToBytes()) || htlc.RefundLocktime.IsTimeLock &&
+                    if (htlc.Preimage is not null && htlc.Receiver.ToBytes().SequenceEqual(publicKey.ToBytes()) || 
+                        htlc.RefundLocktime.IsTimeLock &&
                         htlc.RefundLocktime.Date < DateTime.UtcNow && htlc.Sender.ToBytes().SequenceEqual(publicKey.ToBytes()) )
                     {
                         coins.Add(arkCoin);

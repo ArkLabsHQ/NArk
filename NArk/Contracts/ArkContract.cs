@@ -68,7 +68,7 @@ public abstract class ArkContract
         return builder.Finalize( new TaprootInternalPubKey(TaprootConstants.UnspendableKey.ToECXOnlyPubKey().ToBytes()));
     }
 
-    public TapScript[] GetTapScriptList()
+    public virtual TapScript[] GetTapScriptList()
     {
         var leaves = GetScriptBuilders().ToArray();
         if (!leaves.OfType<CollaborativePathArkTapScript>().Any())
