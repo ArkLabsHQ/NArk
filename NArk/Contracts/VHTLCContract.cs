@@ -23,7 +23,7 @@ public class VHTLCContract : ArkContract
         Sequence unilateralClaimDelay,
         Sequence unilateralRefundDelay,
         Sequence unilateralRefundWithoutReceiverDelay)
-        : this(server, sender, receiver, Hashes.Hash160(preimage), refundLocktime, unilateralClaimDelay, unilateralRefundDelay, unilateralRefundWithoutReceiverDelay)
+        : this(server, sender, receiver, new uint160(Hashes.Hash160(preimage).ToBytes(false)), refundLocktime, unilateralClaimDelay, unilateralRefundDelay, unilateralRefundWithoutReceiverDelay)
     {
         Preimage = preimage;
     }
@@ -103,7 +103,7 @@ public class VHTLCContract : ArkContract
         if (contractData.TryGetValue("preimage", out var preimage))
         {
             var preimageBytes = Convert.FromHexString(preimage);
-            if (hash != Hashes.Hash160(preimageBytes))
+            if (!hash.ToBytes().SequenceEqual(Hashes.Hash160(preimageBytes).ToBytes(false)))
             {
                 throw new FormatException("preimage does not match hash");
             }

@@ -69,7 +69,6 @@ public class ArkadeContractSweeper : IHostedService
             try
             {
                 _tcsWaitForNextPoll = new TaskCompletionSource();
-
                 await using var db = _arkPluginDbContextFactory.CreateContext();
 
                 var vtxosAndContracts = await db.Vtxos
