@@ -13,10 +13,9 @@ using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using NArk;
+using NArk.Boltz.Client;
 using NArk.Services;
-using NArk.Wallet.Boltz;
 using NBitcoin;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
