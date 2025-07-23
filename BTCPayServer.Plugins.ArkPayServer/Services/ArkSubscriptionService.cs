@@ -3,8 +3,9 @@ using Ark.V1;
 using AsyncKeyedLock;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
+using Grpc.Core;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
@@ -27,7 +28,8 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
     private HashSet<string> _subscribedScripts = new();
     private Task? _listeningTask;
     private CancellationTokenSource _listeningCts;
-
+    private readonly TaskCompletionSource _started = new();
+public Task StartedTask => _started.Task;
     public ArkSubscriptionService(
         AsyncKeyedLocker asyncKeyedLocker,
         ArkPluginDbContextFactory arkPluginDbContextFactory,
@@ -129,6 +131,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             {
                 await _checkContractsChannel.Reader.ReadAsync(cancellationToken);
                 await UpdateSubscriptionAndListen(cancellationToken);
+                _started.TrySetResult();
             }
             catch (OperationCanceledException)
             {
@@ -203,6 +206,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
             _logger.LogError(ex, "Failed to subscribe to scripts. Will retry on next check.");
             _subscribedScripts.Clear(); // Force retry on next trigger
         }
+        
     }
 
     private async Task StartListening(CancellationToken cancellationToken)
@@ -273,19 +277,19 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
         }
     }
 
-    public static VTXO Map(IndexerVtxo vtxo)
+    public static VTXO Map(IndexerVtxo vtxo, VTXO? existing = null)
     {
-        return new VTXO()
-        {
-            TransactionId = vtxo.Outpoint.Txid,
-            TransactionOutputIndex = (int)vtxo.Outpoint.Vout,
-            Amount = (long)vtxo.Amount,
-            IsNote = vtxo.IsSwept,
-            SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt),
-            SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy)? null: vtxo.SpentBy,
-            Script = vtxo.Script
-        };
-        
+        existing ??= new VTXO();
+
+        existing.TransactionId = vtxo.Outpoint.Txid;
+        existing.TransactionOutputIndex = (int) vtxo.Outpoint.Vout;
+        existing.Amount = (long) vtxo.Amount;
+        existing.IsNote = vtxo.IsSwept;
+        existing.SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt);
+        existing.SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy) ? null : vtxo.SpentBy;
+        existing.Script = vtxo.Script;
+
+return existing;
     }
 
     public async Task PollScripts(string[] scripts, CancellationToken cancellationToken)
@@ -305,18 +309,47 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
                 Size = 5000
             }
         };
-        var vtxos = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);
+        var response = await _indexerClient.GetVtxosAsync(request, cancellationToken: cancellationToken);
 
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();
 
-       var results = await  dbContext.Vtxos
-           .UpsertRange(vtxos.Vtxos.Select(Map))
-           .On(vtxo => new {vtxo.TransactionId, vtxo.TransactionOutputIndex})
-           .RunAndReturnAsync();
-       _eventAggregator.Publish(new VTXOsUpdated()
-       {
-           Vtxos = results.ToArray()
-       });
+        var existingVtxos = await dbContext.Vtxos
+            .Where(v => scripts.Contains(v.Script))
+            .ToListAsync(cancellationToken);
+        var vtxos  = response.Vtxos.ToList();
+        var vtxosUpdated = new List<VTXO>();
+        while (vtxos.Any())
+        {
+            var vtxo = vtxos[0];
+            if (existingVtxos.Find(v =>
+                    v.TransactionId == vtxo.Outpoint.Txid &&
+                    v.TransactionOutputIndex == vtxo.Outpoint.Vout) is { } existing)
+            {
+                Map(vtxo, existing);
+                if (dbContext.Entry(existing).State == EntityState.Modified)
+                {
+                    vtxosUpdated.Add(existing);
+                }
+            }
+            else
+            {
+                var newVtxo = Map(vtxo);
+                await dbContext.Vtxos.AddAsync(newVtxo, cancellationToken);
+                vtxosUpdated.Add(newVtxo);
+            }
+
+            vtxos.Remove(vtxo);
+
+
+        }
+
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if(vtxosUpdated.Any())
+            _eventAggregator.Publish(new VTXOsUpdated()
+            {
+                Vtxos = vtxosUpdated.ToArray()
+            });
     }
     private async Task SynchronizeSubscriptionWithIndexerAsync(string[]? removed, CancellationToken cancellationToken)
     {

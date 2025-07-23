@@ -21,6 +21,7 @@ public class ArkadeContractSweeper : IHostedService
     private readonly ArkadeWalletSignerProvider _walletSignerProvider;
     private readonly EventAggregator _eventAggregator;
     private readonly ILogger<ArkadeContractSweeper> _logger;
+    private readonly ArkSubscriptionService _arkSubscriptionService;
     private readonly IWalletService _walletService;
     private CompositeDisposable _leases = new();
     private CancellationTokenSource _cts = new();
@@ -33,6 +34,7 @@ public class ArkadeContractSweeper : IHostedService
         ArkadeWalletSignerProvider walletSignerProvider,
         EventAggregator eventAggregator,
         ILogger<ArkadeContractSweeper> logger,
+        ArkSubscriptionService arkSubscriptionService,
         IWalletService walletService)
     {
         _arkTransactionBuilder = arkTransactionBuilder;
@@ -41,6 +43,7 @@ public class ArkadeContractSweeper : IHostedService
         _walletSignerProvider = walletSignerProvider;
         _eventAggregator = eventAggregator;
         _logger = logger;
+        _arkSubscriptionService = arkSubscriptionService;
         _walletService = walletService;
     }
 
@@ -63,6 +66,7 @@ public class ArkadeContractSweeper : IHostedService
 
     private async Task PollForVTXOToSweep()
     {
+        await _arkSubscriptionService.StartedTask.WithCancellation(_cts.Token);
         string[] allowedContractTypes = {VHTLCContract.ContractType, HashLockedArkPaymentContract.ContractType};
 
         while (!_cts.IsCancellationRequested)

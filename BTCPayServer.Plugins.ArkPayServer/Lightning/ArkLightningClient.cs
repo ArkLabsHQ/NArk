@@ -73,9 +73,10 @@ public class ArkLightningClient(
             BOLT11 = reverseSwap.Invoice,
             PaymentHash = bolt11.PaymentHash.ToString(),
             PaidAt = lightningStatus == LightningInvoiceStatus.Paid ? reverseSwap.UpdatedAt : null,
-            AmountReceived = lightningStatus == LightningInvoiceStatus.Paid
-                ? LightMoney.Satoshis(reverseSwap.ExpectedAmount)
-                : null,
+            // we have to comment this out because BTCPay will consider this invoice as partially paid..
+            // AmountReceived = lightningStatus == LightningInvoiceStatus.Paid
+            //     ? LightMoney.Satoshis(reverseSwap.ExpectedAmount)
+            //     : null,
             Preimage = contract?.Preimage?.ToHex(),
         };
     }

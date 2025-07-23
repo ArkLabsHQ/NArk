@@ -9,4 +9,6 @@ public record ArkSwapUpdated(ArkSwap Swap)
     {
         return $"Ark Swap:{Swap.SwapId} {Swap.Status}";
     }
+
+    public VTXO[] Vtxos { get; set; }
 }

@@ -1,3 +1,4 @@
+using BTCPayServer.Lightning;
 using Microsoft.Extensions.Logging;
 using NArk.Boltz.Client;
 using NArk.Boltz.Models.Swaps.Reverse;
@@ -70,7 +71,18 @@ public class BoltzSwapService
             _logger.LogError("Boltz did not provide refund public key");
             throw new InvalidOperationException("Boltz did not provide refund public key");
         }
-
+        
+        var bolt11 = BOLT11PaymentRequest.Parse(response.Invoice, operatorTerms.Network);
+        if (!bolt11.PaymentHash.ToBytes(false).SequenceEqual(preimageHash))
+        {
+            throw new InvalidOperationException("Boltz did not provide the correct preimage hash");
+        }
+        if(bolt11.MinimumAmount != LightMoney.Satoshis(invoiceAmount))
+        {
+            throw new InvalidOperationException("Boltz did not provide the correct invoice amount");
+        }
+        
+        
         var sender = response.RefundPublicKey.ToECXOnlyPubKey();
         _logger.LogDebug("Using sender key: {SenderKey}", response.RefundPublicKey);
 

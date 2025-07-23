@@ -31,8 +31,6 @@ public class BoltzService(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        // _leases.Add(eventAggregator.SubscribeAsync<BoltzSwapUpdate>(HandleSwapUpdate));
-        _leases.Add(eventAggregator.SubscribeAsync<VTXOsUpdated>(OnVTXOs));
         _leases.Add(eventAggregator.SubscribeAsync<ArkSwapUpdated>(OnLightningSwapUpdated));
         _ = ListenForSwapUpdates(cancellationToken);
     }
@@ -72,7 +70,7 @@ public class BoltzService(
             try
             {
 
-                await PollActiveManually(cancellationToken);
+                await PollActiveManually(null, cancellationToken);
 
 
                 var wsurl = boltzClient.DeriveWebSocketUri();
@@ -81,9 +79,13 @@ public class BoltzService(
                 await _wsClient.SubscribeAsync(_activeSwaps.Keys.ToArray(), cancellationToken);
                 await _wsClient.WaitUntilDisconnected(cancellationToken);
             }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
             catch (Exception e)
             {
-                // logger.LogError(e, "Error  listening for swap updates");
+                logger.LogError(e, "Error  listening for swap updates");
                 await Task.Delay(5000, cancellationToken);
             }
         }
@@ -104,19 +106,7 @@ public class BoltzService(
                 if (swapUpdate != null)
                 {
                     var id = swapUpdate["id"]!.GetValue<string>();
-                    // var status = swapUpdate["status"]!.GetValue<string>();
                     _ = HandleSwapUpdate(id);
-                    // if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(status))
-                    // {
-                    //     var inactive = status == "invoice.paid" || status == "invoice.expired" || status == "invoice.canceled";
-                    //     
-                    //     
-                    //     
-                    //    var swap = await HandleReverseSwapUpdate(id, status);
-                    //     
-                    //     var evnt = new BoltzSwapStatusChangedEvent(id, status, !inactive, swap?.ContractScript, swap?.WalletId);
-                    //     _eventAggregator.Publish(evnt);
-                    // }
                 }
             }
         }
@@ -130,45 +120,47 @@ public class BoltzService(
     
     private readonly ConcurrentDictionary<string,int> _activeSwaps = new();
 
-    public async Task PollActiveManually(CancellationToken cancellationToken)
+    public async Task PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
     {
         try
         {
-        
+            await using var dbContext = dbContextFactory.CreateContext();
+            var queryable =  dbContext.Swaps.Include(swap => swap.Contract)
+                .Where(swap => swap.Status == ArkSwapStatus.Pending);
 
-        await using var dbContext = dbContextFactory.CreateContext();
-        var activeSwaps = await dbContext.Swaps.Include(swap => swap.Contract)
-            .Where(swap => swap.Status == ArkSwapStatus.Pending)
-            .ToArrayAsync(cancellationToken);
+            if (query is not null)
+                queryable = query(queryable);
+            
+            var activeSwaps =await queryable.ToArrayAsync(cancellationToken);
         
-        if(!activeSwaps.Any())
-            return;
-        var evts = new List<ArkSwapUpdated>();
-        foreach (var swap in activeSwaps)
-        {
-            var evt = await PollSwapStatus(swap);
-            if (evt != null)
-                evts.Add(evt);
-        }
-        _activeSwaps.Clear();
-        await dbContext.SaveChangesAsync(cancellationToken);
-        foreach (var evt in evts)
-        {
-            eventAggregator.Publish(evt);
-            _activeSwaps.TryAdd(evt.Swap.SwapId, 0);
-        }
+            if(!activeSwaps.Any())
+                return;
+            var scripts = activeSwaps.Select(swap => swap.ContractScript).ToHashSet();
+            var vtxos = await dbContext.Vtxos.Where(vtxo => scripts.Contains(vtxo.Script))
+                .GroupBy(vtxo => vtxo.Script).ToDictionaryAsync(group => group.Key, group => group.ToArray(), cancellationToken);
+            var evts = new List<ArkSwapUpdated>();
+            foreach (var swap in activeSwaps)
+            {
+                var evt = await PollSwapStatus(swap);
+                if (evt != null)
+                {
+                    evt.Vtxos = vtxos.TryGet(swap.ContractScript);
+                    evts.Add(evt);
+                }
+                
+            }
+            _activeSwaps.Clear();
+            await dbContext.SaveChangesAsync(cancellationToken);
+            foreach (var evt in evts)
+            {
+                eventAggregator.Publish(evt);
+                _activeSwaps.TryAdd(evt.Swap.SwapId, 0);
+            }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error polling active swaps");
         }
-    }
-    
-
-    private Task OnVTXOs(VTXOsUpdated arg)
-    {
-        // TODO
-        return Task.CompletedTask;
     }
 
     private async Task<ArkSwapUpdated?> PollSwapStatus(ArkSwap swap)
@@ -209,28 +201,7 @@ public class BoltzService(
     
     private async Task HandleSwapUpdate(string swapId )
     {
-        logger.LogInformation($"Processing swap {swapId} update");
-
-            await using var dbContext = dbContextFactory.CreateContext();
-
-            // Find the swap in the database
-            var swaps = await dbContext.Swaps
-                .Include(s => s.Contract)
-                .Where(s => s.SwapId == swapId).ToListAsync();
-
-            var evts = new List<ArkSwapUpdated>();
-            foreach (var swap in  swaps)
-            {
-                var evt = await PollSwapStatus(swap);
-                if (evt != null)
-                    evts.Add(evt);
-            }
-            await dbContext.SaveChangesAsync();
-            foreach (var evt in evts)
-            {
-                eventAggregator.Publish(evt);
-            }
-
+        await PollActiveManually(swaps => swaps.Where(swap => swap.SwapId == swapId), CancellationToken.None);
     }
 
 

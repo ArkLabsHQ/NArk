@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="BTCPayServer.Lightning.Common" Version="1.5.2" />
       <PackageReference Include="Grpc.Net.ClientFactory" Version="2.71.0" />
       <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
       <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
