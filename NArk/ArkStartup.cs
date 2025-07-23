@@ -33,8 +33,8 @@ public static class ArkStartup
         });
 
         // Register Ark services
-        services.AddSingleton<OperatorTermsService>();
-        services.AddSingleton<IOperatorTermsService, OperatorTermsService>(provider => provider.GetRequiredService<OperatorTermsService>());
+        services.AddSingleton<CachedOperatorTermsService>();
+        services.AddSingleton<IOperatorTermsService, CachedOperatorTermsService>(provider => provider.GetRequiredService<CachedOperatorTermsService>());
         services.AddTransient<IWalletService, WalletService>();
 
         if (!string.IsNullOrWhiteSpace(configuration.BoltzUri))

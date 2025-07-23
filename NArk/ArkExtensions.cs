@@ -84,7 +84,9 @@ public static class ArkExtensions
 
     public static ArkOperatorTerms ArkOperatorTerms(this GetInfoResponse response)
     {
+        
         return new ArkOperatorTerms(
+            Dust: Money.Satoshis(response.Dust),
             SignerKey: response.ServerKey(),
             Network: Network.GetNetwork(response.Network),
             UnilateralExit: response.UnilateralExitSequence());

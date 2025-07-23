@@ -10,7 +10,7 @@ public class OperatorTermsService(
     ILogger<OperatorTermsService> logger)
     : IOperatorTermsService
 {
-    public async Task<ArkOperatorTerms> GetOperatorTerms(CancellationToken cancellationToken = default)
+    public virtual async Task<ArkOperatorTerms> GetOperatorTerms(CancellationToken cancellationToken = default)
     {
         try
         {
