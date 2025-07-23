@@ -40,14 +40,20 @@ public class BoltzService(
         var active = arg.Swap.Status == ArkSwapStatus.Pending;
         if (active)
         {
-            _activeSwaps.TryAdd(arg.Swap.SwapId, 0);
+            if (_activeSwaps.TryAdd(arg.Swap.SwapId, 0))
+            {
+                logger.LogInformation("Subscribed to swap {SwapId}", arg.Swap.SwapId);
+            }
             if (_wsClient is not null)
             {
                await  _wsClient.SubscribeAsync([arg.Swap.SwapId]);
             }
         }else
         {
-            _activeSwaps.TryRemove(arg.Swap.SwapId, out _);
+            if(_activeSwaps.TryRemove(arg.Swap.SwapId, out _))
+            {
+                logger.LogInformation("Unsubscribed to swap {SwapId}", arg.Swap.SwapId);
+            }
             if (_wsClient is not null)
             {
                 await  _wsClient.UnsubscribeAsync([arg.Swap.SwapId]);
@@ -61,22 +67,21 @@ public class BoltzService(
         while (!cancellationToken.IsCancellationRequested)
         {
             
-            await PollActiveManually(cancellationToken);
             try
             {
 
+                await PollActiveManually(cancellationToken);
 
 
                 var wsurl = boltzClient.DeriveWebSocketUri();
                 _wsClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsurl, cancellationToken);
                 _wsClient.OnAnyEventReceived += OnWebSocketEvent;
                 await _wsClient.SubscribeAsync(_activeSwaps.Keys.ToArray(), cancellationToken);
+                await _wsClient.WaitUntilDisconnected(cancellationToken);
             }
             catch (Exception e)
             {
                 // logger.LogError(e, "Error  listening for swap updates");
-                
-                await PollActiveManually(cancellationToken);
                 await Task.Delay(5000, cancellationToken);
             }
         }
@@ -84,10 +89,13 @@ public class BoltzService(
         return Task.CompletedTask;
     }
 
-    private Task OnWebSocketEvent(WebSocketResponse response)
+    private Task OnWebSocketEvent(WebSocketResponse? response)
     {
         try
         {
+            if (response is null)
+                return Task.CompletedTask;
+            
             if (response.Event == "update" && response is {Channel: "swap.update", Args.Count: > 0})
             {
                 var swapUpdate = response.Args[0];
@@ -118,10 +126,14 @@ public class BoltzService(
         return Task.CompletedTask;
     }
     
-    private ConcurrentDictionary<string,int> _activeSwaps = new();
+    private readonly ConcurrentDictionary<string,int> _activeSwaps = new();
 
     public async Task PollActiveManually(CancellationToken cancellationToken)
     {
+        try
+        {
+        
+
         await using var dbContext = dbContextFactory.CreateContext();
         var activeSwaps = await dbContext.Swaps.Include(swap => swap.Contract)
             .Where(swap => swap.Status == ArkSwapStatus.Pending)
@@ -143,7 +155,11 @@ public class BoltzService(
             eventAggregator.Publish(evt);
             _activeSwaps.TryAdd(evt.Swap.SwapId, 0);
         }
-        
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error polling active swaps");
+        }
     }
     
 
@@ -168,7 +184,18 @@ public class BoltzService(
 
     public ArkSwapStatus Map(string status)
     {
-        return ArkSwapStatus.Pending;
+        return status switch
+        {
+            "swap.created" => ArkSwapStatus.Pending,
+            "invoice.expired" => ArkSwapStatus.Failed,
+            "swap.expired" => ArkSwapStatus.Failed,
+            "transaction.failed" => ArkSwapStatus.Failed,
+            "transaction.refunded" => ArkSwapStatus.Failed,
+            "transaction.mempool" => ArkSwapStatus.Pending,
+            "transaction.confirmed" => ArkSwapStatus.Settled,
+            "invoice.settled" => ArkSwapStatus.Settled,
+            _ => ArkSwapStatus.Pending
+        };
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -247,15 +274,14 @@ public class BoltzService(
                 return (arkWalletContract, swapResult.Contract);
         }, cancellationToken);
 
-        if (swapResult is null || contract is not VHTLCContract htlcContract) 
+        if (swapResult is null || arkWalletContract is null || contract is not VHTLCContract htlcContract) 
         {
             throw new InvalidOperationException("Failed to create reverse swap");
         }       
 
-        var contractScript = htlcContract.GetArkAddress().ScriptPubKey.ToHex();
-        
-        
-        
+        var contractScript = htlcContract.GetArkAddress().ScriptPubKey.ToHex(); 
+        dbContext.ChangeTracker.TrackGraph(arkWalletContract, node => node.Entry.State = EntityState.Unchanged);
+
         var reverseSwap = new ArkSwap
         {
             SwapId = swapResult.Swap.Id,
@@ -264,11 +290,10 @@ public class BoltzService(
             Invoice = swapResult.Swap.Invoice,
             ExpectedAmount = swapResult.Swap.OnchainAmount,
             ContractScript = contractScript,
-            Status = ArkSwapStatus.Pending,
             Contract = arkWalletContract!,
+            Status = ArkSwapStatus.Pending,
             Hash = new uint256(swapResult.Hash).ToString()
         };
-
         await dbContext.Swaps.AddAsync(reverseSwap, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         eventAggregator.Publish(new ArkSwapUpdated(reverseSwap));
