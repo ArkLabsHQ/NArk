@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using NArk.Services.Models;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
@@ -9,13 +10,14 @@ namespace NArk.Services
     /// </summary>
     public class ArkTransactionBuilder
     {
-        
-        private readonly Network _network;
+        private readonly IOperatorTermsService _operatorTermsService;
         private readonly ILogger<ArkTransactionBuilder> _logger;
 
-        public ArkTransactionBuilder(Network network, ILogger<ArkTransactionBuilder> logger)
+        public ArkTransactionBuilder(
+            IOperatorTermsService operatorTermsService,
+            ILogger<ArkTransactionBuilder> logger)
         {
-            _network = network ?? throw new ArgumentNullException(nameof(network));
+            _operatorTermsService = operatorTermsService;
             _logger = logger;
         }
 
@@ -65,7 +67,7 @@ public async Task ConstructAndSubmitArkTransaction(
             CancellationToken cancellationToken)
         {
             var (arkTx, checkpoints) = await ConstructArkTransaction(arkCoins, arkOutputs, cancellationToken);
-            await SubmitArkTransaction(arkCoins, arkServiceClient, arkTx, checkpoints, _network, cancellationToken);
+            await SubmitArkTransaction(arkCoins, arkServiceClient, arkTx, checkpoints, cancellationToken);
         }   
         
         
@@ -74,9 +76,9 @@ public async Task ConstructAndSubmitArkTransaction(
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
             PSBT arkTx,
             PSBT[] checkpoints,
-            Network network,
             CancellationToken cancellationToken)
         {
+            var network = arkTx.Network;
             _logger.LogInformation("Submitting Ark transaction with {CheckpointsCount} checkpoints", 
                 checkpoints.Length);
             
@@ -112,11 +114,10 @@ public async Task ConstructAndSubmitArkTransaction(
             // Finalize the transaction
             var finalizeTxRequest = new Ark.V1.FinalizeTxRequest
             {
-                ArkTxid = response.ArkTxid
+                ArkTxid = response.ArkTxid,
+                FinalCheckpointTxs = { signedCheckpoints.Select(x => x.ToBase64()) }
             };
-            finalizeTxRequest.FinalCheckpointTxs.AddRange(
-                signedCheckpoints.Select(x => x.ToBase64()));
-                
+           
             _logger.LogDebug("Sending FinalizeTx request to Ark service");
             var finalizeResponse = await arkServiceClient.FinalizeTxAsync(finalizeTxRequest, cancellationToken: cancellationToken);
             _logger.LogInformation("Transaction finalized successfully. Ark txid: {ArkTxid}", response.ArkTxid);
@@ -144,19 +145,18 @@ public async Task ConstructAndSubmitArkTransaction(
 
             List<PSBT> checkpoints = new();
             List<ArkCoinWithSigner> checkpointCoins = new();
-
-            
+            var terms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
             foreach (var coin in coins)
             {
                 _logger.LogDebug("Creating checkpoint for coin with outpoint {Outpoint}", coin.Outpoint);
                 
                 // Create checkpoint contract
-                var checkpointContract = CreateCheckpointContract(coin.Contract);
+                var checkpointContract = CreateCheckpointContract(coin.Contract,terms);
                 
                 
                 var tapLeaf = GetCollaborativePathLeaf(coin.Contract);
                 // Build checkpoint transaction
-                var checkpoint = _network.CreateTransactionBuilder();
+                var checkpoint = terms.Network.CreateTransactionBuilder();
                 checkpoint.SetVersion(3);
                 checkpoint.SetFeeWeight(0);
                 checkpoint.AddCoin(coin);
@@ -168,7 +168,7 @@ public async Task ConstructAndSubmitArkTransaction(
                 //checkpoints MUST have the p2a output at index 1 and NBitcoin tx builder does not assure it, so we hack our way there
                 var ctx = checkpointTx.GetGlobalTransaction();
                 ctx.Outputs.Add(new TxOut(Money.Zero, p2a));
-                checkpointTx = PSBT.FromTransaction(ctx, _network, PSBTVersion.PSBTv0);
+                checkpointTx = PSBT.FromTransaction(ctx, terms.Network, PSBTVersion.PSBTv0);
                 checkpoint.UpdatePSBT(checkpointTx);
                 
                 var psbtInput = checkpointTx.Inputs.FindIndexedInput(coin.Outpoint)!;
@@ -187,7 +187,7 @@ public async Task ConstructAndSubmitArkTransaction(
             
             // Build the Ark transaction that spends from all checkpoint outputs
             _logger.LogDebug("Building Ark transaction with {CheckpointCount} checkpoint coins", checkpointCoins.Count);
-            var arkTx = _network.CreateTransactionBuilder();
+            var arkTx = terms.Network.CreateTransactionBuilder();
             arkTx.SetVersion(3);
             arkTx.SetFeeWeight(0);
             arkTx.DustPrevention = false;
@@ -202,7 +202,7 @@ public async Task ConstructAndSubmitArkTransaction(
             var tx =  arkTx.BuildPSBT(false, PSBTVersion.PSBTv0);
             var gtx = tx.GetGlobalTransaction();
             gtx.Outputs.Add(new TxOut(Money.Zero, p2a));
-            tx = PSBT.FromTransaction(gtx, _network, PSBTVersion.PSBTv0);
+            tx = PSBT.FromTransaction(gtx, terms.Network, PSBTVersion.PSBTv0);
             arkTx.UpdatePSBT(tx);
             
             
@@ -240,10 +240,10 @@ public async Task ConstructAndSubmitArkTransaction(
         /// <summary>
         /// Creates a checkpoint contract based on the input contract type
         /// </summary>
-        private ArkContract CreateCheckpointContract(ArkContract inputContract)
+        private ArkContract CreateCheckpointContract(ArkContract inputContract, ArkOperatorTerms terms)
         {
             var server = inputContract.Server;
-            var delay = inputContract.GetScriptBuilders().OfType<UnilateralPathArkTapScript>().First().Timeout;
+            var delay = terms.UnilateralExit;
             var user = inputContract switch
             {
                 HashLockedArkPaymentContract hashLockedArkPaymentContract => hashLockedArkPaymentContract.User,

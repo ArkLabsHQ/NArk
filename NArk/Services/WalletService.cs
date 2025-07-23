@@ -25,8 +25,6 @@ public class WalletService : IWalletService
         _logger.LogInformation("Deriving payment contract for user key {UserKey}", request.User.ToHex());
         
         var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
-        _logger.LogDebug("Retrieved operator terms with signer key {SignerKey}", operatorTerms.SignerKey.ToHex());
-       
         if (request.Tweak is null)
         {
             _logger.LogDebug("Creating standard ArkPaymentContract without tweak");

@@ -65,8 +65,11 @@ public class ArkWalletService(
             throw new InvalidOperationException($"Could not derive contract for wallet {walletId}");
         }
 
-        await dbContext.WalletContracts.Upsert(contract.Value.Item1).RunAsync(cancellationToken);
-        logger.LogInformation("New contract derived for wallet {WalletId}: {Script}", walletId,
+        var result = await dbContext.WalletContracts.Upsert(contract.Value.Item1)
+            .RunAndReturnAsync();
+        
+        if(result.Any())
+            logger.LogInformation("New contract derived for wallet {WalletId}: {Script}", walletId,
             contract.Value.Item1.Script);
 
         await arkSubscriptionService.UpdateManualSubscriptionAsync(contract.Value.Item1.Script,
@@ -75,66 +78,11 @@ public class ArkWalletService(
         return contract.Value.Item2;
     }
 
-    // public async Task<ArkWallet> CreateNewWalletAsync(string wallet,
-    //     CancellationToken cancellationToken = default)
-    // {
-    //     logger.LogInformation("Creating new Ark wallet");
-    //
-    //     var key = walletService.GetXOnlyPubKeyFromWallet(wallet);
-    //     
-    //     try
-    //     {
-    //         var arkWallet = new ArkWallet
-    //         {
-    //             Id = walletService.GetWalletId(key),
-    //             Wallet = wallet
-    //         };
-    //
-    //         await using var dbContext = dbContextFactory.CreateContext();
-    //
-    //         await dbContext.Wallets.AddAsync(arkWallet, cancellationToken);
-    //         await dbContext.SaveChangesAsync(cancellationToken);
-    //
-    //         logger.LogInformation("Successfully created and stored new Ark wallet with ID {WalletId}", arkWallet.Id);
-    //
-    //         return arkWallet;
-    //     }
-    //     catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true)
-    //     {
-    //         throw new InvalidOperationException(
-    //             "A wallet with this public key already exists. Please use a different seed.");
-    //     }
-    //     catch (Exception ex)
-    //     {
-    //         logger.LogError(ex, "Unexpected error occurred while creating wallet");
-    //         throw;
-    //     }
-    // }
-
-    // public async Task<ArkWallet?> GetWalletAsync(string walletId, CancellationToken cancellationToken = default)
-    // {
-    //     await using var dbContext = dbContextFactory.CreateContext();
-    //     return await dbContext.Wallets
-    //         .Include(w => w.Contracts)
-    //         .FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken);
-    // }
-    //
-    // public async Task<List<ArkWallet>> GetAllWalletsAsync(CancellationToken cancellationToken = default)
-    // {
-    //     await using var dbContext = dbContextFactory.CreateContext();
-    //     return await dbContext.Wallets
-    //         .Include(w => w.Contracts)
-    //         .ToListAsync(cancellationToken);
-    // }
-
     public async Task<ArkWallet> Upsert(string wallet, CancellationToken cancellationToken = default)
     {
-
-
         var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(wallet);
 
         await using var dbContext = dbContextFactory.CreateContext();
-
 
         var res = await dbContext.Wallets.Upsert(new ArkWallet()
         {
@@ -185,8 +133,6 @@ public class ArkWalletService(
         {
             await arkSubscriptionService.UpdateManualSubscriptionAsync(script, active, CancellationToken.None);
         }
-
-
     }
 
     public async Task<Dictionary<ArkWalletContract, VTXO[]>?> GetWalletInfo(string walletId)

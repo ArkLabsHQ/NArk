@@ -299,7 +299,10 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
 
         await using var dbContext = _arkPluginDbContextFactory.CreateContext();
 
-       var results = await  dbContext.Vtxos.UpsertRange(vtxos.Vtxos.Select(Map)).RunAndReturnAsync();
+       var results = await  dbContext.Vtxos
+           .UpsertRange(vtxos.Vtxos.Select(Map))
+           .On(vtxo => new {vtxo.TransactionId, vtxo.TransactionOutputIndex})
+           .RunAndReturnAsync();
        _eventAggregator.Publish(new VTXOsUpdated()
        {
            Vtxos = results.ToArray()

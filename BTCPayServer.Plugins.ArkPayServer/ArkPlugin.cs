@@ -76,7 +76,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddStartupTask<ArkPluginMigrationRunner>();
 
         serviceCollection.AddSingleton<ArkWalletService>();
-        serviceCollection.AddSingleton<ArkTransactionBuilder>(provider => new ArkTransactionBuilder(provider.GetRequiredService<BTCPayNetworkProvider>().BTC.NBitcoinNetwork, provider.GetRequiredService<ILogger<ArkTransactionBuilder>>()));
+        serviceCollection.AddSingleton<ArkTransactionBuilder>();
         serviceCollection.AddSingleton<ArkadeCheckoutModelExtension>();
         serviceCollection.AddSingleton<ArkadeCheckoutCheatModeExtension>();
         serviceCollection.AddSingleton<ICheckoutModelExtension>(provider => provider.GetRequiredService<ArkadeCheckoutModelExtension>());
