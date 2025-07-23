@@ -1,4 +1,5 @@
 using NArk;
+using NArk.Contracts;
 using Newtonsoft.Json;
 
 namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;

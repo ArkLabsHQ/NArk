@@ -6,6 +6,7 @@ using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NArk;
+using NArk.Contracts;
 using NArk.Services;
 using NBitcoin;
 using NodeInfo = BTCPayServer.Lightning.NodeInfo;

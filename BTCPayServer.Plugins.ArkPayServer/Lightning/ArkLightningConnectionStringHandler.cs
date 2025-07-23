@@ -3,7 +3,6 @@ using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.Extensions.DependencyInjection;
 using NArk.Services;
-using NArk.Wallet.Boltz;
 using NBitcoin;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Lightning;

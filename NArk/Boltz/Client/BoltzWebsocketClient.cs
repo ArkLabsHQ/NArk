@@ -1,13 +1,9 @@
-using System.Text.Json.Nodes;
-
-namespace NArk.Wallet.Boltz;
-
-using System;
-using System.IO;
 using System.Net.WebSockets;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Text.Json.Nodes;
+using NArk.Boltz.Models.WebSocket;
+
+namespace NArk.Boltz.Client;
 
 /// <summary>
 /// Manages WebSocket communication with the Boltz API, including connection, subscriptions, and auto-reconnection.

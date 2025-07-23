@@ -1,6 +1,6 @@
 using NBitcoin;
 
-namespace NArk;
+namespace NArk.Scripts;
 
 public class UnilateralPathArkTapScript: ScriptBuilder
 {

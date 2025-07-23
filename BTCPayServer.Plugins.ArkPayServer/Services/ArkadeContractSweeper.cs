@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk;
+using NArk.Contracts;
 using NArk.Services;
 using NArk.Services.Models;
 using NBitcoin;

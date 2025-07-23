@@ -1,4 +1,3 @@
-using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.Extensions.Logging;
 using NBitcoin;
 

@@ -1,7 +1,7 @@
-namespace NArk.Wallet.Boltz;
-
 using System.Net.Http.Json;
-using System.Threading.Tasks;
+using NArk.Boltz.Models.Referral;
+
+namespace NArk.Boltz.Client;
 
 public partial class BoltzClient
 {

@@ -1,8 +1,7 @@
 using System.Text.Json.Nodes;
-
-namespace NArk.Wallet.Boltz;
-
 using System.Text.Json.Serialization;
+
+namespace NArk.Boltz.Models.WebSocket;
 
 public class WebSocketResponse
 {

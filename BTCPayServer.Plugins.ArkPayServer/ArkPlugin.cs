@@ -108,10 +108,33 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             partialViewName: "/Views/Lightning/LNPaymentMethodSetupTab.cshtml");
         
         // Use NArk SDK Services
-        serviceCollection.AddArkServices(new ArkConfiguration(
+        var configuration = new ArkConfiguration(
             ArkUri: arkUri,
             BoltzUri: boltzUri
-            ));
+        );
+        
+        serviceCollection.AddGrpcClient<ArkService.ArkServiceClient>(options =>
+        {
+            options.Address = new Uri(configuration.ArkUri);
+        });
+        
+        serviceCollection.AddGrpcClient<IndexerService.IndexerServiceClient>(options =>
+        {
+            options.Address = new Uri(configuration.ArkUri);
+        });
+
+        // Register Ark services
+        serviceCollection.AddSingleton<CachedOperatorTermsService>();
+        serviceCollection.AddSingleton<IOperatorTermsService, CachedOperatorTermsService>(provider => provider.GetRequiredService<CachedOperatorTermsService>());
+        serviceCollection.AddTransient<IWalletService, WalletService>();
+
+        if (!string.IsNullOrWhiteSpace(configuration.BoltzUri))
+        {
+            serviceCollection.AddHttpClient<BoltzClient>(client =>
+            {
+                client.BaseAddress = new Uri(configuration.BoltzUri);
+            });
+        }
     }
     
     private static void SetupBtcPayPluginServices(IServiceCollection serviceCollection)
@@ -130,8 +153,3 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         base.Execute(applicationBuilder, provider);
     }
 }
-
-
-
-
-

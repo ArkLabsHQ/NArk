@@ -1,7 +1,7 @@
 ﻿using NBitcoin;
 using NBitcoin.Secp256k1;
 
-namespace BTCPayServer.Plugins.ArkPayServer.Services;
+namespace NArk.Services;
 
 public interface IArkadeWalletSigner
 {

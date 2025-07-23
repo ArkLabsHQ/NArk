@@ -1,9 +1,11 @@
 using Microsoft.Extensions.Logging;
+using NArk.Boltz.Client;
+using NArk.Boltz.Models.Swaps.Reverse;
+using NArk.Contracts;
 using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
-using NArk.Wallet.Boltz;
 
 namespace NArk.Services;
 
@@ -109,15 +111,4 @@ public class BoltzSwapService
             Hash = preimageHash
         };
     }
-}
-
-public class ReverseSwapResult
-{
-    public required VHTLCContract Contract { get; set; }
-
-    public required ReverseResponse Swap { get; set; }
-
-    public required ArkAddress Address { get; set; }
-
-    public byte[] Hash { get; set; }
 }

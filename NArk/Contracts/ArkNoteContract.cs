@@ -1,8 +1,8 @@
-﻿using NBitcoin;
-using NBitcoin.Crypto;
+﻿using NArk.Scripts;
+using NBitcoin;
 using NBitcoin.DataEncoders;
 
-namespace NArk;
+namespace NArk.Contracts;
 
 public class ArkNoteContract: HashLockedArkPaymentContract
 {

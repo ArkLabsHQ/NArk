@@ -1,15 +1,8 @@
-namespace NArk.Wallet.Boltz;
-
-using System;
-using System.IO;
-using System.Net.Http;
-using System.Net.WebSockets;
-using System.Text;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Net.Http.Json;
-using System.Threading;
-using System.Threading.Tasks;
+
+namespace NArk.Boltz.Client;
 
 public partial class BoltzClient
 {

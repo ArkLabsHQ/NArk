@@ -1,7 +1,6 @@
-namespace NArk.Wallet.Boltz;
-
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
+
+namespace NArk.Boltz.Models.Referral;
 
 public class ReferralFeesResponse
 {
@@ -10,13 +9,4 @@ public class ReferralFeesResponse
 
     [JsonPropertyName("currencies")]
     public Dictionary<string, ReferralFeeInfo> Currencies { get; set; }
-}
-
-public class ReferralFeeInfo
-{
-    [JsonPropertyName("collected")]
-    public long Collected { get; set; }
-
-    [JsonPropertyName("pending")]
-    public long Pending { get; set; }
 }

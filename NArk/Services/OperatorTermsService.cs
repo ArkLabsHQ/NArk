@@ -1,7 +1,6 @@
 using Ark.V1;
 using Microsoft.Extensions.Logging;
 using NArk.Services.Models;
-using NArk.Wallet;
 
 namespace NArk.Services;
 

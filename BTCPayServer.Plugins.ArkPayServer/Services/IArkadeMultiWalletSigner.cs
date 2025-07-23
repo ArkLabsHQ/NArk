@@ -1,4 +1,6 @@
-﻿namespace BTCPayServer.Plugins.ArkPayServer.Services;
+﻿using NArk.Services;
+
+namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public interface IArkadeMultiWalletSigner
 {

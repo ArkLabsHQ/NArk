@@ -1,4 +1,5 @@
-﻿using BTCPayServer.Plugins.ArkPayServer.Services;
+﻿using NArk.Contracts;
+using NArk.Services;
 using NBitcoin;
 
 namespace NArk;

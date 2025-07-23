@@ -1,11 +1,6 @@
 ﻿using NBitcoin;
 
-namespace NArk;
-public enum HashLockTypeOption
-{
-    HASH160,
-    SHA256,
-}
+namespace NArk.Scripts;
 
 public class HashLockTapScript : ScriptBuilder
 {

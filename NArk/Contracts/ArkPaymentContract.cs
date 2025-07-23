@@ -1,7 +1,8 @@
-﻿using NBitcoin;
+﻿using NArk.Scripts;
+using NBitcoin;
 using NBitcoin.Secp256k1;
 
-namespace NArk;
+namespace NArk.Contracts;
 
 public class ArkPaymentContract : ArkContract
 {

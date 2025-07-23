@@ -1,3 +1,4 @@
+using NArk.Contracts;
 using NArk.Services.Models;
 using NBitcoin.Secp256k1;
 using SHA256 = System.Security.Cryptography.SHA256;

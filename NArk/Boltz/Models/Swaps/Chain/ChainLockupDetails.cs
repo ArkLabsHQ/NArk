@@ -1,6 +1,7 @@
-namespace NArk.Wallet.Boltz;
-
 using System.Text.Json.Serialization;
+using NArk.Boltz.Models.Swaps.Common;
+
+namespace NArk.Boltz.Models.Swaps.Chain;
 
 public class ChainLockupDetails
 {

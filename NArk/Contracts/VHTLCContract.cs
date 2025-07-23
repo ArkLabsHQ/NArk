@@ -1,9 +1,10 @@
+using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
 
-namespace NArk;
+namespace NArk.Contracts;
 
 
 

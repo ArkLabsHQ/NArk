@@ -1,6 +1,6 @@
-namespace NArk.Wallet.Boltz;
-
 using System.Text.Json.Serialization;
+
+namespace NArk.Boltz.Models.Swaps.Common;
 
 public class SwapStatusResponse
 {
@@ -60,37 +60,4 @@ public class SwapStatusResponse
 
     [JsonPropertyName("serverLockupAddress")]
     public string? ServerLockupAddress { get; set; } // For Chain Swaps
-}
-
-public class SwapTransaction
-{
-    [JsonPropertyName("id")]
-    public string? Id { get; set; }
-
-    [JsonPropertyName("eta")]
-    public int? Eta { get; set; } // Could be string like "pending" or a timestamp/blockheight
-}
-
-public class SwapFailureDetails
-{
-    [JsonPropertyName("onchain")]
-    public string? Onchain { get; set; }
-
-    [JsonPropertyName("offchain")]
-    public string? Offchain { get; set; }
-}
-
-public class SwapExpectedAmounts
-{
-    [JsonPropertyName("invoiceAmount")]
-    public long? InvoiceAmount { get; set; }
-
-    [JsonPropertyName("onchainAmount")]
-    public long? OnchainAmount { get; set; }
-
-    [JsonPropertyName("userSendAmount")]
-    public long? UserSendAmount { get; set; } // For Chain Swaps
-
-    [JsonPropertyName("serverSendAmount")]
-    public long? ServerSendAmount { get; set; } // For Chain Swaps
 }

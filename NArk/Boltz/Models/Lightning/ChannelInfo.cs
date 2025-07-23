@@ -1,6 +1,6 @@
-namespace NArk.Wallet.Boltz;
-
 using System.Text.Json.Serialization;
+
+namespace NArk.Boltz.Models.Lightning;
 
 public class ChannelInfo
 {
@@ -33,25 +33,4 @@ public class ChannelInfo
 
     [JsonPropertyName("timeouts")]
     public ChannelTimeouts Timeouts { get; set; }
-}
-
-public class ChannelPolicies
-{
-    [JsonPropertyName("baseFeeMsat")]
-    public long BaseFeeMsat { get; set; }
-
-    [JsonPropertyName("feeRate")]
-    public long FeeRate { get; set; }
-
-    [JsonPropertyName("maxHtlcMsat")]
-    public long MaxHtlcMsat { get; set; }
-
-    [JsonPropertyName("minHtlcMsat")]
-    public long MinHtlcMsat { get; set; }
-}
-
-public class ChannelTimeouts
-{
-    [JsonPropertyName("csvTimeout")]
-    public int CsvTimeout { get; set; }
 }

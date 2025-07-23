@@ -8,8 +8,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk;
+using NArk.Boltz.Client;
+using NArk.Boltz.Models.WebSocket;
+using NArk.Contracts;
 using NArk.Services;
-using NArk.Wallet.Boltz;
 using NBitcoin;
 using NBXplorer;
 

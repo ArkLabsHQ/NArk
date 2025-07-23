@@ -1,5 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.Logging;
+using NArk.Contracts;
+using NArk.Scripts;
 using NArk.Services.Models;
 using NBitcoin;
 using NBitcoin.DataEncoders;

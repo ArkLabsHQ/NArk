@@ -1,4 +1,5 @@
-﻿using NBitcoin;
+﻿using NArk.Contracts;
+using NBitcoin;
 
 namespace NArk;
 

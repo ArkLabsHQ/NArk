@@ -1,13 +1,12 @@
 using System.Text;
-using System.Text.Encodings.Web;
 using NBitcoin;
-using NBitcoin.BIP370;
 using NBitcoin.Protocol;
 
-/**
- * ArkPsbtFieldKey is the key values for ark psbt fields.
- */
+namespace NArk;
 
+/**
+* ArkPsbtFieldKey is the key values for ark psbt fields.
+*/
 public static class ArkPSBTUtils
 {
     public const string VtxoTaprootTree = "taptree";
@@ -163,7 +162,7 @@ public static class ArkPSBTUtils
         // Decode the ScriptNum value
         long scriptNumValue = DecodeScriptNum(data);
         
-       return  new Sequence((uint) scriptNumValue);
+        return  new Sequence((uint) scriptNumValue);
     }
     
     private static long DecodeScriptNum(byte[] data)
@@ -190,10 +189,4 @@ public static class ArkPSBTUtils
     }
     
    
-}
-
-public class CosignerPublicKeyData
-{
-    public byte Index { get; set; }
-    public byte[] Key { get; set; }
 }

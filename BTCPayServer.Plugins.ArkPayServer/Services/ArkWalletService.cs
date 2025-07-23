@@ -7,6 +7,7 @@ using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using Microsoft.Extensions.Hosting;
 using NArk;
+using NArk.Contracts;
 using NArk.Services;
 using NArk.Services.Models;
 using NBitcoin;

@@ -1,6 +1,6 @@
-namespace NArk.Wallet.Boltz;
-
 using System.Text.Json.Serialization;
+
+namespace NArk.Boltz.Models.Lightning;
 
 public class Bolt12OfferResponse
 {

@@ -1,11 +1,10 @@
-using NBitcoin;
-
-namespace NArk.Wallet.Boltz;
-
-using System.Collections.Generic;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Threading.Tasks;
+using NArk.Boltz.Models.Swaps.Chain;
+using NArk.Boltz.Models.Swaps.Common;
+using NArk.Boltz.Models.Swaps.Reverse;
+using NArk.Boltz.Models.Swaps.Submarine;
+
+namespace NArk.Boltz.Client;
 
 public partial class BoltzClient
 {

@@ -1,8 +1,8 @@
-﻿using System.Text.Json.Serialization;
+﻿using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
-namespace NArk;
+namespace NArk.Contracts;
 
 public abstract class ArkContract
 {

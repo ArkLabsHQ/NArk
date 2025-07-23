@@ -1,7 +1,7 @@
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
-namespace NArk;
+namespace NArk.Scripts;
 
 
 public class NofNMultisigTapScript : ScriptBuilder
