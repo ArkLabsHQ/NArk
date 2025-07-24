@@ -24,17 +24,17 @@ public class ArkWalletService(
     ArkPluginDbContextFactory dbContextFactory,
     IOperatorTermsService operatorTermsService,
     ArkSubscriptionService arkSubscriptionService,
-    IWalletService walletService,
     ILogger<ArkWalletService> logger) : IHostedService, IArkadeMultiWalletSigner
 {
 
 
     public async Task<ArkContract> DerivePaymentContract(string walletId, CancellationToken cancellationToken)
     {
+        var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         return (await DeriveNewContract(walletId, async wallet =>
         {
-            var paymentContract = await walletService.DerivePaymentContractAsync(
-                new DeriveContractRequest(wallet.PublicKey, RandomUtils.GetBytes(32)), cancellationToken);
+            var paymentContract = ContractUtils.DerivePaymentContract(
+                new DeriveContractRequest(terms, wallet.PublicKey, RandomUtils.GetBytes(32)));
             var address = paymentContract.GetArkAddress();
             var contract = new ArkWalletContract
             {
@@ -82,10 +82,10 @@ public class ArkWalletService(
     public async Task<ArkWallet> Upsert(string wallet, string? destination, CancellationToken cancellationToken = default)
     {
         var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(wallet);
+        var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         if (destination is not null)
         {
             var addr = ArkAddress.Parse(destination);
-            var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
             if (!terms.SignerKey.ToBytes().SequenceEqual(addr.ServerKey.ToBytes()))
             {
                 throw new InvalidOperationException("Invalid destination server key.");
@@ -105,9 +105,7 @@ public class ArkWalletService(
 
         await DeriveNewContract(publicKey.ToHex(), async wallet =>
         {
-            var contract =
-                await walletService.DerivePaymentContractAsync(new DeriveContractRequest(wallet.PublicKey),
-                    cancellationToken);
+            var contract = ContractUtils.DerivePaymentContract(new DeriveContractRequest(terms, wallet.PublicKey));
             return (new ArkWalletContract
             {
                 WalletId = publicKey.ToHex(),

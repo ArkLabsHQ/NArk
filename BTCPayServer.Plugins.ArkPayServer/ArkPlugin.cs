@@ -75,6 +75,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddStartupTask<ArkPluginMigrationRunner>();
 
         serviceCollection.AddSingleton<ArkWalletService>();
+        serviceCollection.AddSingleton<ArkadeSpender>();
         serviceCollection.AddSingleton<ArkTransactionBuilder>();
         serviceCollection.AddSingleton<ArkadeCheckoutModelExtension>();
         serviceCollection.AddSingleton<ArkadeCheckoutCheatModeExtension>();
@@ -125,7 +126,6 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         // Register Ark services
         serviceCollection.AddSingleton<CachedOperatorTermsService>();
         serviceCollection.AddSingleton<IOperatorTermsService, CachedOperatorTermsService>(provider => provider.GetRequiredService<CachedOperatorTermsService>());
-        serviceCollection.AddTransient<IWalletService, WalletService>();
 
         if (!string.IsNullOrWhiteSpace(configuration.BoltzUri))
         {

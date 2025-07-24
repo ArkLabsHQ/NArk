@@ -2,6 +2,7 @@ using BTCPayServer.Lightning;
 using Microsoft.Extensions.Logging;
 using NArk.Boltz.Client;
 using NArk.Boltz.Models.Swaps.Reverse;
+using NArk.Boltz.Models.Swaps.Submarine;
 using NArk.Contracts;
 using NBitcoin;
 using NBitcoin.Crypto;
@@ -26,6 +27,49 @@ public class BoltzSwapService
         _logger = logger;
     }
 
+    public async Task<SubmarineSwapResult> CreateSubmarineSwap(BOLT11PaymentRequest invoice, ECXOnlyPubKey sender,
+        CancellationToken cancellationToken = default)
+    {
+        var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+
+
+
+        var response = await _boltzClient.CreateSubmarineSwapAsync(new SubmarineRequest()
+        {
+            Invoice = invoice.ToString(),
+            RefundPublicKey = sender.ToCompressedEvenYHex(),
+            From = "ARK",
+            To = "BTC",
+        });
+
+        var hash = new uint160(Hashes.RIPEMD160(invoice.PaymentHash.ToBytes()));
+        var receiver = response.ClaimPublicKey.ToECXOnlyPubKey();
+
+        var vhtlcContract = new VHTLCContract(
+            server: operatorTerms.SignerKey,
+            sender: sender,
+            receiver: receiver,
+            hash: hash,
+            refundLocktime: new LockTime(response.TimeoutBlockHeights.Refund),
+            unilateralClaimDelay: new Sequence((uint) response.TimeoutBlockHeights.UnilateralClaim),
+            unilateralRefundDelay: new Sequence((uint) response.TimeoutBlockHeights.UnilateralRefund),
+            unilateralRefundWithoutReceiverDelay: new Sequence((uint) response.TimeoutBlockHeights
+                .UnilateralRefundWithoutReceiver)
+        );
+
+
+        var address = vhtlcContract.GetArkAddress();
+        if (response.Address != address.ToString(operatorTerms.Network.ChainName == ChainName.Mainnet))
+            throw new Exception($"Address mismatch! Expected {address} got {response.Address}");
+
+        return new SubmarineSwapResult()
+        {
+            Address = address,
+            Swap = response,
+            Contract = vhtlcContract
+        };
+    }
+
     public async Task<ReverseSwapResult> CreateReverseSwap(
         long invoiceAmount,
         ECXOnlyPubKey receiver,
@@ -36,7 +80,6 @@ public class BoltzSwapService
 
         // Get operator terms 
         var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
-        _logger.LogDebug("Retrieved operator terms with signer key {SignerKey}", operatorTerms.SignerKey.ToHex());
 
         // Generate preimage and compute preimage hash using SHA256 for Boltz
         var preimage = RandomUtils.GetBytes(32);
@@ -119,7 +162,6 @@ public class BoltzSwapService
         {
             Contract = vhtlcContract,
             Swap = response,
-            Address = arkAddress,
             Hash = preimageHash
         };
     }

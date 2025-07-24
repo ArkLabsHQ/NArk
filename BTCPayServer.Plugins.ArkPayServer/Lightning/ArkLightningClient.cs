@@ -232,17 +232,46 @@ public class ArkLightningClient(
 
     public Task<PayResponse> Pay(PayInvoiceParams payParams, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException();
+        return Pay(null, payParams, cancellation);
     }
 
-    public Task<PayResponse> Pay(string bolt11, PayInvoiceParams payParams, CancellationToken cancellation = default)
+    public async Task<PayResponse> Pay(string bolt11, PayInvoiceParams payParams, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException();
+        try
+        {
+            if (string.IsNullOrEmpty(bolt11))
+            {
+                throw new NotSupportedException("BOLT11 is required");
+            }
+            
+            
+            var pr = BOLT11PaymentRequest.Parse(bolt11, network);
+            var result = await boltzService.CreateSubmarineSwap(walletId, pr, cancellation);
+        
+            var payment = MapPayment(result);
+            return new PayResponse()
+            {
+                Details = new PayDetails()
+                {
+                    PaymentHash = pr.PaymentHash,
+                    Preimage = string.IsNullOrEmpty(payment.Preimage) ? null : new uint256(payment.Preimage),
+                    Status = payment.Status,
+                    FeeAmount = payment.Fee,
+                    TotalAmount = payment.AmountSent
+                }
+            };
+            
+        }
+        catch (Exception e)
+        {
+            return new PayResponse(PayResult.Error, e.Message);
+        }
+       
     }
 
     public Task<PayResponse> Pay(string bolt11, CancellationToken cancellation = default)
     {
-        throw new NotSupportedException();
+        return Pay(bolt11, new PayInvoiceParams(), cancellation);
     }
 
     public Task<OpenChannelResponse> OpenChannel(OpenChannelRequest openChannelRequest,

@@ -16,18 +16,4 @@ public class SubmarineRequest
     [JsonPropertyName("refundPublicKey")]
     public string RefundPublicKey { get; set; }
 
-    [JsonPropertyName("refundAddress")]
-    public string? RefundAddress { get; set; } // Optional, for Liquid
-
-    [JsonPropertyName("claimPublicKey")]
-    public string? ClaimPublicKey { get; set; } // Optional, for Taproot
-
-    [JsonPropertyName("pairId")]
-    public string PairId { get; set; }
-
-    [JsonPropertyName("channelDetails")]
-    public ChannelCreationInfo? ChannelDetails { get; set; }
-
-    [JsonPropertyName("referralId")]
-    public string? ReferralId { get; set; }
 }

@@ -30,7 +30,7 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
 
     public async Task ConfigurePrompt(PaymentMethodContext context)
     {
-        ArkOperatorTerms terms = null;
+        ArkOperatorTerms terms;
         try
         {
             terms=    await _operatorTermsService.GetOperatorTerms(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
