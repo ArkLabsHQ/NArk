@@ -1,10 +1,13 @@
-using System;
 using NArk;
-using NBitcoin;
 
 namespace BTCPayServer.Data
 {
-    public class ArkAddressClaimDestination : IClaimDestination
+    public interface IArkClaimDestination : IClaimDestination
+    {
+        ArkAddress Address { get; }
+    }
+    
+    public class ArkAddressClaimDestination : IArkClaimDestination
     {
         private readonly bool _mainnet;
         public ArkAddress Address { get; }

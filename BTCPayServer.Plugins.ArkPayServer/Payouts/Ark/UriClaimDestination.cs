@@ -5,11 +5,11 @@ using NBitcoin.Payment;
 
 namespace BTCPayServer.Data
 {
-    public class ArkUriClaimDestination : ArkAddressClaimDestination
+    public class ArkUriClaimDestination : IArkClaimDestination
     {
         private readonly BitcoinUrlBuilder _bitcoinUrl;
 
-        public ArkUriClaimDestination(BitcoinUrlBuilder bitcoinUrl, bool mainnet) : base(ArkAddress.Parse(bitcoinUrl.UnknownParameters["ark"]), mainnet)
+        public ArkUriClaimDestination(BitcoinUrlBuilder bitcoinUrl) 
         {
             ArgumentNullException.ThrowIfNull(bitcoinUrl);
             if (bitcoinUrl.Address is null)
@@ -22,7 +22,9 @@ namespace BTCPayServer.Data
             return _bitcoinUrl.ToString();
         }
 
-        public string Id => Address.ToString();
+        public string Id => Address.ToString(_bitcoinUrl.Network.ChainName == ChainName.Mainnet);
         public decimal? Amount => _bitcoinUrl.Amount?.ToDecimal(MoneyUnit.BTC);
+
+        public ArkAddress Address => ArkAddress.Parse(_bitcoinUrl.UnknownParameters["ark"]);
     }
 }

@@ -9,6 +9,9 @@
 // using BTCPayServer.Payments;
 // using BTCPayServer.Payments.Bitcoin;
 // using BTCPayServer.Payouts;
+// using BTCPayServer.Plugins.ArkPayServer;
+// using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
+// using BTCPayServer.Plugins.ArkPayServer.Services;
 // using BTCPayServer.Services;
 // using BTCPayServer.Services.Invoices;
 // using BTCPayServer.Services.Notifications;
@@ -16,6 +19,9 @@
 // using Microsoft.AspNetCore.Mvc;
 // using Microsoft.EntityFrameworkCore;
 // using Microsoft.Extensions.Logging;
+// using NArk;
+// using NArk.Services;
+// using NArk.Services.Models;
 // using NBitcoin;
 // using NBitcoin.Payment;
 // using NBXplorer.Models;
@@ -25,83 +31,79 @@
 // using PayoutData = BTCPayServer.Data.PayoutData;
 // using StoreData = BTCPayServer.Data.StoreData;
 //
-// public class BitcoinLikePayoutHandler : IPayoutHandler
+// public class ArkPayoutHandler : IPayoutHandler
 // {
 //     public string Currency { get; }
+//     private readonly ArkSubscriptionService _arkSubscriptionService;
+//     private readonly IOperatorTermsService _operatorTermsService;
 //     private readonly PaymentMethodHandlerDictionary _paymentHandlers;
 //     private readonly ExplorerClientProvider _explorerClientProvider;
 //     private readonly BTCPayNetworkJsonSerializerSettings _jsonSerializerSettings;
 //     private readonly ApplicationDbContextFactory _dbContextFactory;
 //     private readonly NotificationSender _notificationSender;
-//     private readonly Logs Logs;
 //     private readonly EventAggregator _eventAggregator;
 //     private readonly TransactionLinkProviders _transactionLinkProviders;
+//     private readonly ILogger<ArkPayoutHandler> _logger;
 //
 //     PayoutMethodId IHandler<PayoutMethodId>.Id => PayoutMethodId;
-//     public PayoutMethodId PayoutMethodId { get; }
-//     public PaymentMethodId PaymentMethodId { get; }
-//     public BTCPayNetwork Network { get; }
-//     public string[] DefaultRateRules => Network.DefaultRateRules;
+//     public PayoutMethodId PayoutMethodId  => ArkadePlugin.ArkadePayoutMethodId;
+//     public PaymentMethodId PaymentMethodId => ArkadePlugin.ArkadePaymentMethodId;
 //     public WalletRepository WalletRepository { get; }
 //
-//     public BitcoinLikePayoutHandler(BTCPayNetworkProvider btcPayNetworkProvider,
-//         PayoutMethodId payoutMethodId,
-//         BTCPayNetwork network,
+//     public ArkPayoutHandler(
+//         
+//         ArkSubscriptionService arkSubscriptionService,
+//         IOperatorTermsService operatorTermsService,
 //         PaymentMethodHandlerDictionary handlers,
 //         WalletRepository walletRepository,
 //         ExplorerClientProvider explorerClientProvider,
 //         BTCPayNetworkJsonSerializerSettings jsonSerializerSettings,
 //         ApplicationDbContextFactory dbContextFactory,
 //         NotificationSender notificationSender,
-//         Logs logs,
 //         EventAggregator eventAggregator,
-//         TransactionLinkProviders transactionLinkProviders)
+//         TransactionLinkProviders transactionLinkProviders,
+//         ILogger<ArkPayoutHandler> logger)
 //     {
-//         PayoutMethodId = payoutMethodId;
-//         PaymentMethodId = PaymentTypes.CHAIN.GetPaymentMethodId(network.CryptoCode);
-//         Network = network;
+//         _arkSubscriptionService = arkSubscriptionService;
+//         _operatorTermsService = operatorTermsService;
 //         _paymentHandlers = handlers;
 //         WalletRepository = walletRepository;
 //         _explorerClientProvider = explorerClientProvider;
 //         _jsonSerializerSettings = jsonSerializerSettings;
 //         _dbContextFactory = dbContextFactory;
 //         _notificationSender = notificationSender;
-//         Currency = network.CryptoCode;
-//         this.Logs = logs;
+//         Currency = "BTC";
 //         _eventAggregator = eventAggregator;
 //         _transactionLinkProviders = transactionLinkProviders;
+//         _logger = logger;
 //     }
 //
 //     public async Task TrackClaim(ClaimRequest claimRequest, PayoutData payoutData)
 //     {
-//         var explorerClient = _explorerClientProvider.GetExplorerClient(Network);
-//         if (claimRequest.Destination is IBitcoinLikeClaimDestination bitcoinLikeClaimDestination)
+//         if (claimRequest.Destination is IArkClaimDestination arkClaimDestination)
 //         {
-//
-//             await explorerClient.TrackAsync(TrackedSource.Create(bitcoinLikeClaimDestination.Address));
-//             await WalletRepository.AddWalletTransactionAttachment(
-//                 new WalletId(claimRequest.StoreId, Network.CryptoCode),
-//                 bitcoinLikeClaimDestination.Address.ToString(),
-//                 Attachment.Payout(payoutData.PullPaymentDataId, payoutData.Id), WalletObjectData.Types.Address);
+//             await _arkSubscriptionService.UpdateManualSubscriptionAsync(arkClaimDestination.Address.ScriptPubKey.ToHex(), true, CancellationToken.None);
 //         }
 //     }
 //
-//     public Task<(IClaimDestination destination, string error)> ParseClaimDestination(string destination, CancellationToken cancellationToken)
+//     public async Task<(IClaimDestination destination, string error)> ParseClaimDestination(string destination, CancellationToken cancellationToken)
 //     {
+//         
 //         destination = destination.Trim();
 //         try
 //         {
-//             if (destination.StartsWith($"{Network.NBitcoinNetwork.UriScheme}:", StringComparison.OrdinalIgnoreCase))
+//             var terms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+//             
+//             if (destination.StartsWith($"bitcoin:", StringComparison.OrdinalIgnoreCase))
 //             {
-//                 return Task.FromResult<(IClaimDestination, string)>((new UriClaimDestination(new BitcoinUrlBuilder(destination, Network.NBitcoinNetwork)), null));
+//                 return (new ArkUriClaimDestination(new BitcoinUrlBuilder(destination, terms.Network)), null);
 //             }
 //
-//             return Task.FromResult<(IClaimDestination, string)>((new AddressClaimDestination(BitcoinAddress.Create(destination, Network.NBitcoinNetwork)), null));
+//             return (new ArkAddressClaimDestination(ArkAddress.Parse(destination),terms.Network.ChainName == ChainName.Mainnet), null);
 //         }
 //         catch
 //         {
-//             return Task.FromResult<(IClaimDestination, string)>(
-//                 (null, "A valid address was not provided"));
+//             return (null, "A valid address was not provided");
 //         }
 //     }
 //
@@ -118,14 +120,12 @@
 //         if (payoutMethodId is null)
 //             return null;
 //         ParseProofType(payout.Proof, out var raw, out var proofType);
-//         if (proofType == PayoutTransactionOnChainBlob.Type)
+//         if (proofType ==ArkPayoutProof.Type)
 //         {
 //
-//             var res = raw.ToObject<PayoutTransactionOnChainBlob>(
+//             var res = raw.ToObject<ArkPayoutProof>(
 //                 JsonSerializer.Create(_jsonSerializerSettings.GetSerializer(payoutMethodId)));
-//             if (res == null)
-//                 return null;
-//             res.LinkTemplate = _transactionLinkProviders.GetBlockExplorerLink(PaymentTypes.CHAIN.GetPaymentMethodId(Network.CryptoCode));
+//             
 //             return res;
 //         }
 //         return raw.ToObject<ManualPayoutProof>();
@@ -160,38 +160,22 @@
 //
 //     public void StartBackgroundCheck(Action<Type[]> subscribe)
 //     {
-//         subscribe(new[] { typeof(NewOnChainTransactionEvent), typeof(NewBlockEvent) });
+//         subscribe([typeof(VTXOsUpdated)]);
 //     }
 //
 //     public async Task BackgroundCheck(object o)
 //     {
-//         if (o is NewOnChainTransactionEvent newTransaction && newTransaction.NewTransactionEvent.TrackedSource is AddressTrackedSource addressTrackedSource
-//             && newTransaction.PaymentMethodId == PaymentMethodId)
+//         if (o is VTXOsUpdated vtXOsUpdated)
 //         {
-//             await UpdatePayoutsAwaitingForPayment(newTransaction, addressTrackedSource);
+//             await UpdatePayoutsAwaitingForPayment(vtXOsUpdated);
 //         }
-//
-//         if ((o is NewBlockEvent nbe && nbe.PaymentMethodId == PaymentMethodId) ||
-//             (o is NewOnChainTransactionEvent nct && nct.PaymentMethodId == PaymentMethodId))
-//         {
-//             await UpdatePayoutsInProgress();
-//         }
+//         
 //     }
 //
-//     public Task<decimal> GetMinimumPayoutAmount(IClaimDestination claimDestination)
+//     public async Task<decimal> GetMinimumPayoutAmount(IClaimDestination claimDestination)
 //     {
-//         if (Network
-//                 .NBitcoinNetwork?
-//                 .Consensus?
-//                 .ConsensusFactory?
-//                 .CreateTxOut() is TxOut txout &&
-//             claimDestination is IBitcoinLikeClaimDestination bitcoinLikeClaimDestination)
-//         {
-//             txout.ScriptPubKey = bitcoinLikeClaimDestination.Address.ScriptPubKey;
-//             return Task.FromResult(txout.GetDustThreshold().ToDecimal(MoneyUnit.BTC));
-//         }
-//
-//         return Task.FromResult(0m);
+//         var terms = await _operatorTermsService.GetOperatorTerms();
+//         return terms.Dust.ToDecimal(MoneyUnit.BTC);
 //     }
 //
 //
@@ -208,68 +192,15 @@
 //
 //     public async Task<StatusMessageModel> DoSpecificAction(string action, string[] payoutIds, string storeId)
 //     {
-//         switch (action)
-//         {
-//             case "mark-paid":
-//                 await using (var context = _dbContextFactory.CreateContext())
-//                 {
-//                     var payouts = (await PullPaymentHostedService.GetPayouts(new PullPaymentHostedService.PayoutQuery()
-//                     {
-//                         States = new[] { PayoutState.AwaitingPayment },
-//                         Stores = new[] { storeId },
-//                         PayoutIds = payoutIds
-//                     }, context)).Where(data =>
-//                         PayoutMethodId.TryParse(data.PayoutMethodId, out var payoutMethodId) &&
-//                         payoutMethodId == PayoutMethodId)
-//                         .Select(data => (data, ParseProof(data) as PayoutTransactionOnChainBlob)).Where(tuple => tuple.Item2 != null && tuple.Item2.TransactionId != null && tuple.Item2.Accounted == false);
-//                     foreach (var valueTuple in payouts)
-//                     {
-//                         valueTuple.Item2.Accounted = true;
-//                         valueTuple.data.State = PayoutState.InProgress;
-//                         SetProofBlob(valueTuple.data, valueTuple.Item2);
-//                     }
-//                     await context.SaveChangesAsync();
-//                 }
-//                 return new StatusMessageModel
-//                 {
-//                     Message = "Payout payments have been marked confirmed",
-//                     Severity = StatusMessageModel.StatusSeverity.Success
-//                 };
-//             case "reject-payment":
-//                 await using (var context = _dbContextFactory.CreateContext())
-//                 {
-//                     var payouts = (await PullPaymentHostedService.GetPayouts(new PullPaymentHostedService.PayoutQuery()
-//                     {
-//                         States = new[] { PayoutState.AwaitingPayment },
-//                         Stores = new[] { storeId },
-//                         PayoutIds = payoutIds
-//                     }, context)).Where(data =>
-//                         PayoutMethodId.TryParse(data.PayoutMethodId, out var payoutMethodId) &&
-//                         payoutMethodId == PayoutMethodId)
-//                         .Select(data => (data, ParseProof(data) as PayoutTransactionOnChainBlob)).Where(tuple => tuple.Item2 != null && tuple.Item2.TransactionId != null && tuple.Item2.Accounted == true);
-//                     foreach (var valueTuple in payouts)
-//                     {
-//                         valueTuple.Item2.TransactionId = null;
-//                         SetProofBlob(valueTuple.data, valueTuple.Item2);
-//                     }
-//
-//                     await context.SaveChangesAsync();
-//                 }
-//
-//                 return new StatusMessageModel()
-//                 {
-//                     Message = "Payout payments have been unmarked",
-//                     Severity = StatusMessageModel.StatusSeverity.Success
-//                 };
-//         }
+//       
 //
 //         return null;
 //     }
 //
 //     public bool IsSupported(StoreData storeData)
 //     {
-//         return storeData.GetDerivationSchemeSettings(_paymentHandlers, Network.CryptoCode, true)?.AccountDerivation is not null;
-//     }
+//         return !string.IsNullOrEmpty(storeData.GetPaymentMethodConfig<ArkadePaymentMethodConfig>(PaymentMethodId, _paymentHandlers, true)?.WalletId);
+//           }
 //
 //     public async Task<IActionResult> InitiatePayment(string[] payoutIds)
 //     {
@@ -318,75 +249,24 @@
 //         });
 //     }
 //
-//     private async Task UpdatePayoutsInProgress()
+//     private async Task UpdatePayoutsAwaitingForPayment(VTXOsUpdated vtXOsUpdated)
 //     {
 //         try
 //         {
+//             var destinations = vtXOsUpdated.Vtxos.Select(vtxo => vtxo.Script).ToHashSet();
+//
 //             await using var ctx = _dbContextFactory.CreateContext();
 //             var payouts = await ctx.Payouts
-//                 .Include(p => p.PullPaymentData)
-//                 .Where(p => p.State == PayoutState.InProgress)
-//                 .ToListAsync();
-//             List<PayoutData> updatedPayouts = new List<PayoutData>();
-//             foreach (var payout in payouts)
-//             {
-//                 var proof = ParseProof(payout) as PayoutTransactionOnChainBlob;
-//                 var payoutBlob = payout.GetBlob(this._jsonSerializerSettings);
-//                 if (proof?.Accounted is not true)
-//                     continue;
-//                 foreach (var txid in proof.Candidates.ToList())
-//                 {
-//                     var explorer = _explorerClientProvider.GetExplorerClient(Network.CryptoCode);
-//                     var tx = await explorer.GetTransactionAsync(txid);
-//                     if (tx is null)
-//                         continue;
-//                     if (tx.Confirmations >= payoutBlob.MinimumConfirmation)
-//                     {
-//                         payout.State = PayoutState.Completed;
-//                         proof.TransactionId = tx.TransactionHash;
-//                         updatedPayouts.Add(payout);
-//                         break;
-//                     }
-//                 }
-//                 if (payout.State == PayoutState.Completed)
-//                     proof.Candidates = null;
-//                 SetProofBlob(payout, proof);
-//             }
-//
-//             await ctx.SaveChangesAsync();
-//             foreach (PayoutData payoutData in updatedPayouts)
-//             {
-//                 _eventAggregator.Publish(new PayoutEvent(PayoutEvent.PayoutEventType.Updated, payoutData));
-//             }
-//         }
-//         catch (Exception ex)
-//         {
-//             Logs.PayServer.LogWarning(ex, "Error while processing an update in the pull payment hosted service");
-//         }
-//     }
-//
-//     private async Task UpdatePayoutsAwaitingForPayment(NewOnChainTransactionEvent newTransaction,
-//         AddressTrackedSource addressTrackedSource)
-//     {
-//         try
-//         {
-//             var destinationSum =
-//                 newTransaction.NewTransactionEvent.Outputs.Sum(output => output.Value.GetValue(Network));
-//             var destination = addressTrackedSource.Address.ToString();
-//
-//
-//             await using var ctx = _dbContextFactory.CreateContext();
-//             var payout = await ctx.Payouts
 //                 .Include(o => o.StoreData)
 //                 .Include(o => o.PullPaymentData)
 //                 .Where(p => p.State == PayoutState.AwaitingPayment)
 //                 .Where(p => p.PayoutMethodId == PaymentMethodId.ToString())
 // #pragma warning disable CA1307 // Specify StringComparison
-//                 .Where(p => destination.Equals(p.DedupId))
+//                 .Where(p => destinations.Contains(p.DedupId))
 // #pragma warning restore CA1307 // Specify StringComparison
-//                 .FirstOrDefaultAsync();
+//                 .ToListAsync();
 //
-//             if (payout is null)
+//             if (payouts.Any() is not true)
 //                 return;
 //             if (payout.Amount is null ||
 //                 // The round up here is not strictly necessary, this is temporary to fix existing payout before we
@@ -437,11 +317,11 @@
 //         }
 //         catch (Exception ex)
 //         {
-//             Logs.PayServer.LogWarning(ex, "Error while processing a transaction in the pull payment hosted service");
+//             _logger.LogWarning(ex, "Error while processing a transaction in the pull payment hosted service");
 //         }
 //     }
 //
-//     public void SetProofBlob(PayoutData data, PayoutTransactionOnChainBlob blob)
+//     public void SetProofBlob(PayoutData data, ArkPayoutProof blob)
 //     {
 //         data.SetProofBlob(blob, _jsonSerializerSettings.GetSerializer(data.GetPayoutMethodId()));
 //

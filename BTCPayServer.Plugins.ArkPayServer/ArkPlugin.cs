@@ -6,6 +6,7 @@ using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Configuration;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
+using BTCPayServer.Payouts;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
@@ -17,6 +18,7 @@ using NArk;
 using NArk.Boltz.Client;
 using NArk.Services;
 using NBitcoin;
+using System.Reflection;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 
@@ -26,7 +28,16 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     public const string PluginNavKey = nameof(ArkadePlugin) + "Nav";
 
     internal static PaymentMethodId ArkadePaymentMethodId = new PaymentMethodId("ARKADE");
+    internal static PayoutMethodId ArkadePayoutMethodId = Create();
     internal static string ArkadeDisplayName = "Arkade";
+
+
+    private static PayoutMethodId Create()
+    {
+        //use reflection to access ctor of PayoutMethodId and create it
+        var constructor = typeof(PayoutMethodId).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, new[] { typeof(string) })!;
+        return (PayoutMethodId) constructor.Invoke(new object[] { "ARKADE" })!;
+    }
     
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     [
