@@ -19,6 +19,7 @@ using NArk.Boltz.Client;
 using NArk.Services;
 using NBitcoin;
 using System.Reflection;
+using System.Text.Json;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 
@@ -47,6 +48,12 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     public override void Execute(IServiceCollection serviceCollection)
     {
         var pluginServiceCollection = (PluginServiceCollection) serviceCollection;
+        var configurationServices = pluginServiceCollection.BootstrapServices.GetRequiredService<IConfiguration>();
+        
+        var arkadeFilePath = Path.Combine(new DataDirectories().Configure(configurationServices).DataDir, "arkade.json");
+
+     
+
         var networkType  = DefaultConfiguration.GetNetworkType(pluginServiceCollection.BootstrapServices.GetRequiredService<IConfiguration>());
 
         var arkUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
@@ -69,6 +76,23 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
                 : networkType == ChainName.Regtest
                     ? "http://localhost:9001/v2/"
                     : null;
+        
+        if (File.Exists(arkadeFilePath))
+        {
+            var json = File.ReadAllText(arkadeFilePath);
+            var config = JsonSerializer.Deserialize<ArkConfiguration>(json);
+
+            if(!string.IsNullOrEmpty(config?.BoltzUri))
+            {
+                boltzUri = config.BoltzUri;
+            }
+            
+            if(!string.IsNullOrEmpty(config?.ArkUri))
+            {
+                arkUri = config.ArkUri;
+            }
+            
+        }
         
         SetupBtcPayPluginServices(serviceCollection);
         
@@ -120,8 +144,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         
         // Use NArk SDK Services
         var configuration = new ArkConfiguration(
-            ArkUri: arkUri,
-            BoltzUri: boltzUri
+            arkUri: arkUri,
+            boltzUri: boltzUri
         );
         
         serviceCollection.AddGrpcClient<ArkService.ArkServiceClient>(options =>

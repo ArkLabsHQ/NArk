@@ -113,7 +113,7 @@ services:
       - '10009:10009'
 
   boltz-fulmine:
-    image: ghcr.io/arklabshq/fulmine:v0.2.0-rc.2
+    image: ghcr.io/arklabshq/fulmine:v0.2.0-rc.3
     container_name: boltz-fulmine
     environment:
       - FULMINE_ARK_SERVER=http://arkd:7070
@@ -141,7 +141,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   boltz:
-    image: boltz/boltz:ark@sha256:e896e67d36b1e67b4af8fd89af1d4bc7895d94b05f1c538edf116a2c48d35c38
+    image: boltz/boltz:ark@sha256:aff267f48080535fa1b8b510eb4531866aafdb5c3acf4c038e8d6046c49e9880
     container_name: boltz
     restart: unless-stopped
     ports:
