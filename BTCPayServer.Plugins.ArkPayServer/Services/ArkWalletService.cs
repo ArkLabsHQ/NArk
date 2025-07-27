@@ -299,31 +299,11 @@ public class ArkWalletService(
 
     public Task<IArkadeWalletSigner> CreateSigner(string walletId, CancellationToken cancellationToken = default)
     {
-        return Task.FromResult<IArkadeWalletSigner>(new WalletSigner(walletSigners[walletId]));
+        return Task.FromResult<IArkadeWalletSigner>(new MemoryWalletSigner(walletSigners[walletId]));
 
     }
 
-    public class WalletSigner : IArkadeWalletSigner
-    {
-        private readonly ECPrivKey _key;
-
-        public WalletSigner(ECPrivKey key)
-        {
-            _key = key;
-        }
-
-        public Task<ECXOnlyPubKey> GetPublicKey(CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult(_key.CreateXOnlyPubKey());
-        }
-
-        public Task<(SecpSchnorrSignature, ECXOnlyPubKey)> Sign(uint256 data,
-            CancellationToken cancellationToken = default)
-        {
-            return Task.FromResult((_key.SignBIP340(data.ToBytes())
-                , _key.CreateXOnlyPubKey()));
-        }
-    }
+   
 
     public async Task UpdateBalances(string configWalletId, bool onlyActive,
         CancellationToken cancellationToken = default)

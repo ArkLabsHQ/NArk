@@ -11,3 +11,4 @@ public class ArkCoin : Coin
     }
     public ArkContract Contract { get; set; }
 }
+

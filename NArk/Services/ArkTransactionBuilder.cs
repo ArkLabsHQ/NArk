@@ -23,7 +23,7 @@ namespace NArk.Services
             _logger = logger;
         }
 
-        public async Task<PSBT> FinalizeCheckpointTx(PSBT checkpointTx, PSBT receivedCheckpointTx, ArkCoinWithSigner coin,  CancellationToken cancellationToken)
+        public async Task<PSBT> FinalizeCheckpointTx(PSBT checkpointTx, PSBT receivedCheckpointTx, SpendableArkCoinWithSigner coin,  CancellationToken cancellationToken)
         {
             _logger.LogDebug("Finalizing checkpoint transaction for coin with outpoint {Outpoint}", coin.Outpoint);
             
@@ -50,12 +50,11 @@ namespace NArk.Services
                 hash, 
                 cancellationToken);
             
-           var (leaf, condition, locktime) =  GetCollaborativePathLeaf(coin.Contract);
-           if (condition is not null)
+           if (coin.SpendingConditionWitness is not null)
            {
-               receivedCheckpointTx.Inputs[(int) input.Index].Unknown.SetArkField(condition);
+               receivedCheckpointTx.Inputs[(int) input.Index].Unknown.SetArkField(coin.SpendingConditionWitness);
            }
-           receivedCheckpointTx.Inputs[(int) input.Index].SetTaprootScriptSpendSignature(key, leaf.LeafHash, sig);
+           receivedCheckpointTx.Inputs[(int) input.Index].SetTaprootScriptSpendSignature(key, coin.SpendingScript.LeafHash, sig);
            receivedCheckpointTx.UpdateFrom(checkpointTx);
            
            return receivedCheckpointTx;
@@ -63,7 +62,7 @@ namespace NArk.Services
 
 
 public async Task ConstructAndSubmitArkTransaction(
-            IEnumerable<ArkCoinWithSigner> arkCoins,
+            IEnumerable<SpendableArkCoinWithSigner> arkCoins,
             TxOut[] arkOutputs,
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
             CancellationToken cancellationToken)
@@ -74,7 +73,7 @@ public async Task ConstructAndSubmitArkTransaction(
         
         
         public async Task<Ark.V1.FinalizeTxResponse> SubmitArkTransaction(
-            IEnumerable<ArkCoinWithSigner> arkCoins,
+            IEnumerable<SpendableArkCoinWithSigner> arkCoins,
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
             PSBT arkTx,
             PSBT[] checkpoints,
@@ -136,7 +135,7 @@ public async Task ConstructAndSubmitArkTransaction(
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>The Ark transaction and checkpoint transactions with their input witnesses</returns>
         public async Task<(PSBT arkTx, PSBT[] checkpoints)> ConstructArkTransaction(
-            IEnumerable<ArkCoinWithSigner> coins,
+            IEnumerable<SpendableArkCoinWithSigner> coins,
             TxOut[] outputs,
             CancellationToken cancellationToken)
         {
@@ -146,7 +145,7 @@ public async Task ConstructAndSubmitArkTransaction(
             var p2a = Script.FromHex("51024e73"); // Standard Ark protocol marker
 
             List<PSBT> checkpoints = new();
-            List<ArkCoinWithSigner> checkpointCoins = new();
+            List<SpendableArkCoinWithSigner> checkpointCoins = new();
             var terms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
             foreach (var coin in coins)
             {
@@ -156,15 +155,18 @@ public async Task ConstructAndSubmitArkTransaction(
                 var checkpointContract = CreateCheckpointContract(coin.Contract,terms);
                 
                 
-                var tapLeaf = GetCollaborativePathLeaf(coin.Contract);
+                // var tapLeaf = GetCollaborativePathLeaf(coin.Contract);
                 // Build checkpoint transaction
                 var checkpoint = terms.Network.CreateTransactionBuilder();
                 checkpoint.SetVersion(3);
                 checkpoint.SetFeeWeight(0);
-                checkpoint.AddCoin(coin);
+                checkpoint.AddCoin(coin, new CoinOptions()
+                {
+                    Sequence = coin.SpendingSequence
+                });
                 checkpoint.DustPrevention = false;
                 checkpoint.Send(checkpointContract.GetArkAddress(), coin.Amount);
-                checkpoint.SetLockTime(tapLeaf.locktime ?? LockTime.Zero);
+                checkpoint.SetLockTime(coin.SpendingLockTime ?? LockTime.Zero);
                 var checkpointTx = checkpoint.BuildPSBT(false, PSBTVersion.PSBTv0);
            
                 //checkpoints MUST have the p2a output at index 1 and NBitcoin tx builder does not assure it, so we hack our way there
@@ -176,7 +178,7 @@ public async Task ConstructAndSubmitArkTransaction(
                 var psbtInput = checkpointTx.Inputs.FindIndexedInput(coin.Outpoint)!;
                 // Add Ark PSBT fields
                 psbtInput.Unknown.SetArkField(coin.Contract.GetTapScriptList());
-                psbtInput.SetTaprootLeafScript(coin.Contract.GetTaprootSpendInfo(), tapLeaf.Leaf);
+                psbtInput.SetTaprootLeafScript(coin.Contract.GetTaprootSpendInfo(), coin.SpendingScript);
                 checkpoints.Add(checkpointTx);
                 
                 // Create checkpoint coin for the Ark transaction
@@ -184,7 +186,17 @@ public async Task ConstructAndSubmitArkTransaction(
                     output.ScriptPubKey == checkpointContract.GetArkAddress().ScriptPubKey);
                 var outpoint = new OutPoint(checkpointTx.GetGlobalTransaction(), txout.Index);
                 
-                checkpointCoins.Add(new ArkCoinWithSigner(coin.Signer,checkpointContract, outpoint, txout.GetTxOut()!));
+                checkpointCoins.Add(
+                    new SpendableArkCoinWithSigner(
+                        checkpointContract, 
+                        outpoint, 
+                        txout.GetTxOut()!,
+                        coin.Signer,
+                        checkpointContract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single().Build(),
+                        null,
+                        null,
+                        null
+                        ));
             }
             
             // Build the Ark transaction that spends from all checkpoint outputs
@@ -216,7 +228,6 @@ public async Task ConstructAndSubmitArkTransaction(
             {
                 var contract = (GenericArkContract)coin.Contract;
                 var checkpointInput =  tx.Inputs.FindIndexedInput(coin.Outpoint)!;
-                
                 // Get collaborative path and create signature
                 var collabPath = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
                 var tapleaf = collabPath.Build();
@@ -272,27 +283,6 @@ public async Task ConstructAndSubmitArkTransaction(
             scriptBuilders.Add(new CollaborativePathArkTapScript(server, ownerScript));
             
             return new GenericArkContract(server, scriptBuilders);
-        }
-        
-        
-
-        /// <summary>
-        /// Gets the collaborative path leaf for a contract
-        /// </summary>
-        private (TapScript Leaf, WitScript? Condition, LockTime? locktime) GetCollaborativePathLeaf(ArkContract contract)
-        {
-            return contract switch
-            {
-                HashLockedArkPaymentContract hashLockedArkPaymentContract => (
-                    hashLockedArkPaymentContract.CreateClaimScript().Build(), new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null),
-                ArkPaymentContract arkContract => (arkContract.CollaborativePath().Build(), null, null),
-                VHTLCContract {Preimage: not null} claimHtlc => (claimHtlc.CreateClaimScript().Build(),
-                    new WitScript(Op.GetPushOp(claimHtlc.Preimage!)), null),
-                VHTLCContract {RefundLocktime.IsTimeLock: true} refundHtlc when
-                    refundHtlc.RefundLocktime.Date > DateTime.UtcNow.Date => (
-                        refundHtlc.CreateRefundWithoutReceiverScript().Build(), null, refundHtlc.RefundLocktime),
-                _ => throw new NotSupportedException($"Contract type {contract.GetType().Name} not supported")
-            };
         }
     }
     

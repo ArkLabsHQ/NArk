@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NBitcoin;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 
@@ -15,6 +16,14 @@ public class VTXO
     public bool IsNote { get; set; }
     // public ArkStoredTransaction? SpentByTransaction { get; set; }
     // public ArkStoredTransaction CreatedByTransaction { get; set; }
+
+    public ICoinable ToCoin()
+    { 
+        
+        var outpoint = new OutPoint(new uint256(TransactionId), (uint) TransactionOutputIndex);
+        var txout = new TxOut(Money.Satoshis(Amount), NBitcoin.Script.FromHex(Script));
+        return new Coin(outpoint, txout);
+    }
     
     internal static void OnModelCreating(ModelBuilder builder)
     {
