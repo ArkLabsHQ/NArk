@@ -191,8 +191,8 @@ public class ArkLightningClient(
         {
             throw new InvalidOperationException("Sub-dust amounts are not supported");
         }
-
-        var swap = await boltzService.CreateReverseSwap(walletId, createInvoiceRequest.Amount,
+        
+        var swap = await boltzService.CreateReverseSwap(walletId, createInvoiceRequest,
             cancellation);
         return Map(swap, network);
     }

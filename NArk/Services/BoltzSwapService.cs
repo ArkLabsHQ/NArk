@@ -71,12 +71,12 @@ public class BoltzSwapService
     }
 
     public async Task<ReverseSwapResult> CreateReverseSwap(
-        long invoiceAmount,
+        CreateInvoiceParams createInvoiceRequest,
         ECXOnlyPubKey receiver,
         CancellationToken cancellationToken = default)
     {
         _logger.LogInformation("Creating reverse swap with invoice amount {InvoiceAmount} for receiver {Receiver}",
-            invoiceAmount, receiver.ToHex());
+            createInvoiceRequest.Amount.ToUnit(LightMoneyUnit.BTC), receiver.ToHex());
 
         // Get operator terms 
         var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
@@ -91,10 +91,13 @@ public class BoltzSwapService
         {
             From = "BTC",
             To = "ARK",
-            InvoiceAmount = invoiceAmount,
+            InvoiceAmount = createInvoiceRequest.Amount.MilliSatoshi/1000,
             ClaimPublicKey = receiver.ToCompressedEvenYHex(), // Receiver will claim the VTXO
             PreimageHash = Encoders.Hex.EncodeData(preimageHash),
-            AcceptZeroConf = true
+            AcceptZeroConf = true,
+            DescriptionHash = createInvoiceRequest.DescriptionHash.ToString(),
+            Description = createInvoiceRequest.Description,
+            InvoiceExpirySeconds = Convert.ToInt32(createInvoiceRequest.Expiry.TotalSeconds),
         };
 
         _logger.LogDebug("Sending reverse swap request to Boltz");
@@ -120,7 +123,7 @@ public class BoltzSwapService
         {
             throw new InvalidOperationException("Boltz did not provide the correct preimage hash");
         }
-        if(bolt11.MinimumAmount != LightMoney.Satoshis(invoiceAmount))
+        if(bolt11.MinimumAmount != LightMoney.Satoshis(request.InvoiceAmount))
         {
             throw new InvalidOperationException("Boltz did not provide the correct invoice amount");
         }

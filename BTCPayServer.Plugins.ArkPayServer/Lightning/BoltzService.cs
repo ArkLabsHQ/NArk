@@ -206,7 +206,8 @@ public class BoltzService(
     }
 
 
-    public async Task<ArkSwap> CreateReverseSwap(string walletId, LightMoney amount, CancellationToken cancellationToken )
+    public async Task<ArkSwap> CreateReverseSwap(string walletId, CreateInvoiceParams createInvoiceRequest,
+        CancellationToken cancellationToken)
     {
         var signer = await walletService.CanHandle(walletId, cancellationToken);
         if (!signer)
@@ -232,9 +233,8 @@ public class BoltzService(
 
             // Create reverse swap with just the receiver key - sender key comes from Boltz response
             swapResult = await boltzSwapService.CreateReverseSwap(
-                amount.MilliSatoshi/1000, 
-                receiverKey,
-                cancellationToken: cancellationToken);
+                createInvoiceRequest,
+                receiverKey, cancellationToken);
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
             arkWalletContract =new ArkWalletContract

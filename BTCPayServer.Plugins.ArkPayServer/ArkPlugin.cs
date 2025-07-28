@@ -50,7 +50,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         var pluginServiceCollection = (PluginServiceCollection) serviceCollection;
         var configurationServices = pluginServiceCollection.BootstrapServices.GetRequiredService<IConfiguration>();
         
-        var arkadeFilePath = Path.Combine(new DataDirectories().Configure(configurationServices).DataDir, "arkade.json");
+        var arkadeFilePath = Path.Combine(new DataDirectories().Configure(configurationServices).DataDir, "ark.json");
 
      
 

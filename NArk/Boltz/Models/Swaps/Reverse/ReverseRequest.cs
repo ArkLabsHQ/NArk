@@ -17,7 +17,7 @@ public class ReverseRequest
     public long? OnchainAmount { get; set; }
 
     [JsonPropertyName("invoiceAmount")]
-    public long? InvoiceAmount { get; set; }
+    public long InvoiceAmount { get; set; }
 
     [JsonPropertyName("preimageHash")]
     public string PreimageHash { get; set; }
@@ -30,4 +30,12 @@ public class ReverseRequest
 
     [JsonPropertyName("acceptZeroConf")]
     public bool? AcceptZeroConf { get; set; }
+
+    [JsonPropertyName("invoiceExpiry")]
+    public int? InvoiceExpirySeconds { get; set; }
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+    [JsonPropertyName("descriptionHash")]
+    public string? DescriptionHash { get; set; }
+    
 }

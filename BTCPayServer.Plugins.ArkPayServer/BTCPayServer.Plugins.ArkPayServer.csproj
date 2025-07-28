@@ -32,6 +32,7 @@
         <ProjectReference Include="..\NArk\NArk.csproj" >
             <Properties>StaticWebAssetsEnabled=false</Properties>
             <ExcludeAssets>runtime;contentFiles</ExcludeAssets>
+            <Private>true</Private>
         </ProjectReference>
         <ProjectReference Include="..\submodules\btcpayserver\BTCPayServer\BTCPayServer.csproj" >
             <Private>false</Private>
