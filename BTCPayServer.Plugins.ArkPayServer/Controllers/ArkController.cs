@@ -109,7 +109,7 @@ public class ArkController : Controller
             encoder.StrictLength = false;
             var npub = encoder.EncodeData(key, Bech32EncodingType.BECH32);
 
-            if (!string.IsNullOrEmpty(model.Wallet) && model.Wallet.StartsWith("ark", StringComparison.InvariantCultureIgnoreCase) || model.Wallet.StartsWith("tark", StringComparison.InvariantCultureIgnoreCase))
+            if (!string.IsNullOrEmpty(model.Wallet) && ( model.Wallet.StartsWith("ark", StringComparison.InvariantCultureIgnoreCase) || model.Wallet.StartsWith("tark", StringComparison.InvariantCultureIgnoreCase)))
             
             {
                 try
