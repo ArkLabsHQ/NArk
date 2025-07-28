@@ -7,6 +7,9 @@ using NBitcoin.Secp256k1;
 
 namespace NArk.Services;
 
+
+
+
 public class RegisterIntentMessage
 {
     // type: "register",

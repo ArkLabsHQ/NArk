@@ -90,7 +90,6 @@ public class ArkadeSpender
             return;
         }
 
-        _logger.LogInformation($"Found {vtxosAndContracts.Length} VTXOs to sweep for wallet {wallet.Id}");
         
         await SweepWalletCoins(wallet, vtxosAndContracts, signer, operatorTerms, cancellationToken);
     }
@@ -162,6 +161,9 @@ public class ArkadeSpender
         if (sum == 0)
             return;
         
+        
+        
+        _logger.LogInformation($"Found {coins.Length} VTXOs to sweep for wallet {wallet.Id}");
         // Use the consolidated spend method for sweeping
         var sweepOutput = new TxOut(sum, destination);
         await SpendWalletCoins(wallet, group, signer, operatorTerms, [sweepOutput], cancellationToken);
