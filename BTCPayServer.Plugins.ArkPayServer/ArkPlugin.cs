@@ -64,10 +64,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
                     ? "http://localhost:7070"
                     : null;
 
-        if (arkUri is null)
-        {
-            return;
-        }
+       
         
         var boltzUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
             ? "https://mutinynet.boltz.exchange"
@@ -93,7 +90,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             }
             
         }
-        
+        if (arkUri is null)
+        {
+            return;
+        }
         SetupBtcPayPluginServices(serviceCollection);
         
         serviceCollection.AddSingleton<ArkadePaymentMethodHandler>();
