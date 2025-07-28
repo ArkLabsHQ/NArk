@@ -15,7 +15,7 @@ public partial class BoltzClient
     /// <returns>The status response for the swap.</returns>
     public async Task<SwapStatusResponse?> GetSwapStatusAsync(string swapId)
     {
-        return await _httpClient.GetFromJsonAsync<SwapStatusResponse>($"swap/{swapId}");
+        return await _httpClient.GetFromJsonAsync<SwapStatusResponse>($"v2/swap/{swapId}");
     }
 
     // Submarine Swaps
@@ -27,7 +27,7 @@ public partial class BoltzClient
     /// <returns>The submarine swap response.</returns>
     public async Task<SubmarineResponse?> CreateSubmarineSwapAsync(SubmarineRequest request)
     {
-        var response = await PostAsJsonAsync("swap/submarine", request);
+        var response = await PostAsJsonAsync("v2/swap/submarine", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SubmarineResponse>();
     }
@@ -41,7 +41,7 @@ public partial class BoltzClient
     /// <returns>The reverse swap response.</returns>
     public async Task<ReverseResponse?> CreateReverseSwapAsync(ReverseRequest request)
     {
-        var response = await PostAsJsonAsync("swap/reverse", request);
+        var response = await PostAsJsonAsync("v2/swap/reverse", request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<ReverseResponse>();
     }

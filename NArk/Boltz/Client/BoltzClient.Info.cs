@@ -13,15 +13,7 @@ public partial class BoltzClient
     /// <returns>The API version information.</returns>
     public async Task<VersionResponse?> GetVersionAsync()
     {
-        return await _httpClient.GetFromJsonAsync<VersionResponse>("version");
+        return await _httpClient.GetFromJsonAsync<VersionResponse>("v2/version");
     }
 
-    /// <summary>
-    /// Gets warnings about the configuration of the backend.
-    /// </summary>
-    /// <returns>A list of warning strings.</returns>
-    public async Task<List<string>?> GetWarningsAsync()
-    {
-        return await _httpClient.GetFromJsonAsync<List<string>>("warnings");
-    }
 }

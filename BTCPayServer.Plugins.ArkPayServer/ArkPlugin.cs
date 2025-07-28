@@ -71,7 +71,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
                 ? "https://signet.boltz.exchange"
                 : networkType == ChainName.Regtest
-                    ? "http://localhost:9001/v2/"
+                    ? "http://localhost:9001"
                     : null;
         
         if (File.Exists(arkadeFilePath))
@@ -94,8 +94,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         {
             return;
         }
+        
         SetupBtcPayPluginServices(serviceCollection);
         
+        serviceCollection.AddSingleton<ArkConfiguration>(_ => new ArkConfiguration(arkUri, boltzUri));
         serviceCollection.AddSingleton<ArkadePaymentMethodHandler>();
         serviceCollection.AddSingleton<ArkPluginDbContextFactory>();
         serviceCollection.AddSingleton<AsyncKeyedLocker>();
