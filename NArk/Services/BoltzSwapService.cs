@@ -97,7 +97,7 @@ public class BoltzSwapService
             AcceptZeroConf = true,
             DescriptionHash = createInvoiceRequest.DescriptionHash?.ToString(),
             Description = createInvoiceRequest.Description,
-            InvoiceExpirySeconds = Convert.ToInt32(createInvoiceRequest.Expiry.TotalSeconds),
+            InvoiceExpirySeconds = null//Convert.ToInt32(createInvoiceRequest.Expiry.TotalSeconds),
         };
 
         _logger.LogDebug("Sending reverse swap request to Boltz");

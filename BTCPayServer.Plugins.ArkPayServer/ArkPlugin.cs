@@ -67,11 +67,11 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
        
         
         var boltzUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
-            ? "https://mutinynet.boltz.exchange"
+            ? "https://mutinynet.boltz.exchange/"
             : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
-                ? "https://signet.boltz.exchange"
+                ? "https://signet.boltz.exchange/"
                 : networkType == ChainName.Regtest
-                    ? "http://localhost:9001"
+                    ? "http://localhost:9001/"
                     : null;
         
         if (File.Exists(arkadeFilePath))
