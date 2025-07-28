@@ -95,7 +95,7 @@ public class BoltzSwapService
             ClaimPublicKey = receiver.ToCompressedEvenYHex(), // Receiver will claim the VTXO
             PreimageHash = Encoders.Hex.EncodeData(preimageHash),
             AcceptZeroConf = true,
-            DescriptionHash = createInvoiceRequest.DescriptionHash.ToString(),
+            DescriptionHash = createInvoiceRequest.DescriptionHash?.ToString(),
             Description = createInvoiceRequest.Description,
             InvoiceExpirySeconds = Convert.ToInt32(createInvoiceRequest.Expiry.TotalSeconds),
         };
