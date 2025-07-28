@@ -17,11 +17,13 @@ public static class ArkPSBTUtils
 
     public const byte ArkPsbtFieldKeyType = 255;
 
-
+    
+    private static bool StartsWith(this byte[] bytes, byte[] prefix) => bytes.Take(prefix.Length).SequenceEqual(prefix);
+    
     public static Dictionary<string, object> GetPSBTArkFields(this SortedDictionary<byte[], byte[]> map)
     {
         var result = new Dictionary<string, object>();
-        var fields = map.Where(pair => pair.Key.StartsWith([ArkPsbtFieldKeyType]))
+        var fields = map.Where(pair => pair.Key[0] == ArkPsbtFieldKeyType)
             .ToDictionary(pair => pair.Key.Skip(1).ToArray(), pair => pair.Value);
         foreach (var field in fields)
         {
