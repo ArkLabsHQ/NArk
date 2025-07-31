@@ -46,8 +46,16 @@ public partial class BoltzClient
     /// <summary>
     /// Posts a value as JSON using the shared serialization options.
     /// </summary>
-    private Task<HttpResponseMessage> PostAsJsonAsync<T>(string uri, T value, CancellationToken ct = default)
+    private async Task<TReturn> PostAsJsonAsync<T, TReturn>(string uri, T value, CancellationToken ct = default)
     {
-        return _httpClient.PostAsJsonAsync(uri, value, _jsonOptions, ct);
+        var resp = await _httpClient.PostAsJsonAsync(uri, value, _jsonOptions, ct);
+
+        if (resp.IsSuccessStatusCode)
+        {
+            return (await resp.Content.ReadFromJsonAsync<TReturn>(options: _jsonOptions, ct))!;
+        }
+
+        var respStr = await resp.Content.ReadAsStringAsync(ct);
+        throw new HttpRequestException(respStr, null, resp.StatusCode);
     }
 }
