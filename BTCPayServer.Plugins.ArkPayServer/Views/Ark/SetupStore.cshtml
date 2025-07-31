@@ -1,11 +1,13 @@
 @using BTCPayServer
 @using BTCPayServer.Abstractions.Contracts
 @using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.ArkPayServer
 @using NBitcoin
 @using NArk.Contracts
 @model BTCPayServer.Plugins.ArkPayServer.Controllers.ArkStoreWalletViewModel
 @inject IScopeProvider ScopeProvider
 @inject BTCPayNetworkProvider NetworkProvider
+@inject ArkConfiguration ArkConfiguration
 @{
   
     Layout = "Views/UIStores/_LayoutWalletSetup";
@@ -106,10 +108,12 @@
             @foreach (var contract in Model.Contracts)
             {
                 var arkContract = ArkContract.Parse(contract.Key.Type, contract.Key.ContractData);
+
+                var link = $"{ArkConfiguration.ArkUri}v1/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}";
                 <tr>
 
                     <td>
-                        <vc:truncate-center text="@arkContract.GetArkAddress().ToString(mainnet)" classes="truncate-center-id"/>
+                        <vc:truncate-center link="@link" text="@arkContract.GetArkAddress().ToString(mainnet)" classes="truncate-center-id"/>
                     </td>
 
                     <td>
@@ -132,7 +136,7 @@
                 </tr>
                 @if (contract.Value.Any())
                 {
-                    <tr>
+                    <tr class="bg-light rounded">
 
                         <td colspan="3" class="border-top-0">
 
@@ -151,10 +155,12 @@
                                 <tbody>
                                 @foreach (var vtxo in contract.Value)
                                 {
+                                    var outpoint = vtxo.TransactionId + ":" + vtxo.TransactionOutputIndex;
+                                    var link2 = $"{ArkConfiguration.ArkUri}v1/vtxos?outpoints={outpoint}";
 
                                     <tr >
                                         <td>
-                                            <vc:truncate-center text="@vtxo.TransactionId" classes="truncate-center-id"/>
+                                            <vc:truncate-center link="@link2" text="@outpoint" classes="truncate-center-id"/>
 
                                         </td>
                                         <td>@vtxo.SeenAt.ToBrowserDate()</td>
