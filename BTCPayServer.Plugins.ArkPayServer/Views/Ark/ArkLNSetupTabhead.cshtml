@@ -8,7 +8,7 @@
            storeId,
            ConfigureLN = true
        });
-       var isSelected = Model.LightningNodeType == LightningNodeType.Custom && Model.ConnectionString.StartsWith("type=arkade", StringComparison.InvariantCultureIgnoreCase);
+       var isSelected = Model.LightningNodeType is LightningNodeType.Custom && Model.ConnectionString?.StartsWith("type=arkade", StringComparison.InvariantCultureIgnoreCase) is true;
 }
 
 
