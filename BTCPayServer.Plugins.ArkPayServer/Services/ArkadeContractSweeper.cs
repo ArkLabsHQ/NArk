@@ -103,7 +103,7 @@ public class ArkadeSpender
     private async Task SpendWalletCoins(ArkWallet wallet, (VTXO Vtxo, ArkWalletContract Contract)[] group, IArkadeWalletSigner signer, ArkOperatorTerms operatorTerms, TxOut[] outputs, CancellationToken cancellationToken)
     {
         var publicKey = wallet.PublicKey;
-        var coins = await GetSpendableCoins(group, signer, publicKey);
+        var coins = await GetSpendableCoins(group, signer, publicKey, operatorTerms);
         
         if (coins.Count == 0)
         {
@@ -138,7 +138,7 @@ public class ArkadeSpender
     private async Task SweepWalletCoins(ArkWallet wallet, (VTXO Vtxo, ArkWalletContract Contract)[] group, IArkadeWalletSigner signer, ArkOperatorTerms operatorTerms, CancellationToken cancellationToken)
     {
         var publicKey = wallet.PublicKey;
-        var coins = await GetSpendableCoins(group, signer, publicKey);
+        var coins = await GetSpendableCoins(group, signer, publicKey, operatorTerms);
 
         if (coins.Count == 0)
             return;
@@ -169,7 +169,9 @@ public class ArkadeSpender
         await SpendWalletCoins(wallet, group, signer, operatorTerms, [sweepOutput], cancellationToken);
     }
 
-    private async Task<List<SpendableArkCoinWithSigner>> GetSpendableCoins((VTXO Vtxo, ArkWalletContract Contract)[] group, IArkadeWalletSigner signer, ECXOnlyPubKey user)
+    private async Task<List<SpendableArkCoinWithSigner>> GetSpendableCoins(
+        (VTXO Vtxo, ArkWalletContract Contract)[] group, IArkadeWalletSigner signer, ECXOnlyPubKey user,
+        ArkOperatorTerms operatorTerms)
     {
         var coins = new List<SpendableArkCoinWithSigner>();
         
@@ -180,6 +182,12 @@ public class ArkadeSpender
             var contract = ArkContract.Parse(vtxo.Contract.Type, vtxo.Contract.ContractData);
             if (contract is null)
                 continue;
+
+            if (!operatorTerms.SignerKey.ToBytes().SequenceEqual(contract.Server.ToBytes()))
+            {
+                continue;
+            }
+            
             var res= await GetSpendableCoin(signer, contract, vtxo.Vtxo.ToCoin());
             if (res is not null)
                 coins.Add(res);
@@ -289,9 +297,6 @@ public class ArkadeContractSweeper : IHostedService
                         (vtxo, contract) => new {Vtxo = vtxo, Contract = contract} // Select both VTXO and contract
                     )
                     .ToListAsync(_cts.Token);
-
-                if(vtxosAndContracts.Count > 0)
-                    _logger.LogInformation($"Found {vtxosAndContracts.Count} VTXOs to sweep.");
                     
                 var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
 
