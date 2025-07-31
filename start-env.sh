@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -e
 
 log() {
@@ -12,34 +11,71 @@ log() {
 setup_fulmine_wallet() {
   log "Setting up Fulmine wallet..."
   
-  # Generate Seed
-  log "Generating seed..."
-  local seed_response=$(curl -s -X GET http://localhost:7003/api/v1/wallet/genseed)
-  local private_key=$(echo "$seed_response" | jq -r '.nsec')
-  log "Generated private key: $private_key"
+  # Wait for Fulmine service to be ready
+  log "Waiting for Fulmine service to be ready..."
+  max_attempts=15
+  attempt=1
+  while [ $attempt -le $max_attempts ]; do
+    if curl -s http://localhost:7003/api/v1/wallet/status >/dev/null 2>&1; then
+      log "Fulmine service is ready!"
+      break
+    fi
+    log "Waiting for Fulmine service... (attempt $attempt/$max_attempts)"
+    sleep 2
+    ((attempt++))
+  done
 
-  # Create Wallet
+  if [ $attempt -gt $max_attempts ]; then
+    log "ERROR: Fulmine service failed to start within expected time"
+    exit 1
+  fi
+
+  # Generate Seed first
+  log "Generating seed..."
+  seed_response=$(curl -s -X GET http://localhost:7003/api/v1/wallet/genseed)
+  private_key=$(echo "$seed_response" | jq -r '.nsec')
+  log "Generated private key: $private_key"
+  
+  # Create Wallet with the generated private key (with retry)
   log "Creating Fulmine wallet..."
   curl -X POST http://localhost:7003/api/v1/wallet/create \
        -H "Content-Type: application/json" \
-       -d "{\"private_key\": \"$private_key\", \"password\": \"password\", \"server_url\": \"http://arkd:7070\"}"
-
+       -d "{\"private_key\": \"$private_key\", \"password\": \"password\", \"server_url\": \"http://ark:7070\"}"
+  
   # Unlock Wallet
   log "Unlocking Fulmine wallet..."
   curl -X POST http://localhost:7003/api/v1/wallet/unlock \
        -H "Content-Type: application/json" \
        -d '{"password": "password"}'
-
+       
   # Get Wallet Status
   log "Checking Fulmine wallet status..."
   local status_response=$(curl -s -X GET http://localhost:7003/api/v1/wallet/status)
   log "Wallet status: $status_response"
 
-  # Get wallet address
+  # Get wallet address (with retry)
   log "Getting Fulmine wallet address..."
-  local address_response=$(curl -s -X GET http://localhost:7003/api/v1/address)
-  local fulmine_address=$(echo "$address_response" | jq -r '.address' | sed 's/bitcoin://' | sed 's/?ark=.*//')
-  log "Fulmine address: $fulmine_address"
+  max_attempts=5
+  attempt=1
+  local fulmine_address=""
+  while [ $attempt -le $max_attempts ]; do
+    local address_response=$(curl -s -X GET http://localhost:7003/api/v1/address)
+    fulmine_address=$(echo "$address_response" | jq -r '.address' | sed 's/bitcoin://' | sed 's/?ark=.*//')
+    
+    if [[ "$fulmine_address" != "null" && -n "$fulmine_address" ]]; then
+      log "Fulmine address: $fulmine_address"
+      break
+    fi
+    
+    log "Address not ready yet (attempt $attempt/$max_attempts), waiting..."
+    sleep 2
+    ((attempt++))
+  done
+
+  if [[ "$fulmine_address" == "null" || -z "$fulmine_address" ]]; then
+    log "ERROR: Failed to get valid Fulmine wallet address"
+    exit 1
+  fi
 
   # Fund fulmine
   log "Funding Fulmine wallet..."
@@ -57,6 +93,9 @@ setup_fulmine_wallet() {
   curl -X GET http://localhost:7003/api/v1/transactions
   
   log "✓ Fulmine wallet setup completed successfully!"
+  
+
+  
 }
 
 # Argument parsing
@@ -82,120 +121,78 @@ cd "$SCRIPT_DIR"
 if ! command -v nigiri >/dev/null 2>&1; then
   log "Nigiri not found. Installing..."
   curl https://getnigiri.vulpem.com | bash
+elif [ "$CLEAN" = true ]; then
+  log "Nigiri found but clean flag set. Reinstalling..."
 else
   log "Nigiri found: $(nigiri --version)"
-fi
-
-
-
-# Create and prepare volume directories for ark
-log "Setting up volume directories..."
-mkdir -p "$SCRIPT_DIR/volumes/ark"
-mkdir -p "$SCRIPT_DIR/volumes/ark/cors"
-
-# Copy CORS configuration file if it exists
-if [ -f "$SCRIPT_DIR/cors.nginx.conf" ]; then
-  log "Copying CORS configuration..."
-  cp "$SCRIPT_DIR/cors.nginx.conf" "$SCRIPT_DIR/volumes/ark/cors/cors.nginx.conf"
 fi
 
 # Clean volumes if requested
 if [ "$CLEAN" = true ]; then
 
-
   # 2. Stop any running nigiri instances
   log "Stopping existing Nigiri containers..."
-  nigiri stop --delete
   docker compose -f docker-compose.ark.yml down --volumes --remove-orphans
-  log "Removing any previous arkd containers..."
-  docker rm -f arkd ark-wallet 2>/dev/null || true
-  log "Cleaning ark volume directories..."
-  rm -rf "$SCRIPT_DIR/volumes/ark/*"
+  nigiri stop --delete
 
   #stop btcpayserver
   log "Stopping existing BTCPayServer containers..."
   docker compose -f submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml down --volumes || true
 fi
-
-  log "Starting Nigiri with Ark support..."
-    nigiri start 
+log "Starting Nigiri with Ark support..."
+# Start nigiri, but don't fail if it's already running
+nigiri start --ark || {
+  if [[ $? -eq 1 ]]; then
+    log "Nigiri may already be running, continuing..."
+  else
+    log "Failed to start nigiri with unexpected error"
+    exit 1
+  fi
+}
+# Use docker-compose.ark.yml for custom ark configuration
+log "Startinga stack with docker-compose.ark.yml..."
+docker compose -f docker-compose.ark.yml up -d
   
-  # Use docker-compose.ark.yml for custom ark configuration
-  log "Starting custom ark configuration from docker-compose.ark.yml..."
-  docker compose -f docker-compose.ark.yml up -d
-  
-log "Nigiri containers running:"
-docker ps \
-  --filter "name=ark" \
-  --filter "name=arkd" \
-  --filter "name=arkd-wallet" \
-  --filter "name=nigiri" \
-  --format "table {{.Names}}\t{{.Status}}"
 
 # 5. Start BTCPayServer dependencies
-log "Starting BTCPayServer dependency containers..."
-pushd submodules/btcpayserver/BTCPayServer.Tests >/dev/null
-docker compose up -d dev
-popd >/dev/null
-log "BTCPayServer containers running:"
-docker ps --filter "name=btcpay" --format "table {{.Names}}\t{{.Status}}"
+#log "Starting BTCPayServer dependency containers..."
+#pushd submodules/btcpayserver/BTCPayServer.Tests >/dev/null
+#docker compose up -d dev
+#popd >/dev/null
+#log "BTCPayServer containers running:"
+#docker ps --filter "name=btcpay" --format "table {{.Names}}\t{{.Status}}"
 
 # 6. Setup and unlock arkd wallet
-container="arkd"
+container="ark"
 
-if [ -n "$container" ]; then
-  log "Setting up Ark wallet..."
-  
-  # Create wallet with password "secret" (ignore if already exists)
-  log "Creating Ark wallet..."
-  docker exec "$container" arkd wallet create --password secret || true
-  
-  # Unlock wallet
-  log "Unlocking Ark wallet..."
-  docker exec "$container" arkd wallet unlock --password secret
-  docker exec "$container" arkd wallet status
-  log "✓ arkd wallet unlocked"
-  
-  # Initialize ark wallet
-  log "Initializing Ark wallet..."
-  docker exec "$container" ark init --network regtest --password secret --server-url localhost:7070 --explorer http://chopsticks:3000
-  log "✓ ark wallet initialized"
-  
-  # Get wallet address and fund it
-  log "Getting wallet address..."
-  address=$(docker exec "$container" arkd wallet address)
-  log "Funding wallet address: $address"
-  
-  # Fund the address using nigiri faucet (10 times for 10 BTC)
-  for i in {1..10}; do
-    nigiri faucet "$address"
-  done
-  sleep 5
-  # print arkd balance
-  log "Ark wallet balance: $(docker exec "$container" arkd wallet balance)"
-  
-  # Get boarding address
-  log "Getting boarding address..."
-  boarding_response=$(docker exec "$container" ark receive)
-  boarding_address=$(echo "$boarding_response" | jq -r '.boarding_address')
-  
-  if [ -n "$boarding_address" ]; then
-    log "Funding boarding address: $boarding_address"
-    nigiri faucet "$boarding_address"
-    
-    # Wait a bit for the transaction to be processed
-     sleep 5
-    
-     # Settle the wallet in the background
-     log "Settling wallet in background..."
-     docker exec "$container" ark settle --password secret &
-     log "✓ Ark setup initiated successfully!"
-  else
-    log "Failed to get boarding address"
+# Wait for arkd to be ready
+log "Waiting for arkd to be ready..."
+max_attempts=30
+attempt=1
+while [ $attempt -le $max_attempts ]; do
+  if curl -s http://localhost:7070/health >/dev/null 2>&1; then
+    log "arkd is ready!"
+    break
   fi
-  
-  # 7. Setup Fulmine wallet
-  setup_fulmine_wallet
+  log "Waiting for arkd... (attempt $attempt/$max_attempts)"
+  sleep 2
+  ((attempt++))
+done
+
+if [ $attempt -gt $max_attempts ]; then
+  log "ERROR: arkd failed to start within expected time"
+  exit 1
+fi
+
+# 7. Setup Fulmine wallet
+setup_fulmine_wallet
+
+#
+#  docker exec -i boltz-lnd bash -c \
+#    'echo -n "lndconnect://boltz-lnd:10009?cert=$(grep -v CERTIFICATE /root/.lnd/tls.cert \
+#       | tr -d = | tr "/+" "_-")&macaroon=$(base64 /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon \
+#       | tr -d = | tr "/+" "_-")"' | tr -d '\n'
+
 
   # # Setup LND for Lightning swaps
   # log "Setting up LND for Lightning swaps..."
@@ -223,9 +220,7 @@ if [ -n "$container" ]; then
   # # Check LND balance
   # log "LND balance:"
   # docker exec boltz-lnd lncli --network=regtest walletbalance
-else
-  log "Ark container not running; wallet not setup"
-fi
+
 
 log "✅ Development environment ready."
 log "\nServices available at:\n"
