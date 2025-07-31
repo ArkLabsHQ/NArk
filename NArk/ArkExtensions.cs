@@ -88,7 +88,7 @@ public static class ArkExtensions
         return new ArkOperatorTerms(
             Dust: Money.Satoshis(response.Dust),
             SignerKey: response.ServerKey(),
-            Network: Network.GetNetwork(response.Network),
+            Network: Network.GetNetwork(response.Network)?? (response.Network.Equals("bitcoin", StringComparison.InvariantCultureIgnoreCase)? Network.Main : null),
             UnilateralExit: response.UnilateralExitSequence());
     }
 

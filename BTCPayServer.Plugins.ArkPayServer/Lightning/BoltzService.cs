@@ -67,14 +67,14 @@ public class BoltzService(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            
+            Uri? wsurl = null;
             try
             {
 
                 await PollActiveManually(null, cancellationToken);
 
 
-                var wsurl = boltzClient.DeriveWebSocketUri();
+                wsurl = boltzClient.DeriveWebSocketUri();
                 _wsClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsurl, cancellationToken);
                 _wsClient.OnAnyEventReceived += OnWebSocketEvent;
                 await _wsClient.SubscribeAsync(_activeSwaps.Keys.ToArray(), cancellationToken);
@@ -86,7 +86,7 @@ public class BoltzService(
             }
             catch (Exception e)
             {
-                logger.LogError(e, "Error  listening for swap updates");
+                logger.LogError(e, "Error  listening for swap updates at {wsurl}", wsurl);
                 await Task.Delay(5000, cancellationToken);
             }
         }
