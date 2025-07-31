@@ -24,6 +24,7 @@ public class ArkadeSpender
     private readonly ArkadeWalletSignerProvider _walletSignerProvider;
     private readonly ILogger<ArkadeSpender> _logger;
     private readonly IOperatorTermsService _operatorTermsService;
+    private readonly ArkSubscriptionService _arkSubscriptionService;
 
     public ArkadeSpender(AsyncKeyedLocker asyncKeyedLocker, 
         ArkPluginDbContextFactory arkPluginDbContextFactory,
@@ -31,7 +32,8 @@ public class ArkadeSpender
         ArkTransactionBuilder arkTransactionBuilder,
         ArkService.ArkServiceClient arkServiceClient,
         ILogger<ArkadeSpender> logger,
-        IOperatorTermsService operatorTermsService)
+        IOperatorTermsService operatorTermsService,
+        ArkSubscriptionService arkSubscriptionService)
     {
         _asyncKeyedLocker = asyncKeyedLocker;
         _arkPluginDbContextFactory = arkPluginDbContextFactory;
@@ -40,6 +42,7 @@ public class ArkadeSpender
         _arkServiceClient = arkServiceClient;
         _logger = logger;
         _operatorTermsService = operatorTermsService;
+        _arkSubscriptionService = arkSubscriptionService;
     }
 
     public async Task Spend(string walletId, TxOut[] outputs, CancellationToken cancellationToken = default)
@@ -128,11 +131,24 @@ public class ArkadeSpender
         if (change > operatorTerms.Dust)
             outputs = outputs.Concat([new TxOut(Money.Satoshis(change), destination)]).ToArray();
         
-        await _arkTransactionBuilder.ConstructAndSubmitArkTransaction(
-            coins,
-            outputs,
-            _arkServiceClient,
-            cancellationToken);
+        try
+        {
+            await _arkTransactionBuilder.ConstructAndSubmitArkTransaction(
+                coins,
+                outputs,
+                _arkServiceClient,
+                cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            var scripts = group.Select(x => x.Contract.Script)
+                .Concat(
+                     outputs.Select(y => y.ScriptPubKey.ToHex())).ToHashSet();
+            
+            await _arkSubscriptionService.PollScripts(scripts.ToArray(), cancellationToken);
+           throw;
+        }
+        
     }
 
     private async Task SweepWalletCoins(ArkWallet wallet, (VTXO Vtxo, ArkWalletContract Contract)[] group, IArkadeWalletSigner signer, ArkOperatorTerms operatorTerms, CancellationToken cancellationToken)
@@ -280,7 +296,7 @@ public class ArkadeContractSweeper : IHostedService
     private async Task PollForVTXOToSweep()
     {
         await _arkSubscriptionService.StartedTask.WithCancellation(_cts.Token);
-        string[] allowedContractTypes = {VHTLCContract.ContractType, HashLockedArkPaymentContract.ContractType, ArkPaymentContract.ContractType};
+        // string[] allowedContractTypes = {VHTLCContract.ContractType, HashLockedArkPaymentContract.ContractType, ArkPaymentContract.ContractType};
 
         while (!_cts.IsCancellationRequested)
         {
@@ -291,7 +307,7 @@ public class ArkadeContractSweeper : IHostedService
                 var vtxosAndContracts = await db.Vtxos
                     .Where(vtxo => vtxo.SpentByTransactionId == null && !vtxo.IsNote) // VTXO is unspent
                     .Join(
-                        db.WalletContracts.Where(c => allowedContractTypes.Contains(c.Type)),
+                        db.WalletContracts,
                         vtxo => vtxo.Script, // Key from VTXO
                         contract => contract.Script, // Key from WalletContract
                         (vtxo, contract) => new {Vtxo = vtxo, Contract = contract} // Select both VTXO and contract

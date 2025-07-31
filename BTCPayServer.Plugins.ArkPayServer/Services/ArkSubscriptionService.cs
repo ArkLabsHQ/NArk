@@ -1,3 +1,4 @@
+using System.Text;
 using System.Threading.Channels;
 using Ark.V1;
 using AsyncKeyedLock;
@@ -345,11 +346,22 @@ return existing;
 
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        if(vtxosUpdated.Any())
+        if (vtxosUpdated.Any())
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"{vtxosUpdated.Count} VTXOs updated:");
+            foreach (var v in vtxosUpdated)
+            {
+                sb.AppendLine($"{v.TransactionId}:{v.TransactionOutputIndex}_{v.Script}_{Money.Satoshis(v.Amount)}");
+            }
+            
+            _logger.LogInformation(sb.ToString());
             _eventAggregator.Publish(new VTXOsUpdated()
             {
                 Vtxos = vtxosUpdated.ToArray()
             });
+        }
+           
     }
     private async Task SynchronizeSubscriptionWithIndexerAsync(string[]? removed, CancellationToken cancellationToken)
     {

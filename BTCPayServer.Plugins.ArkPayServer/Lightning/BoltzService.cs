@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text;
 using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
@@ -154,14 +155,26 @@ public class BoltzService(
             await dbContext.SaveChangesAsync(cancellationToken);
             foreach (var evt in evts)
             {
-                eventAggregator.Publish(evt);
                 _activeSwaps.TryAdd(evt.Swap.SwapId, 0);
             }
+            PublishUpdates(evts.ToArray());
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error polling active swaps");
         }
+    }
+
+    private void PublishUpdates(params ArkSwapUpdated[] updates)
+    {
+        var sb = new StringBuilder();
+        foreach (var update in updates)
+        {
+            sb.AppendLine(update.ToString());
+            eventAggregator.Publish(update);
+        }
+        logger.LogInformation(sb.ToString());
+        
     }
 
     private async Task<ArkSwapUpdated?> PollSwapStatus(ArkSwap swap)
@@ -179,18 +192,24 @@ public class BoltzService(
 
     public ArkSwapStatus Map(string status)
     {
-        return status switch
+        switch (status)
         {
-            "swap.created" => ArkSwapStatus.Pending,
-            "invoice.expired" => ArkSwapStatus.Failed,
-            "swap.expired" => ArkSwapStatus.Failed,
-            "transaction.failed" => ArkSwapStatus.Failed,
-            "transaction.refunded" => ArkSwapStatus.Failed,
-            "transaction.mempool" => ArkSwapStatus.Pending,
-            "transaction.confirmed" => ArkSwapStatus.Settled,
-            "invoice.settled" => ArkSwapStatus.Settled,
-            _ => ArkSwapStatus.Pending
-        };
+            case "swap.created":
+                return ArkSwapStatus.Pending;
+            case "invoice.expired":
+            case "swap.expired":
+            case "transaction.failed":
+            case "transaction.refunded":
+                return ArkSwapStatus.Failed;
+            case "transaction.mempool":
+                return ArkSwapStatus.Pending;
+            case "transaction.confirmed":
+            case "invoice.settled":
+                return ArkSwapStatus.Settled;
+            default:
+                logger.LogInformation($"Unknown status {status}");
+                return ArkSwapStatus.Pending;
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken)
@@ -270,7 +289,7 @@ public class BoltzService(
         };
         await dbContext.Swaps.AddAsync(reverseSwap, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        eventAggregator.Publish(new ArkSwapUpdated(reverseSwap));
+        PublishUpdates(new ArkSwapUpdated(reverseSwap));
         return reverseSwap;
     }
     public async Task<ArkSwap> CreateSubmarineSwap(string walletId, BOLT11PaymentRequest paymentRequest, CancellationToken cancellationToken )
@@ -336,7 +355,7 @@ public class BoltzService(
         };
         await dbContext.Swaps.AddAsync(submarineSwap, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        eventAggregator.Publish(new ArkSwapUpdated(submarineSwap));
+        PublishUpdates(new ArkSwapUpdated(submarineSwap));
         
         await arkadeSpender.Spend(walletId, [ new TxOut(Money.Satoshis(submarineSwap.ExpectedAmount), htlcContract.GetArkAddress())], cancellationToken);
         

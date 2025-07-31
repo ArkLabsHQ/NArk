@@ -27,8 +27,7 @@ public class ArkContractInvoiceListener(
     EventAggregator eventAggregator,
     ArkWalletService arkWalletService,
     PaymentService paymentService,
-    ILogger<ArkContractInvoiceListener> logger,
-    BTCPayNetworkProvider btcPayNetworkProvider)
+    ILogger<ArkContractInvoiceListener> logger)
     : IHostedService
 {
     private readonly Channel<string> _checkInvoices = Channel.CreateUnbounded<string>();
@@ -46,7 +45,8 @@ public class ArkContractInvoiceListener(
 
     private async Task HandleSwapUpdate(ArkSwapUpdated lightningSwapUpdated)
     {
-        var active = ArkLightningClient.Map(lightningSwapUpdated.Swap, btcPayNetworkProvider.BTC.NBitcoinNetwork)
+        var terms = await operatorTermsService.GetOperatorTerms();
+        var active = ArkLightningClient.Map(lightningSwapUpdated.Swap, terms.Network)
             .Status == LightningInvoiceStatus.Unpaid;
         await arkWalletService.ToggleContract(lightningSwapUpdated.Swap.WalletId, lightningSwapUpdated.Swap.ContractScript,
             active);
@@ -65,7 +65,7 @@ public class ArkContractInvoiceListener(
         {
            var script = Script.FromHex(scriptVtxos.Key);
             var address = ArkAddress.FromScriptPubKey(script, terms.SignerKey);
-            var network = btcPayNetworkProvider.BTC.NBitcoinNetwork;
+            var network = terms.Network;
             var inv = await invoiceRepository.GetInvoiceFromAddress(ArkadePlugin.ArkadePaymentMethodId, address.ToString(network.ChainName == ChainName.Mainnet)); 
             if (inv is null)
                 continue;

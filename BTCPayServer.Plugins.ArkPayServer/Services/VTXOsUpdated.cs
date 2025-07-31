@@ -9,6 +9,7 @@ public class VTXOsUpdated
     
     override public string ToString()
     {
-        return $"{Vtxos.Length} VTXOs updated: {string.Join("\n", Vtxos.Select(vtxo => $"{vtxo.Script} {Money.Satoshis(vtxo.Amount)} - {vtxo.TransactionId}:{vtxo.TransactionOutputIndex}"))}";
+        return null;
+
     }
 }
