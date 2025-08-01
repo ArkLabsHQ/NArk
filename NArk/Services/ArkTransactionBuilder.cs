@@ -279,7 +279,8 @@ public async Task ConstructAndSubmitArkTransaction(
                 
                 _logger.LogDebug("Signing Ark transaction for input {InputIndex}", checkpointInput.Index);
                 var (sig, ourKey) = await coin.Signer.Sign(hash,  cancellationToken);
-                
+                _logger.LogInformation($"{ourKey.ToHex()} signed {hash.ToBytes().ToHex()} ({coin.Outpoint} leaf:{tapleaf.LeafHash})  \n {sig.ToBytes().ToHex()}");
+
                 checkpointInput.SetTaprootScriptSpendSignature(ourKey, tapleaf.LeafHash, sig);
                 
             }
