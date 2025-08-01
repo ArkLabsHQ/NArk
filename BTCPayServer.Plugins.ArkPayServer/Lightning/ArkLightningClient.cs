@@ -217,7 +217,7 @@ public class ArkLightningClient(
 
         var vtxos = await dbContext.Vtxos
             .Where(vtxo => contracts.Contains(vtxo.Script))
-            .Where(vtxo => vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == "")
+            .Where(vtxo => (vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == "") && !vtxo.IsNote) 
             .ToListAsync(cancellation);
 
         var sum = vtxos.Sum(vtxo => vtxo.Amount);
