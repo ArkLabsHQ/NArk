@@ -72,11 +72,13 @@ public class BoltzService(
             try
             {
 
+                
                 await PollActiveManually(null, cancellationToken);
 
-
+                logger.LogInformation("Start listening for swap updates.");
                 wsurl = boltzClient.DeriveWebSocketUri();
                 _wsClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsurl, cancellationToken);
+                
                 _wsClient.OnAnyEventReceived += OnWebSocketEvent;
                 await _wsClient.SubscribeAsync(_activeSwaps.Keys.ToArray(), cancellationToken);
                 await _wsClient.WaitUntilDisconnected(cancellationToken);

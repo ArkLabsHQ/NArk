@@ -16,12 +16,6 @@ public class ArkadePaymentLinkExtension : IPaymentLinkExtension
         var ln = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LN.GetPaymentMethodId("BTC"));
         var lnurl = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LNURL.GetPaymentMethodId("BTC"));
 
-        if (string.IsNullOrEmpty(onchain?.Destination) && (ln is not null || lnurl is not null))
-        {
-            return
-                $"lightning:{ln?.Destination ?? lnurl?.Destination}&ark={prompt.Destination}&amount={prompt.Calculate().Due.ToString(CultureInfo.InvariantCulture)}";
-        }
-
         if (string.IsNullOrEmpty(onchain?.Destination) && ln is  null && lnurl is null)
         {
             return

@@ -7,6 +7,24 @@ using NBitcoin.Secp256k1;
 
 namespace NArk.Services
 {
+    public class IndexedPSBT : IComparable
+    {
+        public PSBT PSBT { get; }
+        public int Index { get; }
+
+        public IndexedPSBT(PSBT psbt, int index)
+        {
+            PSBT = psbt;
+            Index = index;
+        }
+
+        public int CompareTo(object? obj)
+        {
+            if (obj is not IndexedPSBT other) return -1;
+            return Index.CompareTo(other.Index);
+        }
+    }
+    
     /// <summary>
     /// Utility class for building and constructing Ark transactions
     /// </summary>
@@ -76,18 +94,18 @@ public async Task ConstructAndSubmitArkTransaction(
             IEnumerable<SpendableArkCoinWithSigner> arkCoins,
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
             PSBT arkTx,
-            PSBT[] checkpoints,
+            SortedSet<IndexedPSBT> checkpoints,
             CancellationToken cancellationToken)
         {
             var network = arkTx.Network;
             _logger.LogInformation("Submitting Ark transaction with {CheckpointsCount} checkpoints", 
-                checkpoints.Length);
+                checkpoints.Count);
             
             // Submit the transaction
             var submitRequest = new Ark.V1.SubmitTxRequest
             {
                 SignedArkTx = arkTx.ToBase64(),
-                CheckpointTxs = { checkpoints.Select(x => x.ToBase64()) }
+                CheckpointTxs = { checkpoints.Select(x => x.PSBT.ToBase64()) }
             };
             _logger.LogDebug("Sending SubmitTx request to Ark service");
             var response = await arkServiceClient.SubmitTxAsync(submitRequest, cancellationToken: cancellationToken);
@@ -97,26 +115,26 @@ public async Task ConstructAndSubmitArkTransaction(
             var parsedReceivedCheckpoints = response.SignedCheckpointTxs
                 .Select(x => PSBT.Parse(x, network))
                 .ToDictionary(psbt => psbt.GetGlobalTransaction().GetHash());
-                
-            var unsignedCheckpoints = checkpoints
-                .ToDictionary(psbt => psbt.GetGlobalTransaction().GetHash());
-                
+
             // Combine client and server signatures
             _logger.LogDebug("Combining client and server signatures for {CheckpointsCount} checkpoints", 
-                unsignedCheckpoints.Count);
+                checkpoints.Count);
             
-            List<PSBT> signedCheckpoints = [];
-            foreach (var signedCheckpoint in unsignedCheckpoints)
+            SortedSet<IndexedPSBT> signedCheckpoints = [];
+            foreach (var signedCheckpoint in checkpoints)
             {
-                var coin = arkCoins.Single(x => x.Outpoint == signedCheckpoint.Value.Inputs.Single().PrevOut);
-                signedCheckpoints .Add(await FinalizeCheckpointTx(signedCheckpoint.Value, parsedReceivedCheckpoints[signedCheckpoint.Key],coin, cancellationToken));
+                var coin = arkCoins.Single(x => x.Outpoint == signedCheckpoint.PSBT.Inputs.Single().PrevOut);
+               
+                var psbt = await FinalizeCheckpointTx(signedCheckpoint.PSBT, parsedReceivedCheckpoints[signedCheckpoint.PSBT.GetGlobalTransaction().GetHash()],coin, cancellationToken);
+               
+                signedCheckpoints.Add(new IndexedPSBT(psbt, signedCheckpoint.Index));
             }
             
             // Finalize the transaction
             var finalizeTxRequest = new Ark.V1.FinalizeTxRequest
             {
                 ArkTxid = response.ArkTxid,
-                FinalCheckpointTxs = { signedCheckpoints.Select(x => x.ToBase64()) }
+                FinalCheckpointTxs = { signedCheckpoints.Select(x => x.PSBT.ToBase64()) }
             };
            
             _logger.LogDebug("Sending FinalizeTx request to Ark service");
@@ -134,7 +152,7 @@ public async Task ConstructAndSubmitArkTransaction(
         /// <param name="outputs">Output transactions</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>The Ark transaction and checkpoint transactions with their input witnesses</returns>
-        public async Task<(PSBT arkTx, PSBT[] checkpoints)> ConstructArkTransaction(
+        public async Task<(PSBT arkTx, SortedSet<IndexedPSBT> checkpoints)> ConstructArkTransaction(
             IEnumerable<SpendableArkCoinWithSigner> coins,
             TxOut[] outputs,
             CancellationToken cancellationToken)
@@ -154,8 +172,6 @@ public async Task ConstructAndSubmitArkTransaction(
                 // Create checkpoint contract
                 var checkpointContract = CreateCheckpointContract(coin.Contract,terms);
                 
-                
-                // var tapLeaf = GetCollaborativePathLeaf(coin.Contract);
                 // Build checkpoint transaction
                 var checkpoint = terms.Network.CreateTransactionBuilder();
                 checkpoint.SetVersion(3);
@@ -247,7 +263,15 @@ public async Task ConstructAndSubmitArkTransaction(
             }
             
             _logger.LogInformation("Ark transaction construction completed successfully");
-            return (tx, checkpoints.ToArray());
+            //reorder the checkpoints to match the order of the inputs of the Ark transaction
+
+            return (tx, new SortedSet<IndexedPSBT>(checkpoints.Select(psbt =>
+            {
+                var output = psbt.Outputs.Single(output => output.ScriptPubKey != p2a);
+                var outpoint = new OutPoint(psbt.GetGlobalTransaction(), output.Index);
+                var index = tx.Inputs.FindIndexedInput(outpoint)!.Index;
+                return new IndexedPSBT(psbt, (int) index);
+            })));
         }
 
         /// <summary>
