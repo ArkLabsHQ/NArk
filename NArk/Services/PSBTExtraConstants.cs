@@ -46,11 +46,19 @@ public static class PSBTExtraConstants
         input.Unknown[keyBytes] = valueBytes;
         
         
+    } 
+    public static (ControlBlock controlBlock, TapScript leafScript)[] GetTaprootLeafScript(this PSBTInput input)
+    {
+        return input.Unknown.Where(pair => pair.Key[0] == PSBT_IN_TAP_LEAF_SCRIPT).Select(pair => GetTaprootLeafScript(pair.Key, pair.Value)).ToArray();
+        
+        
     }
 
+    
+    
     public static (ControlBlock controlBlock, TapScript leafScript) GetTaprootLeafScript(byte[] keyBytes, byte[] valueBytes)
     {
-        var controlBlock =  ControlBlock.FromSlice(keyBytes[1..65]);
+        var controlBlock =  ControlBlock.FromSlice(keyBytes.Skip(1).ToArray());
         var leafScript = new TapScript(Script.FromBytesUnsafe(valueBytes[1..^1]), (TapLeafVersion)valueBytes[^1]);
         return (controlBlock, leafScript);
     }
