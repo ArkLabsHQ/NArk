@@ -1,3 +1,4 @@
+using Ark.V1;
 using Microsoft.Extensions.Logging;
 using NArk.Contracts;
 using NArk.Scripts;
@@ -98,8 +99,8 @@ public async Task ConstructAndSubmitArkTransaction(
             CancellationToken cancellationToken)
         {
             var network = arkTx.Network;
-            _logger.LogInformation("Submitting Ark transaction with {CheckpointsCount} checkpoints", 
-                checkpoints.Count);
+            
+            _logger.LogInformation($"Submitting Ark transaction with {checkpoints.Count} checkpoints: \nArkTx: {arkTx.GetGlobalTransaction().GetHash()}\nCheckpoints: {string.Join("\n", checkpoints.Select(x => x.PSBT.GetGlobalTransaction().GetHash()))}");
             
             // Submit the transaction
             var submitRequest = new Ark.V1.SubmitTxRequest
@@ -107,9 +108,20 @@ public async Task ConstructAndSubmitArkTransaction(
                 SignedArkTx = arkTx.ToBase64(),
                 CheckpointTxs = { checkpoints.Select(x => x.PSBT.ToBase64()) }
             };
-            _logger.LogDebug("Sending SubmitTx request to Ark service");
-            var response = await arkServiceClient.SubmitTxAsync(submitRequest, cancellationToken: cancellationToken);
-            _logger.LogDebug("Received SubmitTx response with Ark txid: {ArkTxid}", response.ArkTxid);
+            SubmitTxResponse? response;
+            try
+            {
+                _logger.LogDebug("Sending SubmitTx request to Ark service");
+                response = await arkServiceClient.SubmitTxAsync(submitRequest, cancellationToken: cancellationToken);
+                _logger.LogDebug("Received SubmitTx response with Ark txid: {ArkTxid}", response.ArkTxid);
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, $"Error submitting transaction\n{submitRequest}");
+                throw;
+            }
+
+           
             
             // Process the signed checkpoints from the server
             var parsedReceivedCheckpoints = response.SignedCheckpointTxs
@@ -136,12 +148,20 @@ public async Task ConstructAndSubmitArkTransaction(
                 ArkTxid = response.ArkTxid,
                 FinalCheckpointTxs = { signedCheckpoints.Select(x => x.PSBT.ToBase64()) }
             };
-           
-            _logger.LogDebug("Sending FinalizeTx request to Ark service");
-            var finalizeResponse = await arkServiceClient.FinalizeTxAsync(finalizeTxRequest, cancellationToken: cancellationToken);
-            _logger.LogInformation("Transaction finalized successfully. Ark txid: {ArkTxid}", response.ArkTxid);
-            
-            return finalizeResponse;
+            try
+            {
+                _logger.LogDebug("Sending FinalizeTx request to Ark service");
+                var finalizeResponse =
+                    await arkServiceClient.FinalizeTxAsync(finalizeTxRequest, cancellationToken: cancellationToken);
+                _logger.LogInformation("Transaction finalized successfully. Ark txid: {ArkTxid}", response.ArkTxid);
+
+                return finalizeResponse;
+            }
+            catch (Exception e)
+            {
+                _logger.LogError(e, $"Error finalizing transaction\n{finalizeTxRequest}");
+                throw;
+            }
         }
         
 
