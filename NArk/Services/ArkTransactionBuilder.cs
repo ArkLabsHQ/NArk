@@ -69,7 +69,7 @@ namespace NArk.Services
                 hash, 
                 cancellationToken);
             
-            _logger.LogInformation($"{key.ToHex()} signed {hash.ToBytes().ToHex()} \n {sig.ToBytes().ToHex()}");
+            _logger.LogInformation($"{key.ToHex()} signed {hash.ToBytes().ToHex()} ({coin.Outpoint} leaf:{serverSig.leafHash})  \n {sig.ToBytes().ToHex()}");
             
            if (coin.SpendingConditionWitness is not null)
            {
