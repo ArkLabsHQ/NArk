@@ -1,58 +1,8 @@
 ﻿using System.Text.Json;
-using System.Text.Json.Serialization;
-using Ark.V1;
 using NBitcoin;
-using NBitcoin.BIP322;
 using NBitcoin.Secp256k1;
 
 namespace NArk.Services;
-
-
-
-
-public class RegisterIntentMessage
-{
-    // type: "register",
-    // input_tap_trees: inputTapTrees,
-    // onchain_output_indexes: onchainOutputsIndexes,
-    // valid_at: nowSeconds,
-    // expire_at: nowSeconds + 2 * 60, // valid for 2 minutes
-    // cosigners_public_keys: cosignerPubKeys,
-    
-    [JsonPropertyName("type")]
-    [JsonPropertyOrder(0)]
-    public string Type { get; set; }
-    
-    [JsonPropertyName("input_tap_trees")]
-    [JsonPropertyOrder(1)]
-    public string[] InputTapTrees { get; set; }
-    
-    [JsonPropertyName("onchain_output_indexes")]
-    [JsonPropertyOrder(2)]
-    public int[] OnchainOutputsIndexes { get; set; }
-    
-    [JsonPropertyName("valid_at")]
-    [JsonPropertyOrder(3)]
-    public long ValidAt { get; set; }
-    
-    [JsonPropertyName("expire_at")]
-    [JsonPropertyOrder(4)]
-    public long ExpireAt { get; set; }
-    
-    [JsonPropertyName("cosigners_public_keys")]
-    [JsonPropertyOrder(5)]
-    public string[] CosignersPublicKeys { get; set; }
-}
-
-public class IntentTxOut:TxOut
-{
-    public enum IntentOutputType
-    {
-        VTXO,
-        OnChain
-    }
-    public IntentOutputType Type { get; set; }
-}
 
 public class IntentUtils
 {
@@ -108,7 +58,7 @@ public class IntentUtils
         foreach (var input in tx.Inputs.AsIndexedInputs())
         {
             var coin = coins.Single(coin1 => coin1.Outpoint == input.PrevOut);
-var spendableCoin = coin as SpendableArkCoinWithSigner;
+            var spendableCoin = coin as SpendableArkCoinWithSigner;
             var leaf =spendableCoin?.SpendingScript.LeafHash;
             var coinSigner = spendableCoin?.Signer ?? signer;
             var hash = tx.GetSignatureHashTaproot(
@@ -131,25 +81,5 @@ var spendableCoin = coin as SpendableArkCoinWithSigner;
         return toSignTx.Finalize().ExtractTransaction();
         // return (BIP322Signature.Full) BIP322Signature.FromPSBT(toSignTx, SignatureType.Full);
 
-    }
-}
-
-public class MemoryWalletSigner : IArkadeWalletSigner
-{
-    private readonly ECPrivKey _key;
-
-    public MemoryWalletSigner(ECPrivKey key)
-    {
-        _key = key;
-    }
-    public async Task<ECXOnlyPubKey> GetPublicKey(CancellationToken cancellationToken = default)
-    {
-        return _key.CreateXOnlyPubKey();
-    }
-
-    public async Task<(SecpSchnorrSignature, ECXOnlyPubKey)> Sign(uint256 data, CancellationToken cancellationToken = default)
-    {
-        var sig = _key.SignBIP340(data.ToBytes());
-        return (sig, _key.CreateXOnlyPubKey());
     }
 }

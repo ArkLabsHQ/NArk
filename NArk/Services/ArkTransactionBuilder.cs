@@ -69,6 +69,8 @@ namespace NArk.Services
                 hash, 
                 cancellationToken);
             
+            _logger.LogInformation($"{key.ToHex()} signed {hash.ToBytes().ToHex()} \n {sig.ToBytes().ToHex()}");
+            
            if (coin.SpendingConditionWitness is not null)
            {
                receivedCheckpointTx.Inputs[(int) input.Index].Unknown.SetArkField(coin.SpendingConditionWitness);
