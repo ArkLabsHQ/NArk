@@ -59,7 +59,7 @@ public static class PSBTExtraConstants
     public static (ControlBlock controlBlock, TapScript leafScript) GetTaprootLeafScript(byte[] keyBytes, byte[] valueBytes)
     {
         var controlBlock =  ControlBlock.FromSlice(keyBytes.Skip(1).ToArray());
-        var leafScript = new TapScript(Script.FromBytesUnsafe(valueBytes[1..^1]), (TapLeafVersion)valueBytes[^1]);
+        var leafScript = new TapScript(Script.FromBytesUnsafe(valueBytes[..^1]), (TapLeafVersion)valueBytes[^1]);
         return (controlBlock, leafScript);
     }
 }

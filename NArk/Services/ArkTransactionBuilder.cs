@@ -258,11 +258,21 @@ public async Task ConstructAndSubmitArkTransaction(
             arkTx.UpdatePSBT(tx);
             
             
+            
+            //sort the checkpoint coins based on the input index in arkTx
+
+            var sortedCheckpointCoins = new Dictionary<int, SpendableArkCoinWithSigner>();
+            foreach (var input in tx.Inputs)
+            {
+                sortedCheckpointCoins.Add((int) input.Index, checkpointCoins.Single(x => x.Outpoint == input.PrevOut));
+            }
+            
             // Sign each input in the Ark transaction
             var precomputedTransactionData =
-                gtx.PrecomputeTransactionData(checkpointCoins.Select(x => x.TxOut).ToArray());
+                gtx.PrecomputeTransactionData(sortedCheckpointCoins.OrderBy(x => x.Key).Select(x => x.Value.TxOut).ToArray());
                 
-            foreach (var coin in checkpointCoins)
+            
+            foreach (var (inputIndex, coin) in sortedCheckpointCoins)
             {
                 var contract = (GenericArkContract)coin.Contract;
                 var checkpointInput =  tx.Inputs.FindIndexedInput(coin.Outpoint)!;
