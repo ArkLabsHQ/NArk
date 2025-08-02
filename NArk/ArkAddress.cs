@@ -81,4 +81,18 @@ public class ArkAddress: TaprootPubKey
         
         return new ArkAddress(tweakedKey, serverKey, version);
     }
+    
+    public static bool TryParse(string address, out ArkAddress? arkAddress)
+    {
+        try
+        {
+            arkAddress = Parse(address);
+            return true;
+        }
+        catch (Exception)
+        {
+            arkAddress = null;
+            return false;
+        }
+    }
 }

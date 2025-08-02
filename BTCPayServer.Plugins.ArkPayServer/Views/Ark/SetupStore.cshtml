@@ -25,31 +25,53 @@
 <form asp-action="SetupStore" method="post" asp-route-storeId="@storeId">
     <div>
         
-        @if (!string.IsNullOrEmpty(Model.Wallet))
+        @if (!string.IsNullOrEmpty(Model.WalletId))
         {
             <div class="form-group mb-3">
-                <label asp-for="Wallet" class="form-label">Wallet Id</label>
+                <label asp-for="WalletId" class="form-label">Wallet Id</label>
                 <div class="d-sm-flex">
-                    <input asp-for="Wallet" class="form-control" readonly/>
+                    <input asp-for="WalletId" class="form-control" readonly/>
+                </div>
+                
+                <span asp-validation-for="WalletId" class="text-danger"></span>
+                <div class="form-text">
+                    
                 </div>
                 
             </div>
-            @if (Model.Destination != null)
+            @if (!string.IsNullOrEmpty(Model.Destination ) || Model.Wallet is not null)
             {
                 <div class="form-group mb-3">
                     <label asp-for="Destination" class="form-label">Destination</label>
                     <div class="d-sm-flex">
-                        <input asp-for="Destination" class="form-control" readonly/>
+                        <input asp-for="Destination" class="form-control" readonly="@(Model.Wallet is null)"/>
+                    </div>
+                
+                    <span asp-validation-for="Destination" class="text-danger"></span>
+                    <div class="form-text">
+                        Ark address to sweep any detected VTXOs to.
+                    </div>
+
+                </div>
+            }
+            
+            @if (Model.Wallet != null)
+            {
+                <div class="form-group mb-3">
+                    <label asp-for="Wallet" class="form-label">Wallet</label>
+                    <div class="d-sm-flex">
+                        <input asp-for="Wallet" class="form-control" readonly/>
                     </div>
                 
                 </div>
             }
             
+            
         }
         else
         {
             <div class="form-group mb-3">
-                <label asp-for="Wallet" class="form-label">Public Key</label>
+                <label asp-for="Wallet" class="form-label"></label>
                 <div class="d-sm-flex">
                     <input asp-for="Wallet" class="form-control" placeholder="npub.."/>
                 </div>
@@ -57,7 +79,13 @@
 
                 <span asp-validation-for="Wallet" class="text-danger"></span>
                 <div class="form-text">
-                    Enter an nsec/npub wallet key. Entering an nsec will allow BTCPay to automatically sweep invoice payments to your wallet. 
+                    Configure your BTCPay Ark wallet in various ways:
+                    <ul>
+                        <li>Enter an nsec private key to use it as a hot wallet.</li>
+                        <li>Enter an Ark address to generate a transitory wallet that automatically sweeps to it.</li>
+                        <li>Enter an existing wallet id from this BTCPay instance to use its configuration.</li>
+                        <li>Leave blank to generate a new hot wallet.</li>
+                    </ul>
                 </div>
             </div>
             
@@ -67,22 +95,23 @@
     </div>
     
     <div class="text-start mt-4">
-        @if (string.IsNullOrEmpty(Model.Wallet)){
-            <button  name="command" type="submit" value="create" class="btn btn-secondary   me-2" text-translate="true">
-                Generate Wallet 
+        @if (string.IsNullOrEmpty(Model.WalletId)){
+            <button  name="command" type="submit" value="configure" class="btn btn-primary   me-2" text-translate="true">
+                Configure
             </button>
             
-            <button id="page-primary" name="command" type="submit" value="save" class="btn btn-primary me-2">Set</button>
+           
         }
-        else
+        else if (Model.Wallet is not null)
         {
-            
-            @* <button id="page-primary" name="command" type="submit" value="save" class="btn btn-primary me-2">Save</button> *@
+            <button  name="command" type="submit" value="save" class="btn btn-primary   me-2" text-translate="true">
+                Save
+            </button>
         }
-        @if (!string.IsNullOrEmpty(Model.Wallet) && !Model.LNEnabled){
+        @if (!string.IsNullOrEmpty(Model.WalletId) && !Model.LNEnabled){
             <button name="command" type="submit" value="enable-ln" class="btn btn-primary me-2">Enable Lightning</button>
         }
-        @if (!string.IsNullOrEmpty(Model.Wallet))
+        @if (!string.IsNullOrEmpty(Model.WalletId))
         {
             <button name="command" type="submit" value="poll-scripts" class="btn btn-outline-primary me-2">Refresh Balance</button>
             <button name="command" type="submit" value="clear" class="btn btn-outline-danger me-2">Clear</button>
@@ -90,7 +119,7 @@
         }
     </div>
 </form>
-@if (Model.Contracts?.Any() is true)
+@if (Model.Wallet is not null && Model.Contracts?.Any() is true)
 {
     <h2 class="text-center mt-5 mb-3">Contracts</h2>
 

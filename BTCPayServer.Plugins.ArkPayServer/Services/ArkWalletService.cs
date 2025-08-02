@@ -79,9 +79,10 @@ public class ArkWalletService(
         return contract.Value.Item2;
     }
 
-    public async Task<ArkWallet> Upsert(string wallet, string? destination, CancellationToken cancellationToken = default)
+    public async Task<string> Upsert(string walletValue, string? destination, bool owner,
+        CancellationToken cancellationToken = default)
     {
-        var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(wallet);
+        var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(walletValue);
         var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         if (destination is not null)
         {
@@ -94,28 +95,34 @@ public class ArkWalletService(
         }
 
         await using var dbContext = dbContextFactory.CreateContext();
-
-        var res = await dbContext.Wallets.Upsert(new ArkWallet()
+        var commandBuilder = dbContext.Wallets.Upsert(new ArkWallet()
         {
             Id = publicKey.ToHex(),
             WalletDestination = destination,
-            Wallet = wallet,
-        }).RunAndReturnAsync();
-        LoadWalletSigner(publicKey.ToHex(), wallet);
+            Wallet = walletValue,
+        });
 
-        await DeriveNewContract(publicKey.ToHex(), async wallet =>
+        if (!owner)
+        {
+            commandBuilder = commandBuilder.NoUpdate();
+        }
+
+        await commandBuilder.RunAsync(cancellationToken);
+        LoadWalletSigner(publicKey.ToHex(), walletValue);
+
+        await DeriveNewContract(publicKey.ToHex(), wallet =>
         {
             var contract = ContractUtils.DerivePaymentContract(new DeriveContractRequest(terms, wallet.PublicKey));
-            return (new ArkWalletContract
+            return Task.FromResult<(ArkWalletContract newContractData, ArkContract newContract)?>((new ArkWalletContract
             {
                 WalletId = publicKey.ToHex(),
                 Active = true,
                 ContractData = contract.GetContractData(),
                 Script = contract.GetArkAddress().ScriptPubKey.ToHex(),
                 Type = contract.Type,
-            }, contract);
+            }, contract));
         }, cancellationToken);
-        return res.Single();
+        return publicKey.ToHex();
     }
 
     public async Task ToggleContract(string detailsWalletId, ArkContract detailsContract, bool active)
@@ -145,7 +152,12 @@ public class ArkWalletService(
         }
     }
 
-    public async Task<(Dictionary<ArkWalletContract, VTXO[]> Contracts, string? Destination)?> GetWalletInfo(string walletId)
+    public async Task<bool> WalletExists(string walletId, CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+        return await dbContext.Wallets.FindAsync([walletId],cancellationToken) is not null;
+    }
+    public async Task<(Dictionary<ArkWalletContract, VTXO[]> Contracts, string? Destination, string Wallet)?> GetWalletInfo(string walletId)
     {
         await using var dbContext = dbContextFactory.CreateContext();
         var wallet = await dbContext.Wallets.Include(w => w.Contracts)
@@ -166,7 +178,7 @@ public class ArkWalletService(
             result.Add(contract, filtered);
         }
         wallet.Contracts = wallet.Contracts.OrderBy(c => c.CreatedAt).ToList();
-        return (result, wallet.WalletDestination);
+        return (result, wallet.WalletDestination, wallet.Wallet);
     }
 
     //
