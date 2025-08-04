@@ -131,6 +131,7 @@ public Task StartedTask => _started.Task;
             try
             {
                 await _checkContractsChannel.Reader.ReadAsync(cancellationToken);
+                _logger.LogInformation("UpdateSubscriptionAndListen");
                 await UpdateSubscriptionAndListen(cancellationToken);
                 _started.TrySetResult();
             }
@@ -167,7 +168,7 @@ public Task StartedTask => _started.Task;
             .Select(c => c.Script)
             .ToHashSet();
         
-        if (activeScripts.SetEquals(_subscribedScripts))
+        if (activeScripts.SetEquals(_subscribedScripts) && !string.IsNullOrEmpty(_subscriptionId))
         {
             _logger.LogDebug("No change in active contracts, skipping subscription update.");
             // Still check if listener is running
@@ -236,7 +237,7 @@ public Task StartedTask => _started.Task;
 
         _logger.LogInformation("Stopping stream listener.");
         if(_listeningCts is not null && !_listeningCts.IsCancellationRequested)
-            _listeningCts.Cancel();
+            await _listeningCts.CancelAsync();
 
         await Task.WhenAny(_listeningTask, Task.Delay(Timeout.Infinite, CancellationToken.None));
 
@@ -365,6 +366,7 @@ return existing;
     }
     private async Task SynchronizeSubscriptionWithIndexerAsync(string[]? removed, CancellationToken cancellationToken)
     {
+        
         if (_subscribedScripts.Count == 0)
         {
             _logger.LogInformation("[Manual] No active scripts. Stopping listener and clearing subscription.");
@@ -405,6 +407,14 @@ return existing;
         }
         catch (RpcException ex)
         {
+            if (!string.IsNullOrEmpty(_subscriptionId))
+            {
+                _subscriptionId = "";
+                await _listeningCts.CancelAsync();
+                TriggerContractsCheck();
+                
+            }
+
             _logger.LogError(ex, "[Manual] Failed to update remote subscription.");
         }
     }
