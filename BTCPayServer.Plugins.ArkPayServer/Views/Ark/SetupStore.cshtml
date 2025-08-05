@@ -117,6 +117,12 @@
             <button name="command" type="submit" value="clear" class="btn btn-outline-danger me-2">Clear</button>
       
         }
+        @if (Model.Wallet is not null)
+        {
+            <input type="hidden" name="payment" id="payment"/>
+            <input id="spendbtn" name="command" type="submit" value="spend" style="display:none"/>
+            <button onclick="var payment = prompt('Enter a BIP21/LN invoice to send to:'); if (payment) document.getElementById('payment').value = payment; document.getElementById('spendbtn').click(); "  class="btn btn-outline-secondary me-2">Spend</button>
+        }
     </div>
 </form>
 @if (Model.Wallet is not null && Model.Contracts?.Any() is true)
@@ -136,9 +142,9 @@
             </thead>
 
             <tbody>
-            @foreach (var contract in Model.Contracts.OrderBy(x => x.Key.CreatedAt))
+            @foreach (var group in Model.Contracts)
             {
-                var arkContract = ArkContract.Parse(contract.Key.Type, contract.Key.ContractData);
+                var arkContract = ArkContract.Parse(group.Key.Type, group.Key.ContractData);
 
                 var link = $"{ArkConfiguration.ArkUri}/v1/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}";
                 <tr>
@@ -151,7 +157,7 @@
                         <vc:truncate-center text="@arkContract.ToString()" classes="truncate-center-id"/>
                     </td>
                     <td>
-                        @if (contract.Key.Active)
+                        @if (group.Key.Active)
                         {
                             <span class="text-success" text-translate="true">Active</span>
                         }
@@ -165,7 +171,7 @@
                     </td>
 
                 </tr>
-                @if (contract.Value.Any())
+                @if (group.Value.Any())
                 {
                     <tr class="bg-light rounded">
 
@@ -184,7 +190,7 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                @foreach (var vtxo in contract.Value)
+                                @foreach (var vtxo in group.Value)
                                 {
                                     var outpoint = vtxo.TransactionId + ":" + vtxo.TransactionOutputIndex;
                                     var link2 = $"{ArkConfiguration.ArkUri}/v1/vtxos?outpoints={outpoint}";
@@ -218,7 +224,7 @@
                         </td>
                     </tr>
                 }
-                @if(contract.Key.Swaps.Any())
+                @if(group.Key.Swaps.Any())
                 {
                     <tr>
                         <td colspan="3" class="border-top-0">
@@ -232,7 +238,7 @@
                                 </tr>
                                 </thead>
                                 <tbody>
-                                @foreach (var swap in contract.Key.Swaps)
+                                @foreach (var swap in group.Key.Swaps)
                                 {
                                     <tr>
                                         <td>
@@ -242,7 +248,7 @@
                                             @swap.Status
                                         </td>
                                         <td>
-                                            <vc:truncate-center text="@swap.Invoice.ToString()" classes="truncate-center-id"/>
+                                            <vc:truncate-center text="@swap.Invoice" classes="truncate-center-id"/>
 
                                         </td>
                                     </tr>

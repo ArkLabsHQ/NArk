@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Ark.V1;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using NArk;
 using NArk.Contracts;
@@ -15,18 +16,51 @@ using NBitcoin.Secp256k1;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
-
-
-
-
 public class ArkWalletService(
     AsyncKeyedLocker asyncKeyedLocker,
     ArkPluginDbContextFactory dbContextFactory,
     IOperatorTermsService operatorTermsService,
     ArkSubscriptionService arkSubscriptionService,
+    IMemoryCache memoryCache,
     ILogger<ArkWalletService> logger) : IHostedService, IArkadeMultiWalletSigner
 {
 
+    private TaskCompletionSource started = new();
+    private ConcurrentDictionary<string, ECPrivKey> walletSigners = new();
+
+    public async Task<ArkWallet?> GetWallet(string walletId, CancellationToken cancellationToken)
+    {
+        var wallets = await GetWallets([walletId], cancellationToken);
+        return wallets.SingleOrDefault();
+        
+    }
+    public async Task<ArkWallet[]> GetWallets(string[] walletIds, CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, ArkWallet>();
+        foreach (var walletId in walletIds)
+        {
+            if (memoryCache.TryGetValue("ark-wallet-" + walletId, out ArkWallet? wallet) && wallet is not null)
+            {
+                result.Add(walletId, wallet);
+            }
+        }
+        var remaining = walletIds.Except(result.Keys);
+        if (remaining.Any())
+        {
+            await using var dbContext = dbContextFactory.CreateContext();
+            var wallets = await dbContext.Wallets.Where(w => remaining.Contains(w.Id)).ToArrayAsync(cancellationToken);
+            foreach (var wallet in wallets)
+            {
+                memoryCache.Set("ark-wallet-" + wallet.Id, wallet);
+                result.Add(wallet.Id, wallet);
+            }
+            
+        }
+        
+        
+        return result.Values.ToArray();
+    }
+    
 
     public async Task<ArkContract> DerivePaymentContract(string walletId, CancellationToken cancellationToken)
     {
@@ -95,19 +129,24 @@ public class ArkWalletService(
         }
 
         await using var dbContext = dbContextFactory.CreateContext();
-        var commandBuilder = dbContext.Wallets.Upsert(new ArkWallet()
+        var wallet = new ArkWallet()
         {
             Id = publicKey.ToHex(),
             WalletDestination = destination,
             Wallet = walletValue,
-        });
+        };
+        var commandBuilder = dbContext.Wallets.Upsert(wallet);
 
+        
         if (!owner)
         {
             commandBuilder = commandBuilder.NoUpdate();
         }
 
-        await commandBuilder.RunAsync(cancellationToken);
+        if (await commandBuilder.RunAsync(cancellationToken) > 0)
+        {
+            memoryCache.Set("ark-wallet-" + publicKey.ToHex(),wallet);
+        }
         LoadWalletSigner(publicKey.ToHex(), walletValue);
 
         await DeriveNewContract(publicKey.ToHex(), wallet =>
@@ -122,6 +161,7 @@ public class ArkWalletService(
                 Type = contract.Type,
             }, contract));
         }, cancellationToken);
+        
         return publicKey.ToHex();
     }
 
@@ -154,118 +194,27 @@ public class ArkWalletService(
 
     public async Task<bool> WalletExists(string walletId, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = dbContextFactory.CreateContext();
-        return await dbContext.Wallets.FindAsync([walletId],cancellationToken) is not null;
+       return await GetWallet(walletId, cancellationToken) is not null;
     }
-    public async Task<(Dictionary<ArkWalletContract, VTXO[]> Contracts, string? Destination, string Wallet)?> GetWalletInfo(string walletId)
+    public async Task<(Dictionary<ArkWalletContract, VTXO[]>? Contracts, string? Destination, string? Wallet)?> GetWalletInfo(string walletId, bool includeData, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = dbContextFactory.CreateContext();
-        var wallet = await dbContext.Wallets.Include(w => w.Contracts)
-            .ThenInclude(contract => contract.Swaps)
-            .FirstOrDefaultAsync(w => w.Id == walletId);
+
+        var wallet = await GetWallet(walletId,cancellationToken);
         if (wallet is null)
         {
             return null;
         }
 
-        var contractScripts = wallet.Contracts.Select(c => c.Script).ToArray();
-        var vtxos = await dbContext.Vtxos.Where(vtxo1 => contractScripts.Contains(vtxo1.Script)).ToListAsync();
-
-        var result = new Dictionary<ArkWalletContract, VTXO[]>();
-        foreach (var contract in wallet.Contracts)
+        Dictionary<ArkWalletContract, VTXO[]> contracts = null;
+        if (includeData)
         {
-            var filtered = vtxos.Where(vtxo1 => vtxo1.Script == contract.Script).OrderBy(vtxo1 => vtxo1.SeenAt).ToArray();
-            result.Add(contract, filtered);
+            var ccc = await GetVTXOsAndContracts([walletId], true, true, cancellationToken);
+            ccc.TryGetValue(walletId, out contracts);
         }
-        wallet.Contracts = wallet.Contracts.OrderBy(c => c.CreatedAt).ToList();
-        return (result, wallet.WalletDestination, wallet.Wallet);
+        return (contracts, wallet.WalletDestination, includeData?wallet.Wallet: null);
+        
     }
 
-    //
-    // /// <summary>
-    // /// Creates a new boarding address for the specified wallet using the Ark operator's GetBoardingAddress gRPC call
-    // /// </summary>
-    // /// <param name="walletId">The wallet ID to create the boarding address for</param>
-    // /// <param name="cancellationToken">Cancellation token</param>
-    // /// <returns>The created boarding address information</returns>
-    // public async Task<BoardingAddress> DeriveNewBoardingAddress(
-    //     Guid walletId,
-    //     CancellationToken cancellationToken = default)
-    // {
-    //     //TODO: Since this is onchain, we need to listen on nbx to this and a bunch of other things
-    //     
-    //     await using var dbContext = dbContextFactory.CreateContext();
-    //
-    //     var wallet = await dbContext.Wallets.FindAsync(walletId, cancellationToken);
-    //     if (wallet is null)
-    //     {
-    //         throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
-    //     }
-    //
-    //     var latestBoardingAddress = await dbContext.BoardingAddresses.Where(w => w.WalletId == walletId)
-    //         .OrderByDescending(w => w.DerivationIndex)
-    //         .FirstOrDefaultAsync(cancellationToken);
-    //
-    //     var newDerivationIndex = latestBoardingAddress is null ? 0 : latestBoardingAddress.DerivationIndex + 1;
-    //
-    //     var xPub = ExtPubKey.Parse(wallet.Wallet, networkProvider.BTC.NBitcoinNetwork);
-    //
-    //     // TODO: We should probably pick some more deliberate derivation path
-    //     var derivedPubKey = xPub.Derive(newDerivationIndex).PubKey.ToHex();
-    //
-    //     var response = await arkClient.GetBoardingAddressAsync(new GetBoardingAddressRequest
-    //     {
-    //         Pubkey = derivedPubKey
-    //     }, cancellationToken: cancellationToken);
-    //
-    //     // Get operator info for additional metadata
-    //     var operatorInfo = await arkClient.GetInfoAsync(new GetInfoRequest(), cancellationToken: cancellationToken);
-    //
-    //     try
-    //     {
-    //         var boardingAddressEntity = new BoardingAddress
-    //         {
-    //             OnchainAddress = response.Address,
-    //             WalletId = walletId,
-    //             DerivationIndex = newDerivationIndex,
-    //             BoardingExitDelay = (uint)operatorInfo.BoardingExitDelay,
-    //             ContractData = response.HasDescriptor_ ? response.Descriptor_ : response.Tapscripts?.ToString() ?? "",
-    //             CreatedAt = DateTimeOffset.UtcNow,
-    //         };
-    //
-    //         await dbContext.BoardingAddresses.AddAsync(boardingAddressEntity, cancellationToken);
-    //         await dbContext.SaveChangesAsync(cancellationToken);
-    //
-    //         logger.LogInformation("New boarding address created for wallet {WalletId}: {Address}",
-    //             walletId, response.Address);
-    //
-    //         return boardingAddressEntity;
-    //     }
-    //     catch (DbUpdateException ex) when (ex.InnerException?.Message?.Contains("UNIQUE constraint failed") == true ||
-    //                                        ex.InnerException?.Message?.Contains("duplicate key") == true)
-    //     {
-    //         logger.LogError("Failed to create boarding address due to unique constraint violation: {Error}",
-    //             ex.Message);
-    //         throw new InvalidOperationException(
-    //             "A boarding address with this address already exists. Please try again.");
-    //     }
-    // }
-    //
-    // /// <summary>
-    // /// Gets all boarding addresses for a wallet
-    // /// </summary>
-    // public async Task<List<BoardingAddress>> GetBoardingAddressesAsync(Guid walletId,
-    //     CancellationToken cancellationToken = default)
-    // {
-    //     await using var dbContext = dbContextFactory.CreateContext();
-    //     return await dbContext.BoardingAddresses
-    //         .Where(b => b.WalletId == walletId)
-    //         .OrderByDescending(b => b.CreatedAt)
-    //         .ToListAsync(cancellationToken);
-    // }
-
-    private TaskCompletionSource started = new();
-    private ConcurrentDictionary<string, ECPrivKey> walletSigners = new();
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -302,7 +251,6 @@ public class ArkWalletService(
         return Task.CompletedTask;
     }
 
-
     public async Task<bool> CanHandle(string walletId, CancellationToken cancellationToken = default)
     {
         await started.Task;
@@ -312,10 +260,7 @@ public class ArkWalletService(
     public Task<IArkadeWalletSigner> CreateSigner(string walletId, CancellationToken cancellationToken = default)
     {
         return Task.FromResult<IArkadeWalletSigner>(new MemoryWalletSigner(walletSigners[walletId]));
-
     }
-
-   
 
     public async Task UpdateBalances(string configWalletId, bool onlyActive,
         CancellationToken cancellationToken = default)
@@ -328,5 +273,48 @@ public class ArkWalletService(
 
 
         await arkSubscriptionService.PollScripts(wallets.ToArray(), cancellationToken);
+    }
+
+    public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>?> GetVTXOsAndContracts(string[]? walletIds, bool allowSpent, bool allowNote, CancellationToken cancellationToken)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+        
+        // Get contracts first (no duplication)
+        var contractsQuery = dbContext.WalletContracts
+            .Include(c => c.Swaps)
+            .Where(c => walletIds == null || walletIds.Contains(c.WalletId))
+            .OrderByDescending(c => c.CreatedAt);
+        
+        var contracts = await contractsQuery.ToArrayAsync(cancellationToken);
+        
+        if (contracts.Length == 0)
+            return new Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>();
+        
+        // Get VTXOs that match any of the contract scripts
+        var contractScripts = contracts.Select(c => c.Script).ToHashSet();
+        var vtxos = await dbContext.Vtxos
+            .Where(vtxo => 
+                          (allowSpent || vtxo.SpentByTransactionId == null) &&
+                          (allowNote || !vtxo.IsNote) && 
+                          contractScripts.Contains(vtxo.Script))
+            .OrderByDescending(vtxo => vtxo.SeenAt)
+            .ToArrayAsync(cancellationToken);
+        
+        // Join in memory and create nested dictionary structure
+        var contractLookup = contracts.ToLookup(c => c.Script);
+        
+        return vtxos
+            .Where(vtxo => contractLookup.Contains(vtxo.Script))
+            .SelectMany(vtxo => contractLookup[vtxo.Script].Select(contract => new { Vtxo = vtxo, Contract = contract }))
+            .GroupBy(x => x.Contract.WalletId)
+            .ToDictionary(
+                walletGroup => walletGroup.Key,
+                walletGroup => walletGroup
+                    .GroupBy(x => x.Contract)
+                    .ToDictionary(
+                        contractGroup => contractGroup.Key,
+                        contractGroup => contractGroup.Select(x => x.Vtxo).ToArray()
+                    )
+            );
     }
 }

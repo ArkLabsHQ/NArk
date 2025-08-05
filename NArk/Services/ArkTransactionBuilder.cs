@@ -82,7 +82,7 @@ namespace NArk.Services
         }
 
 
-public async Task ConstructAndSubmitArkTransaction(
+public async Task<uint256> ConstructAndSubmitArkTransaction(
             IEnumerable<SpendableArkCoinWithSigner> arkCoins,
             TxOut[] arkOutputs,
              Ark.V1.ArkService.ArkServiceClient arkServiceClient,
@@ -90,6 +90,7 @@ public async Task ConstructAndSubmitArkTransaction(
         {
             var (arkTx, checkpoints) = await ConstructArkTransaction(arkCoins, arkOutputs, cancellationToken);
             await SubmitArkTransaction(arkCoins, arkServiceClient, arkTx, checkpoints, cancellationToken);
+            return arkTx.GetGlobalTransaction().GetHash();
         }   
         
         

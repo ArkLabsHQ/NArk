@@ -3,6 +3,7 @@ using BTCPayServer.Plugins.ArkPayServer.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NArk.Services;
 using NBitcoin;
 using NBXplorer;
 
@@ -10,12 +11,11 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkadeContractSweeper : IHostedService
 {
-    private readonly AsyncKeyedLocker _asyncKeyedLocker;
     private readonly ArkadeSpender _arkadeSpender;
-    private readonly ArkPluginDbContextFactory _arkPluginDbContextFactory;
-    private readonly ArkadeWalletSignerProvider _walletSignerProvider;
+    private readonly ArkWalletService _arkWalletService;
     private readonly EventAggregator _eventAggregator;
     private readonly ILogger<ArkadeContractSweeper> _logger;
+    private readonly IOperatorTermsService _operatorTermsService;
     private readonly ArkSubscriptionService _arkSubscriptionService;
     private CompositeDisposable _leases = new();
     private CancellationTokenSource _cts = new();
@@ -23,20 +23,18 @@ public class ArkadeContractSweeper : IHostedService
     
 
     public ArkadeContractSweeper(
-        AsyncKeyedLocker asyncKeyedLocker,
         ArkadeSpender arkadeSpender,
-        ArkPluginDbContextFactory arkPluginDbContextFactory,
-        ArkadeWalletSignerProvider walletSignerProvider,
+        ArkWalletService arkWalletService,
         EventAggregator eventAggregator,
         ILogger<ArkadeContractSweeper> logger,
+        IOperatorTermsService operatorTermsService,
         ArkSubscriptionService arkSubscriptionService)
     {
-        _asyncKeyedLocker = asyncKeyedLocker;
         _arkadeSpender = arkadeSpender;
-        _arkPluginDbContextFactory = arkPluginDbContextFactory;
-        _walletSignerProvider = walletSignerProvider;
+        _arkWalletService = arkWalletService;
         _eventAggregator = eventAggregator;
         _logger = logger;
+        _operatorTermsService = operatorTermsService;
         _arkSubscriptionService = arkSubscriptionService;
     }
 
@@ -51,54 +49,38 @@ public class ArkadeContractSweeper : IHostedService
     private async Task PollForVTXOToSweep()
     {
         await _arkSubscriptionService.StartedTask.WithCancellation(_cts.Token);
-        // string[] allowedContractTypes = {VHTLCContract.ContractType, HashLockedArkPaymentContract.ContractType, ArkPaymentContract.ContractType};
-
         while (!_cts.IsCancellationRequested)
         {
             try
             {
-                await using var db = _arkPluginDbContextFactory.CreateContext();
-
-                var vtxosAndContracts = await db.Vtxos
-                    .Where(vtxo => vtxo.SpentByTransactionId == null && !vtxo.IsNote) // VTXO is unspent
-                    .Join(
-                        db.WalletContracts,
-                        vtxo => vtxo.Script, // Key from VTXO
-                        contract => contract.Script, // Key from WalletContract
-                        (vtxo, contract) => new {Vtxo = vtxo, Contract = contract} // Select both VTXO and contract
-                    )
-                    .ToListAsync(_cts.Token);
-                    
-                var groupedByWallet = vtxosAndContracts.GroupBy(x => x.Contract.WalletId).ToList();
-
-                var walletsToCheck = groupedByWallet.Select(g => g.Key);
-                var walletSigners = await _walletSignerProvider.GetSigners(walletsToCheck.ToArray(), _cts.Token);
-
-                foreach (var group in groupedByWallet)
+                var spendableCoinsByWallet = await _arkadeSpender.GetSpendableCoins(null, _cts.Token);
+                var wallets = await _arkWalletService.GetWallets(spendableCoinsByWallet.Keys.ToArray(), _cts.Token);
+                var terms = await _operatorTermsService.GetOperatorTerms(_cts.Token);
+                foreach (var group in spendableCoinsByWallet)
                 {
-                    var signer = walletSigners.TryGet(group.Key);
-                    if (signer is null)
-                        continue;
-
-                    var wallet = await db.Wallets.FirstOrDefaultAsync(x => x.Id == group.Key, _cts.Token);
-                    if (wallet is null)
-                        continue;
 
                     try
                     {
-                        using var walletLock = await _asyncKeyedLocker.LockAsync($"ark-{wallet.Id}-txs-spending", _cts.Token);
-                        
-                        // Use the pre-fetched VTXOs - they're safe to use since we hold the wallet lock
-                        var walletVtxos = group.Select(x => (x.Vtxo, x.Contract)).ToArray();
-                        
-                        if (walletVtxos.Length > 0)
+                        var wallet = wallets.First(x => x.Id == group.Key);
+                        var destination = await _arkadeSpender.GetDestination(wallet, terms);
+        
+                        // Only sweep if we have coins not at the destination to avoid infinite sweeping loops
+                        if (group.Value.All(x => x.TxOut.IsTo(destination)))
                         {
-                            await _arkadeSpender.SweepWalletWithLock(wallet, walletVtxos, signer, _cts.Token);
+                            _logger.LogDebug($"Skipping sweep for wallet {wallet.Id}: all coins are already at destination");
+                           continue;
                         }
+                        
+                        if(group.Value.Count == 0)
+                        {
+                            _logger.LogDebug($"Skipping sweep for wallet {wallet.Id}: no coins to sweep");
+                            continue;
+                        }
+                        await _arkadeSpender.Spend(wallet, group.Value, [], _cts.Token);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, $"Error while sweeping vtxos for wallet {wallet.Id}");
+                        _logger.LogError(ex, $"Error while sweeping vtxos for wallet {group.Key}");
                     }
                 }
                 
@@ -115,8 +97,10 @@ public class ArkadeContractSweeper : IHostedService
                 _logger.LogError(ex, "Error while sweeping vtxos");
                 await Task.Delay(TimeSpan.FromMinutes(1), _cts.Token);
             }
+            
         }
     }
+    
 
     private Task OnVTXOsUpdated(VTXOsUpdated arg)
     {

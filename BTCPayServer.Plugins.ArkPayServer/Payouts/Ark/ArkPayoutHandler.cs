@@ -2,6 +2,7 @@
 // using BTCPayServer.Abstractions.Models;
 // using BTCPayServer.Client;
 // using BTCPayServer.Client.Models;
+// using BTCPayServer.Common;
 // using BTCPayServer.Data;
 // using BTCPayServer.Events;
 // using BTCPayServer.HostedServices;
@@ -94,7 +95,7 @@
 //         {
 //             var terms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
 //             
-//             if (destination.StartsWith($"bitcoin:", StringComparison.OrdinalIgnoreCase))
+//             if (destination.StartsWith($"bitcoin:", StringComparison.InvariantCultureIgnoreCase))
 //             {
 //                 return (new ArkUriClaimDestination(new BitcoinUrlBuilder(destination, terms.Network)), null);
 //             }
@@ -183,17 +184,12 @@
 //     {
 //         return new Dictionary<PayoutState, List<(string Action, string Text)>>()
 //         {
-//             {PayoutState.AwaitingPayment, new List<(string Action, string Text)>()
-//             {
-//                 ("reject-payment", "Reject payout transaction")
-//             }}
+//             {PayoutState.AwaitingPayment, [("reject-payment", "Reject payout transaction")]}
 //         };
 //     }
 //
 //     public async Task<StatusMessageModel> DoSpecificAction(string action, string[] payoutIds, string storeId)
 //     {
-//       
-//
 //         return null;
 //     }
 //
@@ -204,6 +200,8 @@
 //
 //     public async Task<IActionResult> InitiatePayment(string[] payoutIds)
 //     {
+//         var terms = await _operatorTermsService.GetOperatorTerms();
+//         
 //         await using var ctx = this._dbContextFactory.CreateContext();
 //         ctx.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
 //         var payouts = await ctx.Payouts.Include(data => data.PullPaymentData)
@@ -227,98 +225,22 @@
 //             var claim = await ParseClaimDestination(blob.Destination, default);
 //             switch (claim.destination)
 //             {
-//                 case UriClaimDestination uriClaimDestination:
+//                 case ArkUriClaimDestination uriClaimDestination:
 //                     uriClaimDestination.BitcoinUrl.Amount = new Money(payout.Amount.Value, MoneyUnit.BTC);
 //                     var newUri = new UriBuilder(uriClaimDestination.BitcoinUrl.Uri);
 //                     BTCPayServerClient.AppendPayloadToQuery(newUri, new KeyValuePair<string, object>("payout", payout.Id));
 //                     bip21.Add(newUri.Uri.ToString());
 //                     break;
-//                 case AddressClaimDestination addressClaimDestination:
-//                     var bip21New = Network.GenerateBIP21(addressClaimDestination.Address.ToString(), payout.Amount.Value);
-//                     bip21New.QueryParams.Add("payout", payout.Id);
-//                     bip21.Add(bip21New.ToString());
+//                 case ArkAddressClaimDestination addressClaimDestination:
+//                     PaymentUrlBuilder builder = new PaymentUrlBuilder("bitcoin");
+//                     builder.Host= addressClaimDestination.Address.ToString(terms.Network.ChainName == ChainName.Mainnet);
+//                     builder.QueryParams.Add("amount", payout.Amount.Value.ToString());
+//                     bip21.Add(builder.ToString());
 //                     break;
 //             }
 //         }
-//         if (bip21.Any())
-//             return new RedirectToActionResult("WalletSend", "UIWallets", new { walletId = new WalletId(storeId, Network.CryptoCode).ToString(), bip21 });
-//         return new RedirectToActionResult("Payouts", "UIWallets", new
-//         {
-//             walletId = new WalletId(storeId, Network.CryptoCode).ToString(),
-//             pullPaymentId = pullPaymentIds.Length == 1 ? pullPaymentIds.First() : null
-//         });
-//     }
+//         return new RedirectToActionResult("Send", "Ark", new {  storeId , bip21 });
 //
-//     private async Task UpdatePayoutsAwaitingForPayment(VTXOsUpdated vtXOsUpdated)
-//     {
-//         try
-//         {
-//             var destinations = vtXOsUpdated.Vtxos.Select(vtxo => vtxo.Script).ToHashSet();
-//
-//             await using var ctx = _dbContextFactory.CreateContext();
-//             var payouts = await ctx.Payouts
-//                 .Include(o => o.StoreData)
-//                 .Include(o => o.PullPaymentData)
-//                 .Where(p => p.State == PayoutState.AwaitingPayment)
-//                 .Where(p => p.PayoutMethodId == PaymentMethodId.ToString())
-// #pragma warning disable CA1307 // Specify StringComparison
-//                 .Where(p => destinations.Contains(p.DedupId))
-// #pragma warning restore CA1307 // Specify StringComparison
-//                 .ToListAsync();
-//
-//             if (payouts.Any() is not true)
-//                 return;
-//             if (payout.Amount is null ||
-//                 // The round up here is not strictly necessary, this is temporary to fix existing payout before we
-//                 // were properly roundup the crypto amount
-//                 destinationSum !=
-//                 BTCPayServer.Extensions.RoundUp(payout.Amount.Value, Network.Divisibility))
-//                 return;
-//
-//             var derivationSchemeSettings = payout.StoreData
-//                 .GetDerivationSchemeSettings(_paymentHandlers, Network.CryptoCode)?.AccountDerivation;
-//             if (derivationSchemeSettings is null)
-//                 return;
-//
-//             var storeWalletMatched = (await _explorerClientProvider.GetExplorerClient(Network.CryptoCode)
-//                 .GetTransactionAsync(derivationSchemeSettings,
-//                     newTransaction.NewTransactionEvent.TransactionData.TransactionHash));
-//             //if the wallet related to the store of the payout does not have the tx: it has been paid externally
-//             var isInternal = storeWalletMatched is not null;
-//
-//             var proof = ParseProof(payout) as PayoutTransactionOnChainBlob ??
-//                         new PayoutTransactionOnChainBlob() { Accounted = isInternal };
-//             var txId = newTransaction.NewTransactionEvent.TransactionData.TransactionHash;
-//             if (!proof.Candidates.Add(txId))
-//                 return;
-//             if (isInternal)
-//             {
-//                 payout.State = PayoutState.InProgress;
-//                 await WalletRepository.AddWalletTransactionAttachment(
-//                     new WalletId(payout.StoreDataId, Network.CryptoCode),
-//                     newTransaction.NewTransactionEvent.TransactionData.TransactionHash,
-//                     Attachment.Payout(payout.PullPaymentDataId, payout.Id));
-//             }
-//             else
-//             {
-//                 await _notificationSender.SendNotification(new StoreScope(payout.StoreDataId),
-//                     new ExternalPayoutTransactionNotification()
-//                     {
-//                         PaymentMethod = payout.PayoutMethodId,
-//                         PayoutId = payout.Id,
-//                         StoreId = payout.StoreDataId
-//                     });
-//             }
-//
-//             proof.TransactionId ??= txId;
-//             SetProofBlob(payout, proof);
-//             await ctx.SaveChangesAsync();
-//             _eventAggregator.Publish(new PayoutEvent(PayoutEvent.PayoutEventType.Updated,payout));
-//         }
-//         catch (Exception ex)
-//         {
-//             _logger.LogWarning(ex, "Error while processing a transaction in the pull payment hosted service");
-//         }
 //     }
 //
 //     public void SetProofBlob(PayoutData data, ArkPayoutProof blob)
