@@ -314,7 +314,7 @@ public class ArkController : Controller
                 return RedirectToAction(nameof(SetupStore), new {storeId = store.Id});
             }
 
-            TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: {resp.Details.Status}";
+            TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: {resp?.Details?.Status}";
             return RedirectToAction(nameof(SetupStore), new {storeId = store.Id});
         }
         else if (Uri.TryCreate(destination, UriKind.Absolute, out var uri) &&

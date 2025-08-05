@@ -60,7 +60,7 @@ public class BoltzSwapService
 
         var address = vhtlcContract.GetArkAddress();
         if (response.Address != address.ToString(operatorTerms.Network.ChainName == ChainName.Mainnet))
-            throw new Exception($"Address mismatch! Expected {address} got {response.Address}");
+            throw new Exception($"Address mismatch! Expected {address.ToString(operatorTerms.Network.ChainName == ChainName.Mainnet)} got {response.Address}");
 
         return new SubmarineSwapResult()
         {
