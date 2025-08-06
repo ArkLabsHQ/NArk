@@ -253,9 +253,9 @@ public Task StartedTask => _started.Task;
         try
         {
             _logger.LogInformation("Connecting to stream with subscription ID: {SubscriptionId}", subscriptionId);
-            var stream = _indexerClient.GetSubscription(new GetSubscriptionRequest { SubscriptionId = subscriptionId }, cancellationToken: cancellationToken);
-
-            await foreach (var response in stream.ResponseStream.ReadAllAsync(cancellationToken))
+            SubscriptionStream = _indexerClient.GetSubscription(new GetSubscriptionRequest { SubscriptionId = subscriptionId }, cancellationToken: cancellationToken);
+            
+            await foreach (var response in SubscriptionStream.ResponseStream.ReadAllAsync(cancellationToken))
             {
                 if (response == null) continue;
                 _logger.LogDebug("Received update for {Count} scripts.", response.Scripts.Count);
@@ -278,6 +278,8 @@ public Task StartedTask => _started.Task;
             _logger.LogInformation("ListenToStream finished.");
         }
     }
+
+    public AsyncServerStreamingCall<GetSubscriptionResponse>? SubscriptionStream { get; private set; }
 
     public static VTXO Map(IndexerVtxo vtxo, VTXO? existing = null)
     {

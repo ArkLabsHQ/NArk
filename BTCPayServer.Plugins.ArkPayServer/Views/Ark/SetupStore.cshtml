@@ -2,6 +2,7 @@
 @using BTCPayServer.Abstractions.Contracts
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Services
 @using NBitcoin
 @using NArk.Contracts
 @using NArk.Services
@@ -9,17 +10,33 @@
 @inject IScopeProvider ScopeProvider
 @inject IOperatorTermsService Terms
 @inject ArkConfiguration ArkConfiguration
+@inject ArkSubscriptionService ArkSubscriptionService 
 @{
   
     Layout = "Views/UIStores/_LayoutWalletSetup";
-    var terms = await Terms.GetOperatorTerms();
-    var mainnet = terms.Network.ChainName == ChainName.Mainnet;
     var storeId = ScopeProvider.GetCurrentStoreId()!;
     ViewData.SetActivePage("Ark", "Arkade Payments", "Ark");
+string connectionStatus = "Unknown";
+var mainnet = true;
+    try
+    {
+
+        var terms = await Terms.GetOperatorTerms();
+        var subStatus = ArkSubscriptionService.SubscriptionStream?.GetStatus();
+    
+        connectionStatus = subStatus is null ? "Unknown" : subStatus.Value.ToString();
+mainnet =  terms.Network.ChainName == ChainName.Mainnet;
+    }
+    catch (Exception ex)
+    {
+        connectionStatus = ex.Message;
+    }
+
+   
 }
 
 
-<h1 class="text-center mt-n2 text-center">@ViewData["Title"]</h1>
+<h1 class="text-center mt-n2 text-center" title="@connectionStatus">@ViewData["Title"]</h1>
 
 
 <form asp-action="SetupStore" method="post" asp-route-storeId="@storeId">
@@ -122,6 +139,7 @@
             <input type="hidden" name="payment" id="payment"/>
             <input id="spendbtn" name="command" type="submit" value="spend" style="display:none"/>
             <button onclick="var payment = prompt('Enter a BIP21/LN invoice to send to:'); if (payment) document.getElementById('payment').value = payment; document.getElementById('spendbtn').click(); "  class="btn btn-outline-secondary me-2">Spend</button>
+            
         }
     </div>
 </form>
