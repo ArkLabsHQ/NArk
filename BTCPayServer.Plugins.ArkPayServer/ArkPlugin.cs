@@ -20,10 +20,56 @@ using NArk.Services;
 using NBitcoin;
 using System.Reflection;
 using System.Text.Json;
+using Grpc.Core;
+using Grpc.Core.Interceptors;
+using Grpc.Net.ClientFactory;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 
+class DeadlineInterceptor(TimeSpan deadline) : Interceptor
+{
+    private void ApplyDeadline<TRequest, TResponse>(ref ClientInterceptorContext<TRequest, TResponse> context)
+        where TRequest : class
+        where TResponse : class
+    {
+        if (context.Options.Deadline is null)
+        {
+            context = new(context.Method, context.Host, context.Options.WithDeadline(DateTime.UtcNow.Add(deadline)));
+        }
+    }
 
+    public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(ClientInterceptorContext<TRequest, TResponse> context, AsyncClientStreamingCallContinuation<TRequest, TResponse> continuation)
+    {
+        ApplyDeadline(ref context);
+        return base.AsyncClientStreamingCall(context, continuation);
+    }
+
+    public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(ClientInterceptorContext<TRequest, TResponse> context, AsyncDuplexStreamingCallContinuation<TRequest, TResponse> continuation)
+    {
+        ApplyDeadline(ref context);
+        return base.AsyncDuplexStreamingCall(context, continuation);
+    }
+
+    public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(TRequest request, ClientInterceptorContext<TRequest, TResponse> context, AsyncServerStreamingCallContinuation<TRequest, TResponse> continuation)
+    {
+        ApplyDeadline(ref context);
+        return base.AsyncServerStreamingCall(request, context, continuation);
+    }
+
+    public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(TRequest request, ClientInterceptorContext<TRequest, TResponse> context, AsyncUnaryCallContinuation<TRequest, TResponse> continuation)
+    {
+        ApplyDeadline(ref context);
+        return base.AsyncUnaryCall(request, context, continuation);
+    }
+
+    public override TResponse BlockingUnaryCall<TRequest, TResponse>(TRequest request, ClientInterceptorContext<TRequest, TResponse> context, BlockingUnaryCallContinuation<TRequest, TResponse> continuation)
+    {
+        ApplyDeadline(ref context);
+        return base.BlockingUnaryCall(request, context, continuation);
+    }
+
+    // note no need to intercept server methods
+}
 public class ArkadePlugin : BaseBTCPayServerPlugin
 {
     public const string PluginNavKey = nameof(ArkadePlugin) + "Nav";
@@ -127,9 +173,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddHostedService<ArkadeContractSweeper>(provider => provider.GetRequiredService<ArkadeContractSweeper>());
         
         // Register the Boltz swap services
-        // serviceCollection.AddSingleton<BoltzSwapSubscriptionService>();
         serviceCollection.AddSingleton<BoltzSwapService>();
-        // serviceCollection.AddHostedService<BoltzSwapSubscriptionService>(provider => provider.GetRequiredService<BoltzSwapSubscriptionService>());
         serviceCollection.AddSingleton<BoltzService>();
         serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
 
@@ -153,11 +197,15 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddGrpcClient<ArkService.ArkServiceClient>(options =>
         {
             options.Address = new Uri(configuration.ArkUri);
+            options.InterceptorRegistrations.Add(new InterceptorRegistration(InterceptorScope.Client, provider => new DeadlineInterceptor(TimeSpan.FromSeconds(10))));
+            
         });
         
         serviceCollection.AddGrpcClient<IndexerService.IndexerServiceClient>(options =>
         {
             options.Address = new Uri(configuration.ArkUri);
+            options.InterceptorRegistrations.Add(new InterceptorRegistration(InterceptorScope.Client, provider => new DeadlineInterceptor(TimeSpan.FromSeconds(10))));
+
         });
 
         // Register Ark services
