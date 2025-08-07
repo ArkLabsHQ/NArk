@@ -40,19 +40,16 @@ class DeadlineInterceptor(TimeSpan deadline) : Interceptor
 
     public override AsyncClientStreamingCall<TRequest, TResponse> AsyncClientStreamingCall<TRequest, TResponse>(ClientInterceptorContext<TRequest, TResponse> context, AsyncClientStreamingCallContinuation<TRequest, TResponse> continuation)
     {
-        ApplyDeadline(ref context);
         return base.AsyncClientStreamingCall(context, continuation);
     }
 
     public override AsyncDuplexStreamingCall<TRequest, TResponse> AsyncDuplexStreamingCall<TRequest, TResponse>(ClientInterceptorContext<TRequest, TResponse> context, AsyncDuplexStreamingCallContinuation<TRequest, TResponse> continuation)
     {
-        ApplyDeadline(ref context);
         return base.AsyncDuplexStreamingCall(context, continuation);
     }
 
     public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(TRequest request, ClientInterceptorContext<TRequest, TResponse> context, AsyncServerStreamingCallContinuation<TRequest, TResponse> continuation)
     {
-        ApplyDeadline(ref context);
         return base.AsyncServerStreamingCall(request, context, continuation);
     }
 
@@ -67,8 +64,6 @@ class DeadlineInterceptor(TimeSpan deadline) : Interceptor
         ApplyDeadline(ref context);
         return base.BlockingUnaryCall(request, context, continuation);
     }
-
-    // note no need to intercept server methods
 }
 public class ArkadePlugin : BaseBTCPayServerPlugin
 {
