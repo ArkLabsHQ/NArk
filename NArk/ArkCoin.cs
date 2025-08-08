@@ -10,5 +10,10 @@ public class ArkCoin : Coin
         Contract = contract;
     }
     public ArkContract Contract { get; set; }
+
+    public override string ToString()
+    {
+        return $"{Outpoint} - {TxOut.ScriptPubKey.ToHex()} -{TxOut.Value}";
+    }
 }
 

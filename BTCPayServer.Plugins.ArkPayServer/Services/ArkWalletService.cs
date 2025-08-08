@@ -88,11 +88,12 @@ public class ArkWalletService(
         Func<ArkWallet, Task<(ArkWalletContract newContractData, ArkContract newContract)?>> setup,
         CancellationToken cancellationToken)
     {
-        using var locker = await asyncKeyedLocker.LockAsync($"DeriveNewContract{walletId}", cancellationToken);
-        await using var dbContext = dbContextFactory.CreateContext();
-        var wallet = await dbContext.Wallets.FindAsync([walletId], cancellationToken);
+        var wallet = await GetWallet(walletId, cancellationToken);
         if (wallet is null)
             throw new InvalidOperationException($"Wallet with ID {walletId} not found.");
+
+        // using var locker = await asyncKeyedLocker.LockAsync($"DeriveNewContract{walletId}", cancellationToken);
+        await using var dbContext = dbContextFactory.CreateContext();
 
         var contract = await setup(wallet);
         if (contract is null)
@@ -107,7 +108,7 @@ public class ArkWalletService(
             logger.LogInformation("New contract derived for wallet {WalletId}: {Script}", walletId,
             contract.Value.Item1.Script);
 
-        await arkSubscriptionService.UpdateManualSubscriptionAsync(contract.Value.Item1.Script,
+        _ =  arkSubscriptionService.UpdateManualSubscriptionAsync(contract.Value.Item1.Script,
             contract.Value.Item1.Active, cancellationToken);
 
         return contract.Value.Item2;

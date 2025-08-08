@@ -26,7 +26,7 @@ public class ArkSubscriptionService : IHostedService, IAsyncDisposable
     private readonly Channel<bool> _checkContractsChannel = Channel.CreateUnbounded<bool>();
 
     private string _subscriptionId = "";
-    private HashSet<string> _subscribedScripts = new();
+    private ConcurrentHashSet<string> _subscribedScripts = new(null);
     private Task? _listeningTask;
     private CancellationTokenSource _listeningCts;
     private readonly TaskCompletionSource _started = new();
@@ -168,7 +168,7 @@ public Task StartedTask => _started.Task;
             .Select(c => c.Script)
             .ToHashSet();
         
-        if (activeScripts.SetEquals(_subscribedScripts) && !string.IsNullOrEmpty(_subscriptionId))
+        if (activeScripts.SetEquals(_subscribedScripts.HashSet) && !string.IsNullOrEmpty(_subscriptionId))
         {
             _logger.LogDebug("No change in active contracts, skipping subscription update.");
             // Still check if listener is running
@@ -180,7 +180,7 @@ public Task StartedTask => _started.Task;
             return;
         }
 
-        _subscribedScripts = activeScripts;
+        _subscribedScripts =new ConcurrentHashSet<string>( activeScripts);
 
         if (_subscribedScripts.Count == 0)
         {
@@ -193,7 +193,7 @@ public Task StartedTask => _started.Task;
         _logger.LogInformation("Updating subscription with {Count} active contracts.", _subscribedScripts.Count);
 
         var req = new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId };
-        req.Scripts.AddRange(_subscribedScripts);
+        req.Scripts.AddRange(_subscribedScripts.HashSet);
 
         try
         {
@@ -368,7 +368,7 @@ return existing;
     }
     private async Task SynchronizeSubscriptionWithIndexerAsync(string[]? removed, CancellationToken cancellationToken)
     {
-        
+        using var locker = await _asyncKeyedLocker.LockAsync("SynchronizeSubscriptionWithIndexerAsync", cancellationToken);
         if (_subscribedScripts.Count == 0)
         {
             _logger.LogInformation("[Manual] No active scripts. Stopping listener and clearing subscription.");
@@ -382,7 +382,7 @@ return existing;
         var req = _subscriptionId is null ?
             new SubscribeForScriptsRequest() :
             new SubscribeForScriptsRequest { SubscriptionId = _subscriptionId };
-        req.Scripts.AddRange(_subscribedScripts);
+        req.Scripts.AddRange(_subscribedScripts.HashSet);
 
         try
         {
