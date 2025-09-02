@@ -1,4 +1,5 @@
 ﻿using NArk.Contracts;
+using NArk.Scripts;
 using NArk.Services;
 using NBitcoin;
 
@@ -9,7 +10,8 @@ public class SpendableArkCoinWithSigner : ArkCoin
     public IArkadeWalletSigner Signer { get; }
     public LockTime? SpendingLockTime { get; }
     public Sequence? SpendingSequence { get; }
-    public TapScript SpendingScript { get; set; }
+    public ScriptBuilder SpendingScriptBuilder { get; set; }
+    public TapScript SpendingScript  => SpendingScriptBuilder.Build();
     public WitScript? SpendingConditionWitness { get; set; }
     
 
@@ -18,19 +20,18 @@ public class SpendableArkCoinWithSigner : ArkCoin
         OutPoint outpoint, 
         TxOut txout,
         IArkadeWalletSigner signer,
-        TapScript spendingScript,
+        ScriptBuilder spendingScriptBuilder,
         WitScript? spendingConditionWitness,
         LockTime? lockTime,
         Sequence? sequence
         ) : base(contract, outpoint, txout)
     {
         Signer = signer;
-        SpendingScript = spendingScript;
+        SpendingScriptBuilder = spendingScriptBuilder;
         SpendingConditionWitness = spendingConditionWitness;
         SpendingLockTime = lockTime;
         SpendingSequence = sequence;
-        if (sequence is null &&
-            spendingScript.Script.ToOps() is { } ops && ops.Contains(OpcodeType.OP_CHECKSEQUENCEVERIFY))
+        if (sequence is null && spendingScriptBuilder.BuildScript().Contains(OpcodeType.OP_CHECKSEQUENCEVERIFY))
         {
             throw new InvalidOperationException("Sequence is required");
         }

@@ -57,9 +57,11 @@ public class IntentUtils
 
         foreach (var input in tx.Inputs.AsIndexedInputs())
         {
+            
             var coin = coins.Single(coin1 => coin1.Outpoint == input.PrevOut);
             var spendableCoin = coin as SpendableArkCoinWithSigner;
-            var leaf =spendableCoin?.SpendingScript.LeafHash;
+            var script = spendableCoin?.SpendingScriptBuilder.Build();
+            var leaf =script?.LeafHash;
             var coinSigner = spendableCoin?.Signer ?? signer;
             var hash = tx.GetSignatureHashTaproot(
                 toSignPrecompute,
@@ -71,10 +73,10 @@ public class IntentUtils
             {
                 witness.AddRange(spendableCoin.SpendingConditionWitness.ToScript().ToOps());
             }
-            if (spendableCoin?.SpendingScript is not null)
+            if (spendableCoin?.SpendingScriptBuilder is not null)
             {
-                var controlBlock = spendableCoin.Contract.GetTaprootSpendInfo().GetControlBlock(spendableCoin.SpendingScript);
-                witness.AddRange([Op.GetPushOp(spendableCoin.SpendingScript.Script.ToBytes()), Op.GetPushOp(controlBlock.ToBytes())]);
+                var controlBlock = spendableCoin.Contract.GetTaprootSpendInfo().GetControlBlock(script);
+                witness.AddRange([Op.GetPushOp(script.Script.ToBytes()), Op.GetPushOp(controlBlock.ToBytes())]);
             }
             toSignTx.Inputs.FindIndexedInput(input.PrevOut)!.FinalScriptWitness = new WitScript(witness.ToArray());
         }

@@ -193,7 +193,7 @@ public async Task<uint256> ConstructAndSubmitArkTransaction(
                 _logger.LogDebug("Creating checkpoint for coin with outpoint {Outpoint}", coin.Outpoint);
                 
                 // Create checkpoint contract
-                var checkpointContract = CreateCheckpointContract(coin.Contract,terms);
+                var checkpointContract = CreateCheckpointContract(coin,terms);
                 
                 // Build checkpoint transaction
                 var checkpoint = terms.Network.CreateTransactionBuilder();
@@ -231,10 +231,10 @@ public async Task<uint256> ConstructAndSubmitArkTransaction(
                         outpoint, 
                         txout.GetTxOut()!,
                         coin.Signer,
-                        checkpointContract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single().Build(),
-                        null,
-                        null,
-                        null
+                        coin.SpendingScriptBuilder,
+                        coin.SpendingConditionWitness,
+                        coin.SpendingLockTime,
+                        coin.SpendingSequence
                         ));
             }
             
@@ -293,7 +293,10 @@ public async Task<uint256> ConstructAndSubmitArkTransaction(
                 _logger.LogInformation($"{ourKey.ToHex()} signed {hash.ToBytes().ToHex()} ({coin.Outpoint} leaf:{tapleaf.LeafHash})  \n {sig.ToBytes().ToHex()}");
 
                 checkpointInput.SetTaprootScriptSpendSignature(ourKey, tapleaf.LeafHash, sig);
-                
+                if (coin.SpendingConditionWitness is not null)
+                {
+                    checkpointInput.Unknown.SetArkField(coin.SpendingConditionWitness);
+                }
             }
             
             _logger.LogInformation("Ark transaction construction completed successfully");
@@ -311,36 +314,16 @@ public async Task<uint256> ConstructAndSubmitArkTransaction(
         /// <summary>
         /// Creates a checkpoint contract based on the input contract type
         /// </summary>
-        private ArkContract CreateCheckpointContract(ArkContract inputContract, ArkOperatorTerms terms)
+        private ArkContract CreateCheckpointContract(SpendableArkCoinWithSigner coin, ArkOperatorTerms terms)
         {
-            var server = inputContract.Server;
-            var delay = terms.UnilateralExit;
-            var user = inputContract switch
+            var scriptBuilders = new List<ScriptBuilder>
             {
-                HashLockedArkPaymentContract hashLockedArkPaymentContract => hashLockedArkPaymentContract.User,
-                ArkPaymentContract arkPaymentContract => arkPaymentContract.User,
-                VHTLCContract htlc => 
-                    htlc.Preimage != null
-                        ?htlc.Receiver
-                        : htlc.Sender,
+                coin.SpendingScriptBuilder,
+                new UnilateralPathArkTapScript(terms.UnilateralExit, new NofNMultisigTapScript([coin.Contract.Server]))
             };
-            
-            return CreateCheckpointContract(delay, server, user);
-            
-        }
 
-        
-        private GenericArkContract CreateCheckpointContract(Sequence unilateralDelay, ECXOnlyPubKey server, ECXOnlyPubKey user)
-        {
-            var scriptBuilders = new List<ScriptBuilder>();
-
-            var ownerScript = new NofNMultisigTapScript([user]);
-            var serverScript = new NofNMultisigTapScript([server]);
+            return new GenericArkContract(coin.Contract.Server, scriptBuilders);
             
-            scriptBuilders.Add(new UnilateralPathArkTapScript(unilateralDelay, serverScript));
-            scriptBuilders.Add(new CollaborativePathArkTapScript(server, ownerScript));
-            
-            return new GenericArkContract(server, scriptBuilders);
         }
     }
     

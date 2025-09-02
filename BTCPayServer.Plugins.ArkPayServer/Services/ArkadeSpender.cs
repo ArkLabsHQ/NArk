@@ -7,6 +7,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using NArk;
 using NArk.Contracts;
+using NArk.Scripts;
 using NArk.Services;
 using NArk.Services.Models;
 using NBitcoin;
@@ -162,14 +163,14 @@ public class ArkadeSpender
             case ArkPaymentContract arkPaymentContract:
                 if (arkPaymentContract.User.ToBytes().SequenceEqual(user.ToBytes()))
                 {
-                    return ToArkCoin(contract,vtxo, signer,arkPaymentContract.CollaborativePath().Build(),null, null, null);
+                    return ToArkCoin(contract,vtxo, signer,arkPaymentContract.CollaborativePath(),null, null, null);
                 }
                 break;
             case HashLockedArkPaymentContract hashLockedArkPaymentContract:
                 if (hashLockedArkPaymentContract.User.ToBytes().SequenceEqual(user.ToBytes()))
                 {
                     return ToArkCoin(contract,vtxo, signer,
-                        hashLockedArkPaymentContract.CreateClaimScript().Build(),
+                        hashLockedArkPaymentContract.CreateClaimScript(),
                         new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null, null);
                 }
                 break;
@@ -177,7 +178,7 @@ public class ArkadeSpender
                 if (htlc.Preimage is not null && htlc.Receiver.ToBytes().SequenceEqual(user.ToBytes()))
                 {
                     return ToArkCoin(contract,vtxo, signer,
-                        htlc.CreateClaimScript().Build(),
+                        htlc.CreateClaimScript(),
                         new WitScript(Op.GetPushOp(htlc.Preimage!)), null, null);
                 }
 
@@ -185,7 +186,7 @@ public class ArkadeSpender
                     htlc.RefundLocktime.Date < DateTime.UtcNow && htlc.Sender.ToBytes().SequenceEqual(user.ToBytes()))
                 {
                     return ToArkCoin(contract,vtxo, signer,
-                        htlc.CreateRefundWithoutReceiverScript().Build(),
+                        htlc.CreateRefundWithoutReceiverScript(),
                         null, htlc.RefundLocktime, null);
                 }
 
@@ -194,7 +195,7 @@ public class ArkadeSpender
         return null;
     }
     private static SpendableArkCoinWithSigner ToArkCoin(ArkContract c, ICoinable vtxo, IArkadeWalletSigner signer,
-        TapScript leaf, WitScript? witness, LockTime? lockTime, Sequence? sequence)
+        ScriptBuilder leaf, WitScript? witness, LockTime? lockTime, Sequence? sequence)
     {
         return new SpendableArkCoinWithSigner(c, vtxo.Outpoint, vtxo.TxOut, signer, leaf, witness, lockTime, sequence);
     }
