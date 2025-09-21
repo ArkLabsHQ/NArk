@@ -24,70 +24,85 @@ services:
   
   # Lightning swap services
   boltz-lnd:
-    image: lightninglabs/lnd:v0.19.2-beta
+    image: btcpayserver/lnd:v0.19.1-beta
     restart: unless-stopped
     container_name: boltz-lnd
-    command:
-      - '--bitcoin.regtest'
-      - '--bitcoin.node=bitcoind'
-      - '--maxpendingchannels=10'
-      - '--rpclisten=0.0.0.0:10009'
-      - '--bitcoind.rpchost=bitcoin:18443'
-      - '--bitcoind.rpcuser=admin1'
-      - '--bitcoind.rpcpass=123'
-      - '--bitcoind.zmqpubrawblock=tcp://bitcoin:28332'
-      - '--bitcoind.zmqpubrawtx=tcp://bitcoin:28333'
-      - '--db.bolt.auto-compact'
-      - '--db.prune-revocation'
-      - '--alias=Ark Labs'
-      - '--tlsextradomain=boltz-lnd'
-      - '--protocol.option-scid-alias'
-      - '--protocol.wumbo-channels'
-      - '--accept-keysend'
-      - '--minchansize=25000'
-      - '--noseedbackup'
-      - '--gc-canceled-invoices-on-startup'
-      - '--coin-selection-strategy=random'
-      - '--protocol.custom-message=513'
-      - '--protocol.custom-nodeann=39'
-      - '--protocol.custom-init=39'
-      - '--no-rest-tls'
-      - '--restcors=*'
+    environment:
+      LND_CHAIN: "btc"
+      LND_ENVIRONMENT: "regtest"
+      LND_EXPLORERURL: "http://nbxplorer:32838/"
+      LND_REST_LISTEN_HOST: http://boltz-lnd:8080
+      LND_EXTRA_ARGS: |
+        bitcoin.node=bitcoind  
+        maxpendingchannels=10
+        rpclisten=0.0.0.0:10009
+        restlisten=boltz-lnd:8080
+        bitcoind.rpchost=bitcoin:18443
+        bitcoind.rpcuser=admin1
+        bitcoind.rpcpass=123
+        bitcoind.zmqpubrawblock=tcp://bitcoin:28332
+        bitcoind.zmqpubrawtx=tcp://bitcoin:28333
+        db.bolt.auto-compact=true
+        db.prune-revocation=true
+        alias=Ark Labs
+        externalip=boltz-lnd:9735
+        protocol.option-scid-alias=true
+        protocol.wumbo-channels=true
+        accept-keysend=true
+        minchansize=25000
+        noseedbackup=false
+        gc-canceled-invoices-on-startup=true
+        coin-selection-strategy=random
+        protocol.custom-message=513
+        protocol.custom-nodeann=39
+        protocol.custom-init=39
+        no-rest-tls=1
+        tlsextradomain=boltz-lnd
+        debuglevel=debug
+        restcors=*
+        
     volumes:
       - boltz_lnd_datadir:/root/.lnd
     ports:
       - '9736:9735'
       - '10010:10009'
   lnd:
-    image: lightninglabs/lnd:v0.19.2-beta
+    image: btcpayserver/lnd:v0.19.1-beta
     restart: unless-stopped
     container_name: lnd
-    command:
-      - '--bitcoin.regtest'
-      - '--bitcoin.node=bitcoind'
-      - '--maxpendingchannels=10'
-      - '--rpclisten=0.0.0.0:10009'
-      - '--bitcoind.rpchost=bitcoin:18443'
-      - '--bitcoind.rpcuser=admin1'
-      - '--bitcoind.rpcpass=123'
-      - '--bitcoind.zmqpubrawblock=tcp://bitcoin:28332'
-      - '--bitcoind.zmqpubrawtx=tcp://bitcoin:28333'
-      - '--db.bolt.auto-compact'
-      - '--db.prune-revocation'
-      - '--alias=Ark Labs User'
-      - '--tlsextradomain=lnd'
-      - '--protocol.option-scid-alias'
-      - '--protocol.wumbo-channels'
-      - '--accept-keysend'
-      - '--minchansize=25000'
-      - '--noseedbackup'
-      - '--gc-canceled-invoices-on-startup'
-      - '--coin-selection-strategy=random'
-      - '--protocol.custom-message=513'
-      - '--protocol.custom-nodeann=39'
-      - '--protocol.custom-init=39'
-      - '--no-rest-tls'
-      - '--restcors=*'
+    environment:
+      LND_CHAIN: "btc"
+      LND_ENVIRONMENT: "regtest"
+      LND_EXPLORERURL: "http://nbxplorer:32838/"
+      LND_REST_LISTEN_HOST: http://lnd:8080
+      LND_EXTRA_ARGS: |
+        bitcoin.node=bitcoind  
+        maxpendingchannels=10
+        rpclisten=0.0.0.0:10009
+        restlisten=lnd:8080
+        bitcoind.rpchost=bitcoin:18443
+        bitcoind.rpcuser=admin1
+        bitcoind.rpcpass=123
+        bitcoind.zmqpubrawblock=tcp://bitcoin:28332
+        bitcoind.zmqpubrawtx=tcp://bitcoin:28333
+        db.bolt.auto-compact=true
+        db.prune-revocation=true
+        alias=Ark Labs User
+        externalip=lnd:9735
+        protocol.option-scid-alias=true
+        protocol.wumbo-channels=true
+        accept-keysend=true
+        minchansize=25000
+        noseedbackup=false
+        gc-canceled-invoices-on-startup=true
+        coin-selection-strategy=random
+        protocol.custom-message=513
+        protocol.custom-nodeann=39
+        protocol.custom-init=39
+        no-rest-tls=1
+        debuglevel=debug
+        restcors=*
+        tlsextradomain=lnd
     volumes:
       - lnd_user_datadir:/root/.lnd
     ports:

@@ -8,6 +8,52 @@ log() {
   echo -e "${green}[$(date '+%H:%M:%S')] ${msg}${reset}"
 }
 
+setup_lnd_wallet() {
+  # Setup LND for Lightning swaps
+  log "Setting up LND for Lightning swaps..."
+  sleep 10  # Give LND time to start
+
+  # Fund LND wallet
+  log "Getting LND address..."
+  ln_address=$(docker exec boltz-lnd lncli --network=regtest newaddress p2wkh | jq -r '.address')
+  log "LND address: $ln_address"
+
+  log "Funding LND wallet..."
+  nigiri faucet "$ln_address" 2
+
+  # Wait for confirmation
+  log "Waiting for LND funding confirmation..."
+  sleep 10
+
+  lnd_balance=$(docker exec boltz-lnd lncli --network=regtest walletbalance | jq -r '.account_balance.default.confirmed_balance')
+  if [ "$lnd_balance" -lt 1000000 ]; then
+    log "ERROR: LND wallet balance ($lnd_balance) is less than 1,000,000 sats. Funding failed."
+    exit 1
+  fi
+
+  # Check LND balance
+  log "LND balance: $lnd_balance"
+
+  # Open channel to counterparty node
+  counterparty_node_pubkey=$(docker exec lnd lncli --network=regtest getinfo | jq -r '.identity_pubkey')
+  log "Opening channel to counterparty node ($counterparty_node_pubkey)..."
+  docker exec boltz-lnd lncli --network=regtest openchannel --node_key "$counterparty_node_pubkey" --connect "lnd:9735" --local_amt 1000000 --sat_per_vbyte 1 --min_confs 0
+
+  # Fund LND again to trigger mining of the channel
+  log "Mining ten blocks to confirm channel..."
+  nigiri rpc --generate 10
+
+  # Wait for channel to be active
+  log "Waiting for channel to become active..."
+  sleep 10
+
+  log "Creating and paying test invoice..."
+  invoice=$(docker exec lnd lncli --network=regtest addinvoice --amt 500000 | jq -r '.payment_request')
+  docker exec boltz-lnd lncli --network=regtest payinvoice --force $invoice 
+
+  log "✓ LND wallet setup completed successfully!"
+}
+
 setup_fulmine_wallet() {
   log "Setting up Fulmine wallet..."
   
@@ -93,9 +139,7 @@ setup_fulmine_wallet() {
   curl -X GET http://localhost:7003/api/v1/transactions
   
   log "✓ Fulmine wallet setup completed successfully!"
-  
 
-  
 }
 
 # Argument parsing
@@ -132,6 +176,7 @@ if [ "$CLEAN" = true ]; then
 
   # 2. Stop any running nigiri instances
   log "Stopping existing Nigiri containers..."
+  docker compose -f docker-compose.bps.deps.yml down --volumes --remove-orphans
   docker compose -f docker-compose.ark.yml down --volumes --remove-orphans
   nigiri stop --delete
 
@@ -149,18 +194,11 @@ nigiri start --ark || {
     exit 1
   fi
 }
-# Use docker-compose.ark.yml for custom ark configuration
-log "Startinga stack with docker-compose.ark.yml..."
-docker compose -f docker-compose.ark.yml up -d
-  
 
-# 5. Start BTCPayServer dependencies
-#log "Starting BTCPayServer dependency containers..."
-#pushd submodules/btcpayserver/BTCPayServer.Tests >/dev/null
-#docker compose up -d dev
-#popd >/dev/null
-#log "BTCPayServer containers running:"
-#docker ps --filter "name=btcpay" --format "table {{.Names}}\t{{.Status}}"
+# Use docker-compose.ark.yml for custom ark configuration
+log "Starting ark stack with docker-compose.ark.yml..."
+docker compose -f docker-compose.ark.yml up -d
+
 
 # 6. Setup and unlock arkd wallet
 container="ark"
@@ -190,40 +228,7 @@ nigiri ark redeem-notes -n $(nigiri arkd note --amount 100000000) --password sec
 
 # 7. Setup Fulmine wallet
 setup_fulmine_wallet
-
-#
-#  docker exec -i boltz-lnd bash -c \
-#    'echo -n "lndconnect://boltz-lnd:10009?cert=$(grep -v CERTIFICATE /root/.lnd/tls.cert \
-#       | tr -d = | tr "/+" "_-")&macaroon=$(base64 /root/.lnd/data/chain/bitcoin/regtest/admin.macaroon \
-#       | tr -d = | tr "/+" "_-")"' | tr -d '\n'
-
-
-  # # Setup LND for Lightning swaps
-  # log "Setting up LND for Lightning swaps..."
-  # sleep 10  # Give LND time to start
-
-  # # Create wallet in LND if needed
-  # log "Creating LND wallet..."
-  # docker exec boltz-lnd lncli --network=regtest create 2>/dev/null || true
-
-  # # Unlock wallet if needed
-  # log "Unlocking LND wallet..."
-  # docker exec boltz-lnd lncli --network=regtest unlock --password="" 2>/dev/null || true
-
-  # # Fund LND wallet
-  # log "Getting LND address..."
-  # ln_address=$(docker exec boltz-lnd lncli --network=regtest newaddress p2wkh | jq -r '.address')
-  # log "LND address: $ln_address"
-  # log "Funding LND wallet..."
-  # nigiri faucet "$ln_address" 1
-
-  # # Wait for confirmation
-  # log "Waiting for LND funding confirmation..."
-  # sleep 10
-
-  # # Check LND balance
-  # log "LND balance:"
-  # docker exec boltz-lnd lncli --network=regtest walletbalance
+setup_lnd_wallet
 
 
 log "✅ Development environment ready."
