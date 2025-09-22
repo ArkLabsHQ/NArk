@@ -45,38 +45,13 @@ namespace NArk.Services
         public async Task<PSBT> FinalizeCheckpointTx(PSBT checkpointTx, PSBT receivedCheckpointTx, SpendableArkCoinWithSigner coin,  CancellationToken cancellationToken)
         {
             _logger.LogDebug("Finalizing checkpoint transaction for coin with outpoint {Outpoint}", coin.Outpoint);
-            
-            var serverSigKv = receivedCheckpointTx.Inputs[0].Unknown
-                .First(pair => pair.Key[0] == PSBTExtraConstants.PSBT_IN_TAP_SCRIPT_SIG);
-            
-            var serverSig = PSBTExtraConstants.GetTaprootScriptSpendSignature(serverSigKv.Key, serverSigKv.Value);
-            
             // Sign the checkpoint transaction
             var checkpointGtx = receivedCheckpointTx.GetGlobalTransaction();
             var checkpointPrecomputedTransactionData = 
                 checkpointGtx.PrecomputeTransactionData([coin.TxOut]);
-            var input = checkpointTx.Inputs.FindIndexedInput(coin.Outpoint);
-            
-            // var input = checkpointGtx.Inputs.FindIndexedInput(coin.Outpoint);
-            var hash = checkpointGtx.GetSignatureHashTaproot(
-                checkpointPrecomputedTransactionData,
-                new TaprootExecutionData((int)input.Index, serverSig.leafHash));
-            //
-            // // Sign and create witness
-            // _logger.LogDebug("Signing checkpoint transaction for input {InputIndex}", input.Index);
-            
-            var (sig, key) = await coin.Signer.Sign(
-                hash, 
-                cancellationToken);
-            
-            _logger.LogInformation($"{key.ToHex()} signed {hash.ToBytes().ToHex()} ({coin.Outpoint} leaf:{serverSig.leafHash})  \n {sig.ToBytes().ToHex()}");
-            
-           if (coin.SpendingConditionWitness is not null)
-           {
-               receivedCheckpointTx.Inputs[(int) input.Index].Unknown.SetArkField(coin.SpendingConditionWitness);
-           }
-           receivedCheckpointTx.Inputs[(int) input.Index].SetTaprootScriptSpendSignature(key, coin.SpendingScript.LeafHash, sig);
+
            receivedCheckpointTx.UpdateFrom(checkpointTx);
+           await coin.SignAndFillPSBT(receivedCheckpointTx, checkpointPrecomputedTransactionData, cancellationToken);
            
            return receivedCheckpointTx;
         }
@@ -271,32 +246,14 @@ public async Task<uint256> ConstructAndSubmitArkTransaction(
             // Sign each input in the Ark transaction
             var precomputedTransactionData =
                 gtx.PrecomputeTransactionData(sortedCheckpointCoins.OrderBy(x => x.Key).Select(x => x.Value.TxOut).ToArray());
-                
-            
+               
+             
             foreach (var (inputIndex, coin) in sortedCheckpointCoins)
             {
-                var contract = (GenericArkContract)coin.Contract;
-                var checkpointInput =  tx.Inputs.FindIndexedInput(coin.Outpoint)!;
-                // Get collaborative path and create signature
-                var collabPath = contract.GetScriptBuilders().OfType<CollaborativePathArkTapScript>().Single();
-                var tapleaf = collabPath.Build();
+                _logger.LogDebug($"Signing Ark transaction for input {inputIndex}");
                 
-                // Add Ark PSBT field
-                checkpointInput.Unknown.SetArkField(contract.GetTapScriptList());
-                checkpointInput.SetTaprootLeafScript(contract.GetTaprootSpendInfo(), tapleaf);
-                
-                var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
-                    new TaprootExecutionData((int)checkpointInput.Index, tapleaf.LeafHash));
-                
-                _logger.LogDebug("Signing Ark transaction for input {InputIndex}", checkpointInput.Index);
-                var (sig, ourKey) = await coin.Signer.Sign(hash,  cancellationToken);
-                _logger.LogInformation($"{ourKey.ToHex()} signed {hash.ToBytes().ToHex()} ({coin.Outpoint} leaf:{tapleaf.LeafHash})  \n {sig.ToBytes().ToHex()}");
-
-                checkpointInput.SetTaprootScriptSpendSignature(ourKey, tapleaf.LeafHash, sig);
-                if (coin.SpendingConditionWitness is not null)
-                {
-                    checkpointInput.Unknown.SetArkField(coin.SpendingConditionWitness);
-                }
+                await coin.SignAndFillPSBT(tx, precomputedTransactionData, cancellationToken);
+               
             }
             
             _logger.LogInformation("Ark transaction construction completed successfully");
