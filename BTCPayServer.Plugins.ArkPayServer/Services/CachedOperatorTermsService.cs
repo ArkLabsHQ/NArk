@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using NArk.Services;
 using NArk.Services.Models;
 
-namespace BTCPayServer.Plugins.ArkPayServer;
+namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class CachedOperatorTermsService(ArkService.ArkServiceClient arkClient, ILogger<OperatorTermsService> logger, IMemoryCache memoryCache) : OperatorTermsService(arkClient, logger)
 {
