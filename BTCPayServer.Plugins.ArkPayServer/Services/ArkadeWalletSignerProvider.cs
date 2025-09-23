@@ -33,5 +33,4 @@ public class ArkadeWalletSignerProvider
         return result;
         
     }
-
 }

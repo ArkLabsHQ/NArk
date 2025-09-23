@@ -31,10 +31,11 @@ public class BoltzService(
     private CompositeDisposable _leases = new();
     private BoltzWebsocketClient? _wsClient;
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    public Task StartAsync(CancellationToken cancellationToken)
     {
         _leases.Add(eventAggregator.SubscribeAsync<ArkSwapUpdated>(OnLightningSwapUpdated));
         _ = ListenForSwapUpdates(cancellationToken);
+        return Task.CompletedTask;
     }
 
     private async Task OnLightningSwapUpdated(ArkSwapUpdated arg)
@@ -50,7 +51,7 @@ public class BoltzService(
             {
                await  _wsClient.SubscribeAsync([arg.Swap.SwapId]);
             }
-        }else
+        } else
         {
             if(_activeSwaps.TryRemove(arg.Swap.SwapId, out _))
             {
@@ -68,16 +69,14 @@ public class BoltzService(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            Uri? wsurl = null;
+            Uri? wsUrl = null;
             try
             {
-
-                
                 await PollActiveManually(null, cancellationToken);
 
                 logger.LogInformation("Start listening for swap updates.");
-                wsurl = boltzClient.DeriveWebSocketUri();
-                _wsClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsurl, cancellationToken);
+                wsUrl = boltzClient.DeriveWebSocketUri();
+                _wsClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsUrl, cancellationToken);
                 
                 _wsClient.OnAnyEventReceived += OnWebSocketEvent;
                 await _wsClient.SubscribeAsync(_activeSwaps.Keys.ToArray(), cancellationToken);
@@ -89,7 +88,7 @@ public class BoltzService(
             }
             catch (Exception e)
             {
-                logger.LogError(e, "Error  listening for swap updates at {wsurl}", wsurl);
+                logger.LogError(e, "Error  listening for swap updates at {wsUrl}", wsUrl);
                 await Task.Delay(5000, cancellationToken);
             }
         }
@@ -129,19 +128,29 @@ public class BoltzService(
         try
         {
             await using var dbContext = dbContextFactory.CreateContext();
-            var queryable =  dbContext.Swaps.Include(swap => swap.Contract)
+            var queryable = dbContext.Swaps
+                .Include(swap => swap.Contract)
                 .Where(swap => swap.Status == ArkSwapStatus.Pending);
 
             if (query is not null)
                 queryable = query(queryable);
             
-            var activeSwaps =await queryable.ToArrayAsync(cancellationToken);
-        
-            if(!activeSwaps.Any())
+            var activeSwaps = await queryable.ToArrayAsync(cancellationToken);
+            if (activeSwaps.Length == 0)
                 return;
+            
             var scripts = activeSwaps.Select(swap => swap.ContractScript).ToHashSet();
-            var vtxos = await dbContext.Vtxos.Where(vtxo => scripts.Contains(vtxo.Script))
-                .GroupBy(vtxo => vtxo.Script).ToDictionaryAsync(group => group.Key, group => group.ToArray(), cancellationToken);
+            
+            var vtxos = 
+                await dbContext.Vtxos
+                    .Where(vtxo => scripts.Contains(vtxo.Script))
+                    .GroupBy(vtxo => vtxo.Script)
+                    .ToDictionaryAsync(
+                        group => group.Key,
+                        group => group.ToArray(),
+                        cancellationToken
+                    );
+            
             var evts = new List<ArkSwapUpdated>();
             foreach (var swap in activeSwaps)
             {
@@ -187,7 +196,7 @@ public class BoltzService(
        {
            swap.UpdatedAt = DateTimeOffset.UtcNow;
            swap.Status = newStatus;
-           return new ArkSwapUpdated(swap);  
+           return new ArkSwapUpdated { Swap = swap };
        }
        return null;
     }
@@ -209,7 +218,7 @@ public class BoltzService(
             case "invoice.settled":
                 return ArkSwapStatus.Settled;
             default:
-                logger.LogInformation($"Unknown status {status}");
+                logger.LogInformation("Unknown status {Status}", status);
                 return ArkSwapStatus.Pending;
         }
     }
@@ -291,7 +300,7 @@ public class BoltzService(
         };
         await dbContext.Swaps.AddAsync(reverseSwap, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        PublishUpdates(new ArkSwapUpdated(reverseSwap));
+        PublishUpdates(new ArkSwapUpdated { Swap = reverseSwap });
         return reverseSwap;
     }
     public async Task<ArkSwap> CreateSubmarineSwap(string walletId, BOLT11PaymentRequest paymentRequest, CancellationToken cancellationToken )
@@ -357,7 +366,7 @@ public class BoltzService(
         };
         await dbContext.Swaps.AddAsync(submarineSwap, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        PublishUpdates(new ArkSwapUpdated(submarineSwap));
+        PublishUpdates(new ArkSwapUpdated { Swap = submarineSwap });
         
         await arkadeSpender.Spend(walletId, [ new TxOut(Money.Satoshis(submarineSwap.ExpectedAmount), htlcContract.GetArkAddress())], cancellationToken);
         

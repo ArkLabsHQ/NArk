@@ -2,7 +2,6 @@ using BTCPayServer.Data;
 using BTCPayServer.Payments;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Services;
-using Microsoft.Extensions.DependencyInjection;
 using NArk.Services;
 using NArk.Services.Models;
 using NBitcoin;
@@ -11,21 +10,12 @@ using Newtonsoft.Json.Linq;
 
 namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 
-public class ArkadePaymentMethodHandler : IPaymentMethodHandler
+public class ArkadePaymentMethodHandler(
+    BTCPayServerEnvironment btcPayServerEnvironment,
+    ArkWalletService arkWalletService,
+    IOperatorTermsService operatorTermsService
+) : IPaymentMethodHandler
 {
-    private readonly ChainName _networkType;
-    private readonly IServiceProvider _serviceProvider;
-    private readonly IOperatorTermsService _operatorTermsService;
-    private  ArkWalletService _arkWalletService => _serviceProvider.GetRequiredService<ArkWalletService>();
-
-    public ArkadePaymentMethodHandler(BTCPayServerEnvironment btcPayServerEnvironment,
-        IServiceProvider serviceProvider)
-    {
-        _networkType = btcPayServerEnvironment.NetworkType;
-        _serviceProvider = serviceProvider;
-        _operatorTermsService = serviceProvider.GetRequiredService<IOperatorTermsService>();
-    }
-
     public PaymentMethodId PaymentMethodId => ArkadePlugin.ArkadePaymentMethodId;
 
     public async Task ConfigurePrompt(PaymentMethodContext context)
@@ -33,7 +23,7 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
         ArkOperatorTerms terms;
         try
         {
-            terms=    await _operatorTermsService.GetOperatorTerms(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+            terms = await operatorTermsService.GetOperatorTerms(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
         }
         catch
         {
@@ -44,7 +34,6 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
         {
             throw new PaymentMethodUnavailableException("Amount too small");
         }
-        
 
         var store = context.Store;
 
@@ -53,11 +42,11 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
         {
             throw new PaymentMethodUnavailableException($"Arkade payment method not configured");
         }
-        var contract = await _arkWalletService.DerivePaymentContract(arkadePaymentMethodConfig.WalletId, CancellationToken.None);
+        var contract = await arkWalletService.DerivePaymentContract(arkadePaymentMethodConfig.WalletId, CancellationToken.None);
         var details = new ArkadePromptDetails(arkadePaymentMethodConfig.WalletId, contract);
         var address = contract.GetArkAddress();
        
-        context.Prompt.Destination = address.ToString( _networkType == ChainName.Mainnet);
+        context.Prompt.Destination = address.ToString(btcPayServerEnvironment.NetworkType == ChainName.Mainnet);
         context.Prompt.PaymentMethodFee = 0m;
 
         context.TrackedDestinations.Add(context.Prompt.Destination);
@@ -92,7 +81,8 @@ public class ArkadePaymentMethodHandler : IPaymentMethodHandler
 
     public ArkadePaymentData ParsePaymentDetails(JToken details)
     {
-        return details.ToObject<ArkadePaymentData>(Serializer) ?? throw new FormatException($"Invalid {nameof(ArkadePaymentData)}");
+        return details.ToObject<ArkadePaymentData>(Serializer) ??
+               throw new FormatException($"Invalid {nameof(ArkadePaymentData)}");
     }
     object IPaymentMethodHandler.ParsePaymentDetails(JToken details)
     {

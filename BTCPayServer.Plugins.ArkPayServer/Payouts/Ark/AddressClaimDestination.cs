@@ -1,23 +1,17 @@
+using BTCPayServer.Data;
+
 using NArk;
 
-namespace BTCPayServer.Data
+namespace BTCPayServer.Plugins.ArkPayServer.Payouts.Ark
 {
     public interface IArkClaimDestination : IClaimDestination
     {
         ArkAddress Address { get; }
     }
     
-    public class ArkAddressClaimDestination : IArkClaimDestination
+    public record ArkAddressClaimDestination(ArkAddress Address, bool IsMainNet) : IArkClaimDestination
     {
-        private readonly bool _mainnet;
-        public ArkAddress Address { get; }
-
-        public ArkAddressClaimDestination(ArkAddress address, bool mainnet)
-        {
-            _mainnet = mainnet;
-            Address = address;
-        }
-        public string? Id => Address.ToString(_mainnet);
+        public string? Id => Address.ToString(IsMainNet);
 
         public virtual decimal? Amount => null;
     }

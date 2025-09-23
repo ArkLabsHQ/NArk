@@ -2,8 +2,4 @@
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
-class ArkadeListenedContract
-{
-    public ArkadePromptDetails Details { get; set; }
-    public string InvoiceId { get; set; }
-}
+internal record ArkadeListenedContract(ArkadePromptDetails Details, string InvoiceId);

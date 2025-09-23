@@ -6,14 +6,14 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 
 public class ArkadeCheckoutModelExtension: ICheckoutModelExtension
 {
-    private readonly IEnumerable<IPaymentLinkExtension> _paymentLinkExtensions;
     private readonly IPaymentLinkExtension _arkadePaymentLinkExtension;
 
-    public ArkadeCheckoutModelExtension(
-        IEnumerable<IPaymentLinkExtension> paymentLinkExtensions)
+    public ArkadeCheckoutModelExtension(IEnumerable<IPaymentLinkExtension> paymentLinkExtensions)
     {
-        _paymentLinkExtensions = paymentLinkExtensions;
-        _arkadePaymentLinkExtension = paymentLinkExtensions.Single(p => p.PaymentMethodId == ArkadePlugin.ArkadePaymentMethodId);
+        _arkadePaymentLinkExtension =
+            paymentLinkExtensions
+                .SingleOrDefault(p => p.PaymentMethodId == ArkadePlugin.ArkadePaymentMethodId) ??
+            throw new InvalidOperationException("ArkadePaymentLinkExtension not found in DI");
     }
     public PaymentMethodId PaymentMethodId => ArkadePlugin.ArkadePaymentMethodId;
 
@@ -28,11 +28,17 @@ public class ArkadeCheckoutModelExtension: ICheckoutModelExtension
         
         context.Model.CheckoutBodyComponentName = BitcoinCheckoutModelExtension.CheckoutBodyComponentName;
         context.Model.ShowRecommendedFee = false;
-        context.Model.InvoiceBitcoinUrlQR = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper).ToUpperInvariant()
-            .Replace("BITCOIN:","bitcoin:")
-            .Replace("LIGHTNING=","lightning=")
-            .Replace("ARK=","ark=");
-        context.Model.InvoiceBitcoinUrl = _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper);
+        var paymentLink =
+            _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper)
+                ?? throw new Exception("Failed to generate Arkade payment link"); // should not happen
+        context.Model.InvoiceBitcoinUrlQR = 
+            paymentLink
+                .ToUpperInvariant()
+                .Replace("BITCOIN:","bitcoin:")
+                .Replace("LIGHTNING=","lightning=")
+                .Replace("ARK=","ark=");
+        context.Model.InvoiceBitcoinUrl = paymentLink;
+        
         if (context.Store.GetStoreBlob().OnChainWithLnInvoiceFallback)
         {
             var ln = PaymentTypes.LN.GetPaymentMethodId("BTC");

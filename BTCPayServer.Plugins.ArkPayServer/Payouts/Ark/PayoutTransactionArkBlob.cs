@@ -1,9 +1,8 @@
-using System.Collections.Generic;
-using System.Globalization;
+using BTCPayServer.Data;
 using NBitcoin;
 using Newtonsoft.Json;
 
-namespace BTCPayServer.Data
+namespace BTCPayServer.Plugins.ArkPayServer.Payouts.Ark
 {
     public class PayoutTransactionArkBlob : IPayoutProof
     {

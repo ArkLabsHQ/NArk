@@ -3,7 +3,7 @@ using NArk;
 using NBitcoin;
 using NBitcoin.Payment;
 
-namespace BTCPayServer.Data
+namespace BTCPayServer.Plugins.ArkPayServer.Payouts.Ark
 {
     public class ArkUriClaimDestination : IArkClaimDestination
     {

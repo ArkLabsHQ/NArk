@@ -4,6 +4,7 @@ using Ark.V1;
 using AsyncKeyedLock;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
+using BTCPayServer.Plugins.ArkPayServer.Models.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Grpc.Core;
@@ -293,7 +294,7 @@ public Task StartedTask => _started.Task;
         existing.SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy) ? null : vtxo.SpentBy;
         existing.Script = vtxo.Script;
 
-return existing;
+        return existing;
     }
 
     public async Task PollScripts(string[] scripts, CancellationToken cancellationToken)
@@ -349,20 +350,11 @@ return existing;
 
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        if (vtxosUpdated.Any())
+        if (vtxosUpdated.Count != 0)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine($"{vtxosUpdated.Count} VTXOs updated:");
-            foreach (var v in vtxosUpdated)
-            {
-                sb.AppendLine($"{v.TransactionId}:{v.TransactionOutputIndex}_{v.Script}_{Money.Satoshis(v.Amount)}");
-            }
-            
-            _logger.LogInformation(sb.ToString());
-            _eventAggregator.Publish(new VTXOsUpdated()
-            {
-                Vtxos = vtxosUpdated.ToArray()
-            });
+            var updateEvent = new VTXOsUpdated(vtxosUpdated.ToArray());
+            _logger.LogInformation("{Event}", updateEvent.ToString());
+            _eventAggregator.Publish(updateEvent);
         }
            
     }

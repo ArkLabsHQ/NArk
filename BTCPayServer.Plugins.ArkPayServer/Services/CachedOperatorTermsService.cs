@@ -10,11 +10,16 @@ public class CachedOperatorTermsService(ArkService.ArkServiceClient arkClient, I
 {
     public override async Task<ArkOperatorTerms> GetOperatorTerms(CancellationToken cancellationToken = default)
     {
-        return (await memoryCache.GetOrCreateAsync<ArkOperatorTerms>("OperatorTerms", async entry =>
+        var terms = await memoryCache.GetOrCreateAsync<ArkOperatorTerms>("OperatorTerms", async entry =>
         {
             var terms = await base.GetOperatorTerms(cancellationToken);
             entry.AbsoluteExpiration = DateTimeOffset.UtcNow.AddMinutes(1);
             return terms;
-        }))!;
+        });
+
+        if (terms is null)
+            throw new InvalidOperationException("Failed to fetch operator terms");
+
+        return terms;
     }
 }

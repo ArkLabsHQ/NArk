@@ -15,77 +15,60 @@ using NBitcoin.Secp256k1;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
-public class ArkadeSpender
+public class ArkadeSpender(
+    AsyncKeyedLocker asyncKeyedLocker,
+    ArkadeWalletSignerProvider arkadeWalletSignerProvider,
+    ArkTransactionBuilder arkTransactionBuilder,
+    ArkService.ArkServiceClient arkServiceClient,
+    ArkWalletService arkWalletService,
+    ILogger<ArkadeSpender> logger,
+    IOperatorTermsService operatorTermsService,
+    ArkSubscriptionService arkSubscriptionService)
 {
-    private readonly AsyncKeyedLocker _asyncKeyedLocker;
-    private readonly ArkTransactionBuilder _arkTransactionBuilder;
-    private readonly ArkService.ArkServiceClient _arkServiceClient;
-    private readonly ArkWalletService _arkWalletService;
-    private readonly ArkadeWalletSignerProvider _walletSignerProvider;
-    private readonly ILogger<ArkadeSpender> _logger;
-    private readonly IOperatorTermsService _operatorTermsService;
-    private readonly ArkSubscriptionService _arkSubscriptionService;
-
-    public ArkadeSpender(AsyncKeyedLocker asyncKeyedLocker, 
-        ArkadeWalletSignerProvider arkadeWalletSignerProvider,
-        ArkTransactionBuilder arkTransactionBuilder,
-        ArkService.ArkServiceClient arkServiceClient,
-        ArkWalletService arkWalletService,
-        ILogger<ArkadeSpender> logger,
-        IOperatorTermsService operatorTermsService,
-        ArkSubscriptionService arkSubscriptionService)
-    {
-        _asyncKeyedLocker = asyncKeyedLocker;
-        _walletSignerProvider = arkadeWalletSignerProvider;
-        _arkTransactionBuilder = arkTransactionBuilder;
-        _arkServiceClient = arkServiceClient;
-        _arkWalletService = arkWalletService;
-        _logger = logger;
-        _operatorTermsService = operatorTermsService;
-        _arkSubscriptionService = arkSubscriptionService;
-    }
-    
-
     public async Task<uint256> Spend(string walletId, TxOut[] outputs, CancellationToken cancellationToken = default)
     {
         var coinSet = await GetSpendableCoins([walletId], cancellationToken);
 
-       if (!coinSet.TryGetValue(walletId, out var coins) || coins.Count == 0)
-       {
-           throw new InvalidOperationException($"No coins to spend for wallet {walletId}");
-       }
-        _logger.LogInformation($"Found {coins.Count} VTXOs to spend for wallet {walletId}");
-        var wallet = await _arkWalletService.GetWallet(walletId , cancellationToken);
-        return await Spend(wallet,coins, outputs, cancellationToken);
+        if (!coinSet.TryGetValue(walletId, out var coins) || coins.Count == 0)
+        {
+            throw new InvalidOperationException($"No coins to spend for wallet {walletId}");
+        }
+
+        logger.LogInformation($"Found {coins.Count} VTXOs to spend for wallet {walletId}");
+        var wallet = await arkWalletService.GetWallet(walletId, cancellationToken);
+        return await Spend(wallet, coins, outputs, cancellationToken);
     }
-    public async Task<uint256> Spend(ArkWallet wallet, IEnumerable<SpendableArkCoinWithSigner> coins, TxOut[] outputs, CancellationToken cancellationToken = default)
+
+    public async Task<uint256> Spend(ArkWallet wallet, IEnumerable<SpendableArkCoinWithSigner> coins, TxOut[] outputs,
+        CancellationToken cancellationToken = default)
     {
-        using var l = await _asyncKeyedLocker.LockAsync($"ark-{wallet.Id}-txs-spending", cancellationToken);
-        
-        var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        using var l = await asyncKeyedLocker.LockAsync($"ark-{wallet.Id}-txs-spending", cancellationToken);
+
+        var operatorTerms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         var destination = await GetDestination(wallet, operatorTerms);
         return await SpendWalletCoins(coins, operatorTerms, outputs, destination, cancellationToken);
     }
-    
-    private async Task<uint256> SpendWalletCoins( IEnumerable<SpendableArkCoinWithSigner> coins, ArkOperatorTerms operatorTerms, TxOut[] outputs, ArkAddress changeAddress,CancellationToken cancellationToken)
-    {
 
+    private async Task<uint256> SpendWalletCoins(IEnumerable<SpendableArkCoinWithSigner> coins,
+        ArkOperatorTerms operatorTerms, TxOut[] outputs, ArkAddress changeAddress, CancellationToken cancellationToken)
+    {
         var totalInput = coins.Sum(x => x.TxOut.Value);
         var totalOutput = outputs.Sum(x => x.Value);
-        
+
         if (totalInput < totalOutput)
-            throw new InvalidOperationException($"Insufficient funds. Available: {totalInput}, Required: {totalOutput}");
+            throw new InvalidOperationException(
+                $"Insufficient funds. Available: {totalInput}, Required: {totalOutput}");
 
         var change = totalInput - totalOutput;
         if (change > operatorTerms.Dust)
             outputs = outputs.Concat([new TxOut(Money.Satoshis(change), changeAddress)]).ToArray();
-        
+
         try
         {
-            return await _arkTransactionBuilder.ConstructAndSubmitArkTransaction(
+            return await arkTransactionBuilder.ConstructAndSubmitArkTransaction(
                 coins,
                 outputs,
-                _arkServiceClient,
+                arkServiceClient,
                 cancellationToken);
         }
         catch (Exception ex)
@@ -93,21 +76,21 @@ public class ArkadeSpender
             var scripts = coins.Select(x => x.Contract.GetArkAddress().ScriptPubKey.ToHex())
                 .Concat(
                     outputs.Select(y => y.ScriptPubKey.ToHex())).ToHashSet();
-            
-            await _arkSubscriptionService.PollScripts(scripts.ToArray(), cancellationToken);
+
+            await arkSubscriptionService.PollScripts(scripts.ToArray(), cancellationToken);
             throw;
         }
-        
     }
-    public async Task<Dictionary<string, List<SpendableArkCoinWithSigner>>> GetSpendableCoins(string[]? walletIds, CancellationToken cancellationToken)
+
+    public async Task<Dictionary<string, List<SpendableArkCoinWithSigner>>> GetSpendableCoins(string[]? walletIds,
+        CancellationToken cancellationToken)
     {
-        
-        var vtxosAndContracts = await _arkWalletService.GetVTXOsAndContracts(walletIds, false, false, cancellationToken);
+        var vtxosAndContracts = await arkWalletService.GetVTXOsAndContracts(walletIds, false, false, cancellationToken);
 
         walletIds = vtxosAndContracts.Select(grouping => grouping.Key).ToArray();
-        var signers = await _walletSignerProvider.GetSigners(walletIds, cancellationToken);
+        var signers = await arkadeWalletSignerProvider.GetSigners(walletIds, cancellationToken);
 
-        var operatorTerms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        var operatorTerms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         var res = new Dictionary<string, List<SpendableArkCoinWithSigner>>();
         foreach (var walletSigner in signers)
         {
@@ -117,12 +100,9 @@ public class ArkadeSpender
                 continue;
             var coins = await GetSpendableCoins(group, signer, operatorTerms);
             res.Add(walletId, coins);
-            
         }
         
-        
         return res;
-
     }
 
     private async Task<List<SpendableArkCoinWithSigner>> GetSpendableCoins(
@@ -152,10 +132,12 @@ public class ArkadeSpender
                     coins.Add(res);
             }
         }
+        
         return coins;
     }
 
-    private static async Task<SpendableArkCoinWithSigner?> GetSpendableCoin(IArkadeWalletSigner signer, ArkContract contract, ICoinable vtxo)
+    private static async Task<SpendableArkCoinWithSigner?> GetSpendableCoin(IArkadeWalletSigner signer,
+        ArkContract contract, ICoinable vtxo)
     {
         ECXOnlyPubKey user = await signer.GetPublicKey();
         switch (contract)
@@ -163,21 +145,23 @@ public class ArkadeSpender
             case ArkPaymentContract arkPaymentContract:
                 if (arkPaymentContract.User.ToBytes().SequenceEqual(user.ToBytes()))
                 {
-                    return ToArkCoin(contract,vtxo, signer,arkPaymentContract.CollaborativePath(),null, null, null);
+                    return ToArkCoin(contract, vtxo, signer, arkPaymentContract.CollaborativePath(), null, null, null);
                 }
+
                 break;
             case HashLockedArkPaymentContract hashLockedArkPaymentContract:
                 if (hashLockedArkPaymentContract.User.ToBytes().SequenceEqual(user.ToBytes()))
                 {
-                    return ToArkCoin(contract,vtxo, signer,
+                    return ToArkCoin(contract, vtxo, signer,
                         hashLockedArkPaymentContract.CreateClaimScript(),
                         new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null, null);
                 }
+
                 break;
             case VHTLCContract htlc:
                 if (htlc.Preimage is not null && htlc.Receiver.ToBytes().SequenceEqual(user.ToBytes()))
                 {
-                    return ToArkCoin(contract,vtxo, signer,
+                    return ToArkCoin(contract, vtxo, signer,
                         htlc.CreateClaimScript(),
                         new WitScript(Op.GetPushOp(htlc.Preimage!)), null, null);
                 }
@@ -185,15 +169,17 @@ public class ArkadeSpender
                 if (htlc.RefundLocktime.IsTimeLock &&
                     htlc.RefundLocktime.Date < DateTime.UtcNow && htlc.Sender.ToBytes().SequenceEqual(user.ToBytes()))
                 {
-                    return ToArkCoin(contract,vtxo, signer,
+                    return ToArkCoin(contract, vtxo, signer,
                         htlc.CreateRefundWithoutReceiverScript(),
                         null, htlc.RefundLocktime, null);
                 }
 
                 break;
         }
+
         return null;
     }
+
     private static SpendableArkCoinWithSigner ToArkCoin(ArkContract c, ICoinable vtxo, IArkadeWalletSigner signer,
         ScriptBuilder leaf, WitScript? witness, LockTime? lockTime, Sequence? sequence)
     {
@@ -203,12 +189,10 @@ public class ArkadeSpender
     public Task<ArkAddress> GetDestination(ArkWallet wallet, ArkOperatorTerms arkOperatorTerms)
     {
         var destination = wallet.Destination;
-        if (destination is null)
-        {
-            var destinationContract = ContractUtils.DerivePaymentContract(new DeriveContractRequest(arkOperatorTerms, wallet.PublicKey));
-            destination = destinationContract.GetArkAddress();
-        }
+        destination ??= 
+            ContractUtils
+                .DerivePaymentContract(new DeriveContractRequest(arkOperatorTerms, wallet.PublicKey))
+                .GetArkAddress();
         return Task.FromResult(destination);
     }
-    
 }

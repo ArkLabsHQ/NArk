@@ -4,18 +4,10 @@ using Newtonsoft.Json;
 
 namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 
-public class ArkadePromptDetails(string WalletId, ArkContract contract)
-{
-    public string WalletId { get; init; } = WalletId;
-    [JsonConverter(typeof(ArkContractJsonConverter))]
-    public ArkContract Contract { get; init; } = contract;
-
-    public void Deconstruct(out string walletId, out ArkContract contract)
-    {
-        walletId = this.WalletId;
-        contract = this.Contract;
-    }
-}
+public record ArkadePromptDetails(
+    string WalletId,
+    [property: JsonConverter(typeof(ArkContractJsonConverter))]
+    ArkContract Contract);
 
 public class ArkContractJsonConverter : JsonConverter<ArkContract>
 {

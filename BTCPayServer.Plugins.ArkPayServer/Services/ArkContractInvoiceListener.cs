@@ -6,6 +6,7 @@ using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
+using BTCPayServer.Plugins.ArkPayServer.Models.Events;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using Microsoft.Extensions.Caching.Memory;
@@ -148,11 +149,11 @@ public class ArkContractInvoiceListener(
         var prompt = invoice.GetPaymentPrompt(ArkadePlugin.ArkadePaymentMethodId);
         return prompt is null
             ? null
-            : new ArkadeListenedContract
-            {
-                InvoiceId = invoice.Id,
-                Details = arkadePaymentMethodHandler.ParsePaymentPromptDetails(prompt.Details)
-            };
+            : new ArkadeListenedContract(
+
+                arkadePaymentMethodHandler.ParsePaymentPromptDetails(prompt.Details),
+                invoice.Id
+            );
     }
 
     private static DateTimeOffset GetExpiration(InvoiceEntity invoice)
@@ -198,8 +199,7 @@ public class ArkContractInvoiceListener(
             return;
         try
         {
-            while (await _checkInvoices.Reader.WaitToReadAsync(cancellation) &&
-                   _checkInvoices.Reader.TryRead(out var invoiceId))
+            await foreach (var invoiceId in _checkInvoices.Reader.ReadAllAsync(cancellation))
             {
                 logger.LogInformation("Checking for invoice {InvoiceId}", invoiceId);
                 var invoice = await GetInvoice(invoiceId);

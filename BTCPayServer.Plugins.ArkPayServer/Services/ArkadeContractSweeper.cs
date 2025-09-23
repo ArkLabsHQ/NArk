@@ -1,6 +1,4 @@
-using AsyncKeyedLock;
-using BTCPayServer.Plugins.ArkPayServer.Data;
-using Microsoft.EntityFrameworkCore;
+using BTCPayServer.Plugins.ArkPayServer.Models.Events;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk.Services;
@@ -21,7 +19,6 @@ public class ArkadeContractSweeper : IHostedService
     private CancellationTokenSource _cts = new();
     private TaskCompletionSource? _tcsWaitForNextPoll;
     
-
     public ArkadeContractSweeper(
         ArkadeSpender arkadeSpender,
         ArkWalletService arkWalletService,
@@ -101,7 +98,6 @@ public class ArkadeContractSweeper : IHostedService
         }
     }
     
-
     private Task OnVTXOsUpdated(VTXOsUpdated arg)
     {
         _tcsWaitForNextPoll?.TrySetResult();
