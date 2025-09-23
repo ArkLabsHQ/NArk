@@ -26,11 +26,13 @@ namespace BTCPayServer.Plugins.ArkPayServer;
 
 public class ArkadePlugin : BaseBTCPayServerPlugin
 {
-    public const string PluginNavKey = nameof(ArkadePlugin) + "Nav";
+    internal const string PluginNavKey = nameof(ArkadePlugin) + "Nav";
+    internal const string ArkadeDisplayName = "Arkade";
 
     internal static PaymentMethodId ArkadePaymentMethodId = new PaymentMethodId("ARKADE");
+    
+    /*
     internal static PayoutMethodId ArkadePayoutMethodId = Create();
-    internal static string ArkadeDisplayName = "Arkade";
 
 
     private static PayoutMethodId Create()
@@ -39,6 +41,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         var constructor = typeof(PayoutMethodId).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, new[] { typeof(string) })!;
         return (PayoutMethodId) constructor.Invoke(new object[] { "ARKADE" })!;
     }
+    */
     
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     [
@@ -48,52 +51,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     public override void Execute(IServiceCollection serviceCollection)
     {
         var pluginServiceCollection = (PluginServiceCollection) serviceCollection;
-        var configurationServices = pluginServiceCollection.BootstrapServices.GetRequiredService<IConfiguration>();
         
-        var arkadeFilePath = Path.Combine(new DataDirectories().Configure(configurationServices).DataDir, "ark.json");
-
-     
-
-        var networkType  = DefaultConfiguration.GetNetworkType(pluginServiceCollection.BootstrapServices.GetRequiredService<IConfiguration>());
-
-        var arkUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
-            ? "https://mutinynet.arkade.sh"
-            : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
-                ? "https://signet.arkade.sh"
-                : networkType == ChainName.Regtest
-                    ? "http://localhost:7070"
-                    : null;
-
-       
+        var (arkUri, boltzUri) = GetServiceUris(pluginServiceCollection);
         
-        var boltzUri = networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName
-            ? "https://mutinynet.boltz.exchange/"
-            : networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName
-                ? "https://signet.boltz.exchange/"
-                : networkType == ChainName.Regtest
-                    ? "http://localhost:9001/"
-                    : null;
-        
-        if (File.Exists(arkadeFilePath))
-        {
-            var json = File.ReadAllText(arkadeFilePath);
-            var config = JsonSerializer.Deserialize<ArkConfiguration>(json);
-
-            if(!string.IsNullOrEmpty(config?.BoltzUri))
-            {
-                boltzUri = config.BoltzUri;
-            }
-            
-            if(!string.IsNullOrEmpty(config?.ArkUri))
-            {
-                arkUri = config.ArkUri;
-            }
-            
-        }
-        if (arkUri is null)
-        {
-            return;
-        }
+        if (arkUri is null) return;
         
         SetupBtcPayPluginServices(serviceCollection);
         
@@ -144,8 +105,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         
         // Use NArk SDK Services
         var configuration = new ArkConfiguration(
-            arkUri: arkUri,
-            boltzUri: boltzUri
+            ArkUri: arkUri,
+            BoltzUri: boltzUri
         );
         
         serviceCollection.AddGrpcClient<ArkService.ArkServiceClient>(options =>
@@ -174,7 +135,68 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             });
         }
     }
+
+    private static (string? ArkUri, string? BoltzUri) GetServiceUris(PluginServiceCollection pluginServiceCollection)
+    {
+        var networkType = 
+            DefaultConfiguration.GetNetworkType(
+                pluginServiceCollection
+                    .BootstrapServices
+                    .GetRequiredService<IConfiguration>()
+            );
+        
+        var arkUri = GetArkServiceUri(networkType);
+        var boltzUri = GetBoltzServiceUri(networkType);
+        
+        var configurationServices =
+            pluginServiceCollection
+                .BootstrapServices
+                .GetRequiredService<IConfiguration>();
+        
+        var arkadeFilePath =
+            Path.Combine(new DataDirectories().Configure(configurationServices).DataDir, "ark.json");
+        
+        if (File.Exists(arkadeFilePath))
+        {
+            var json = File.ReadAllText(arkadeFilePath);
+            var config = JsonSerializer.Deserialize<ArkConfiguration>(json);
+
+            if(!string.IsNullOrEmpty(config?.BoltzUri))
+            {
+                boltzUri = config.BoltzUri;
+            }
+            
+            if(!string.IsNullOrEmpty(config?.ArkUri))
+            {
+                arkUri = config.ArkUri;
+            }
+        }
+
+        return (arkUri, boltzUri);
+    }
+
+    private static string? GetArkServiceUri(ChainName networkType)
+    {
+        if (networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName)
+            return "https://mutinynet.arkade.sh";
+        if (networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName)
+            return "https://signet.arkade.sh";
+        if (networkType == ChainName.Regtest)
+            return "http://localhost:7070";
+        return null;
+    }
     
+    private static string? GetBoltzServiceUri(ChainName networkType)
+    {
+        if (networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName)
+            return "https://mutinynet.boltz.exchange/";
+        if (networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName)
+            return "https://signet.boltz.exchange/";
+        if (networkType == ChainName.Regtest)
+            return "http://localhost:9001/";
+        return null;
+    }
+
     private static void SetupBtcPayPluginServices(IServiceCollection serviceCollection)
     {
         // Register ArkConnectionStringHandler so LightningClientFactoryService can create the client
@@ -184,10 +206,5 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
         
         serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
-    }
-    
-    public override void Execute(IApplicationBuilder applicationBuilder, IServiceProvider provider)
-    {
-        base.Execute(applicationBuilder, provider);
     }
 }
