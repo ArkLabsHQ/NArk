@@ -10,20 +10,23 @@ public class ArkadePaymentLinkExtension : IPaymentLinkExtension
 {
     public PaymentMethodId PaymentMethodId { get; } = ArkadePlugin.ArkadePaymentMethodId;
 
-    public string? GetPaymentLink(PaymentPrompt prompt, IUrlHelper? urlHelper)
+    public string GetPaymentLink(PaymentPrompt prompt, IUrlHelper? urlHelper)
     {
-        var onchain = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.CHAIN.GetPaymentMethodId("BTC"));
-        var ln = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LN.GetPaymentMethodId("BTC"));
-        var lnurl = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LNURL.GetPaymentMethodId("BTC"));
+        var onchain =
+            prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.CHAIN.GetPaymentMethodId("BTC"));
+        var ln =
+            prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LN.GetPaymentMethodId("BTC"));
+        var lnurl =
+            prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LNURL.GetPaymentMethodId("BTC"));
 
-        if (string.IsNullOrEmpty(onchain?.Destination) && ln is  null && lnurl is null)
+        var amountInString = prompt.Calculate().Due.ToString(CultureInfo.InvariantCulture);
+        
+        if (string.IsNullOrEmpty(onchain?.Destination) && ln is null && lnurl is null)
         {
-            return
-                $"bitcoin:{prompt.Destination}?amount={prompt.Calculate().Due.ToString(CultureInfo.InvariantCulture)}";
-            
+            return $"bitcoin:{prompt.Destination}?amount={amountInString}";
         }
 
-        var res = $"bitcoin:{onchain?.Destination??String.Empty}?amount={prompt.Calculate().Due.ToString(CultureInfo.InvariantCulture)}&ark={prompt.Destination}";
+        var res = $"bitcoin:{onchain?.Destination ?? string.Empty}?amount={amountInString}&ark={prompt.Destination}";
         
         if (ln is not null)
         {
@@ -33,6 +36,7 @@ public class ArkadePaymentLinkExtension : IPaymentLinkExtension
         {
             res += $"&lightning={lnurl.Destination}";
         }
+        
         return res;
     }
 }
