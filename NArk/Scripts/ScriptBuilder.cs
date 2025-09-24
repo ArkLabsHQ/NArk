@@ -4,7 +4,6 @@ namespace NArk.Scripts;
 
 public abstract class ScriptBuilder
 {
-
     public abstract IEnumerable<Op> BuildScript();
     
     public virtual TapScript Build()

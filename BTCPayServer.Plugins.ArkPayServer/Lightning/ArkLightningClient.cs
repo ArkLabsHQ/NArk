@@ -23,7 +23,7 @@ public class ArkLightningClient(
     EventAggregator eventAggregator,
     ILogger<ArkLightningInvoiceListener> logger) : IExtendedLightningClient
 {
-    public async Task<LightningInvoice> GetInvoice(string invoiceId, CancellationToken cancellation = default)
+    public async Task<LightningInvoice?> GetInvoice(string invoiceId, CancellationToken cancellation = default)
     {
         await using var dbContext = dbContextFactory.CreateContext();
         var reverseSwap = await dbContext.Swaps
@@ -37,7 +37,7 @@ public class ArkLightningClient(
         return reverseSwap == null ? null : Map(reverseSwap, network);
     }
 
-    public async Task<LightningInvoice> GetInvoice(uint256 paymentHash, CancellationToken cancellation = default)
+    public async Task<LightningInvoice?> GetInvoice(uint256 paymentHash, CancellationToken cancellation = default)
     {
         await using var dbContext = dbContextFactory.CreateContext();
         var paymentHashStr = paymentHash.ToString();
@@ -55,6 +55,7 @@ public class ArkLightningClient(
     public static LightningInvoice Map(ArkSwap reverseSwap, Network network)
     {
         var bolt11 = BOLT11PaymentRequest.Parse(reverseSwap.Invoice, network);
+
         var lightningStatus = reverseSwap.Status switch
         {
             ArkSwapStatus.Settled => LightningInvoiceStatus.Paid,
@@ -65,6 +66,7 @@ public class ArkLightningClient(
 
         VHTLCContract? contract =
             ArkContract.Parse(reverseSwap.Contract.Type, reverseSwap.Contract.ContractData) as VHTLCContract;
+
         return new LightningInvoice
         {
             Id = reverseSwap.SwapId,
@@ -72,7 +74,7 @@ public class ArkLightningClient(
             Status = lightningStatus,
             ExpiresAt = bolt11.ExpiryDate,
             BOLT11 = reverseSwap.Invoice,
-            PaymentHash = bolt11.PaymentHash.ToString(),
+            PaymentHash = bolt11.PaymentHash?.ToString(),
             PaidAt = lightningStatus == LightningInvoiceStatus.Paid ? reverseSwap.UpdatedAt : null,
             // we have to comment this out because BTCPay will consider this invoice as partially paid..
             // AmountReceived = lightningStatus == LightningInvoiceStatus.Paid
@@ -127,6 +129,10 @@ public class ArkLightningClient(
                 rs.SwapType == ArkSwapType.Submarine &&
                 rs.Hash == paymentHash
                 && rs.WalletId == walletId, cancellation);
+
+        if (swap == null)
+            throw new KeyNotFoundException("Swap with the given payment hash was not found");
+
         return MapPayment(swap);
     }
 
@@ -174,7 +180,7 @@ public class ArkLightningClient(
             .Skip((int)request.OffsetIndex.GetValueOrDefault(0))
             .ToListAsync(cancellation);
         
-        return swaps.Select(MapPayment).ToArray();
+        return [.. swaps.Select(MapPayment)];
     }
 
     public async Task<LightningInvoice> CreateInvoice(LightMoney amount, string description, TimeSpan expiry,

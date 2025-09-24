@@ -2,14 +2,9 @@
 
 namespace NArk.Scripts;
 
-public class LockTimeTapScript : ScriptBuilder
+public class LockTimeTapScript(LockTime lockTime) : ScriptBuilder
 {
-    public LockTime LockTime { get; }
-
-    public LockTimeTapScript(LockTime lockTime)
-    {
-        LockTime = lockTime;
-    }
+    public LockTime LockTime => lockTime;
 
     public static TapScript Create(LockTime lockTime) => new LockTimeTapScript(lockTime).Build();
 

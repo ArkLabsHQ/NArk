@@ -2,19 +2,11 @@ using NBitcoin;
 
 namespace NArk.Scripts;
 
-public class UnilateralPathArkTapScript: ScriptBuilder
+public class UnilateralPathArkTapScript(Sequence timeout, NofNMultisigTapScript owners, ScriptBuilder? condition = null) : ScriptBuilder
 {
-    public Sequence Timeout { get; }
-    public NofNMultisigTapScript Owners { get; }
-    public ScriptBuilder? Condition { get; set; }
-
-    public UnilateralPathArkTapScript(Sequence timeout, NofNMultisigTapScript owners, ScriptBuilder? condition= null)
-    {
-        Timeout = timeout;
-        Owners = owners;
-        Condition = condition;
-    }
-
+    public Sequence Timeout => timeout;
+    public NofNMultisigTapScript Owners => owners;
+    public ScriptBuilder? Condition => condition;
 
     public override IEnumerable<Op> BuildScript()
     {

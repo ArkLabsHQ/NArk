@@ -3,19 +3,10 @@ using NBitcoin.Secp256k1;
 
 namespace NArk.Scripts;
 
-
-
-
-public class CollaborativePathArkTapScript:ScriptBuilder
+public class CollaborativePathArkTapScript(ECXOnlyPubKey server, ScriptBuilder? condition = null) : ScriptBuilder
 {
-    public ECXOnlyPubKey Server { get; }
-    public ScriptBuilder? Condition { get; }
-
-    public CollaborativePathArkTapScript(ECXOnlyPubKey server, ScriptBuilder? condition = null)
-    {
-        Server = server;
-        Condition = condition;
-    }
+    public ECXOnlyPubKey Server => server;
+    public ScriptBuilder? Condition => condition;
 
     public static TapScript Create(ECXOnlyPubKey server, ScriptBuilder? condition = null) => 
         new CollaborativePathArkTapScript(server, condition).Build();

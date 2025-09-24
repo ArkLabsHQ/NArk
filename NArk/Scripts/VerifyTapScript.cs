@@ -4,8 +4,6 @@ namespace NArk.Scripts;
 
 public class VerifyTapScript : ScriptBuilder
 {
-
-
     public static TapScript Create() => new VerifyTapScript().Build();
 
     public override IEnumerable<Op> BuildScript()

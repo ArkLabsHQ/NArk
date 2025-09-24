@@ -2,25 +2,13 @@
 
 namespace NArk.Scripts;
 
-public class HashLockTapScript : ScriptBuilder
+public class HashLockTapScript(byte[] hash, HashLockTypeOption hashLockType) : ScriptBuilder
 {
-    public byte[] Hash { get; }
-    public HashLockTypeOption HashLockType { get; }
+    public byte[] Hash { get; } = hash;
+    public HashLockTypeOption HashLockType { get; } = hashLockType;
 
-    public HashLockTapScript(uint160 hash): this(hash.ToBytes(false), HashLockTypeOption.HASH160)
-    {
-        
-    }
-    public HashLockTapScript(uint256 hash): this(hash.ToBytes(false), HashLockTypeOption.SHA256)
-    {
-        
-    }
-    
-    public HashLockTapScript(byte[] hash, HashLockTypeOption hashLockType)
-    {
-        Hash = hash;
-        HashLockType = hashLockType;
-    }
+    public HashLockTapScript(uint160 hash): this(hash.ToBytes(false), HashLockTypeOption.HASH160) { }
+    public HashLockTapScript(uint256 hash): this(hash.ToBytes(false), HashLockTypeOption.SHA256) { }
 
     public override IEnumerable<Op> BuildScript()
     {
