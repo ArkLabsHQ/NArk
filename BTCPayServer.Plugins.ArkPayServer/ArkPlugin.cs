@@ -94,8 +94,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
 
         
-        serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/Ark/ArkLNSetupTabhead.cshtml");
-        serviceCollection.AddUIExtension("store-invoices-payments", "/Views/Ark/ArkPaymentData.cshtml");
+        serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/OldArk/ArkLNSetupTabhead.cshtml");
+        serviceCollection.AddUIExtension("store-invoices-payments", "/Views/OldArk/ArkPaymentData.cshtml");
         // Display Ark as a wallet type in navigation sidebar
         serviceCollection.AddUIExtension("store-wallets-nav", "/Views/Ark/ArkWalletNav.cshtml");
         

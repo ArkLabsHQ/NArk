@@ -9,16 +9,36 @@
 @model BTCPayServer.Components.MainNav.MainNavViewModel
 @inject PaymentMethodHandlerDictionary HandlerDictionary 
 @{
-   var config =  Context.GetStoreData().GetPaymentMethodConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, HandlerDictionary, true);
-  var  enabled = !string.IsNullOrEmpty(config?.WalletId);
+    var config =
+        Context
+        .GetStoreData()
+        .GetPaymentMethodConfig<ArkadePaymentMethodConfig>(
+            ArkadePlugin.ArkadePaymentMethodId,
+            HandlerDictionary,
+            true
+        );
+    var enabled = !string.IsNullOrEmpty(config?.WalletId);
 }
 
 <li class="nav-item">
-    <a asp-area="" asp-controller="Ark" asp-action="SetupStore"
+    <a asp-area="" asp-controller="Ark" asp-action="@(enabled ? "StoreOverview" : "InitialSetup")"
        asp-route-storeId="@Model.Store.Id"
        class="nav-link @ViewData.ActivePageClass("Ark", nameof(StoreNavPages))"
        id="StoreNav-Ark">
         <span class="me-2 btcpay-status btcpay-status--@(enabled ? "enabled" : "pending")"></span>
         <span>Arkade</span>
     </a>
+
+    @if (ViewData.IsCategoryActive("Ark"))
+    {
+        <li class="nav-item nav-item-sub">
+            <a id="StoreNav-@(nameof(StoreNavPages.LightningSettings))"
+            class="nav-link @ViewData.ActivePageClass("InitialSetup", "Ark")"
+            asp-controller="Ark"
+            asp-action="InitialSetup"
+            asp-route-storeId="@Model.Store.Id"
+            ext-translate="true">Getting Started</a>
+        </li>
+    }
+
 </li>
