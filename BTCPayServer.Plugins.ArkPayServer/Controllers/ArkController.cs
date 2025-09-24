@@ -14,11 +14,11 @@ using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.AspNetCore.Authorization;
 using NArk;
-using NArk.Services;
-using NArk.Services.Models;
+using NArk.Models;
 using NBitcoin;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
+using NArk.Services.Abstractions;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 

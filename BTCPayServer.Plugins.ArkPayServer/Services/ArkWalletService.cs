@@ -10,10 +10,11 @@ using Microsoft.Extensions.Hosting;
 using NArk;
 using NArk.Contracts;
 using NArk.Services;
-using NArk.Services.Models;
+using NArk.Models;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 using NArk.Extensions;
+using NArk.Services.Abstractions;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 

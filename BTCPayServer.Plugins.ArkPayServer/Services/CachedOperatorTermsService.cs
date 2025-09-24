@@ -2,7 +2,7 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using NArk.Services;
-using NArk.Services.Models;
+using NArk.Models;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 

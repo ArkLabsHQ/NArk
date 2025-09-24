@@ -7,9 +7,10 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using NArk;
 using NArk.Contracts;
+using NArk.Models;
 using NArk.Scripts;
 using NArk.Services;
-using NArk.Services.Models;
+using NArk.Services.Abstractions;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 

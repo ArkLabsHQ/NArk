@@ -1,7 +1,8 @@
 using Ark.V1;
 using Microsoft.Extensions.Logging;
 using NArk.Extensions;
-using NArk.Services.Models;
+using NArk.Services.Abstractions;
+using NArk.Models;
 
 namespace NArk.Services;
 

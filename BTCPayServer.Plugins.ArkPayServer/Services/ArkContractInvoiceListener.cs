@@ -13,7 +13,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NArk;
-using NArk.Services;
+using NArk.Services.Abstractions;
 using NBitcoin;
 using NBXplorer;
 using Newtonsoft.Json.Linq;

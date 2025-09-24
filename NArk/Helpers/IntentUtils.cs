@@ -1,6 +1,7 @@
 ﻿using System.Text.Json;
 using NArk.Extensions;
 using NArk.Services;
+using NArk.Services.Abstractions;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 

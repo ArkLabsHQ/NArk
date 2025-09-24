@@ -12,6 +12,7 @@ using NArk;
 using NArk.Boltz.Client;
 using NArk.Boltz.Models.WebSocket;
 using NArk.Contracts;
+using NArk.Models;
 using NArk.Services;
 using NBitcoin;
 using NBitcoin.Crypto;

@@ -5,6 +5,8 @@ using NArk.Boltz.Models.Swaps.Reverse;
 using NArk.Boltz.Models.Swaps.Submarine;
 using NArk.Contracts;
 using NArk.Extensions;
+using NArk.Models;
+using NArk.Services.Abstractions;
 using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.DataEncoders;
@@ -21,8 +23,6 @@ public class BoltzSwapService(
         CancellationToken cancellationToken = default)
     {
         var operatorTerms = await operatorTermsService.GetOperatorTerms(cancellationToken);
-
-
 
         var response = await boltzClient.CreateSubmarineSwapAsync(new SubmarineRequest()
         {
@@ -52,12 +52,7 @@ public class BoltzSwapService(
         if (response.Address != address.ToString(operatorTerms.Network.ChainName == ChainName.Mainnet))
             throw new Exception($"Address mismatch! Expected {address.ToString(operatorTerms.Network.ChainName == ChainName.Mainnet)} got {response.Address}");
 
-        return new SubmarineSwapResult()
-        {
-            Address = address,
-            Swap = response,
-            Contract = vhtlcContract
-        };
+        return new SubmarineSwapResult(vhtlcContract, response, address);
     }
 
     public async Task<ReverseSwapResult> CreateReverseSwap(
@@ -151,11 +146,6 @@ public class BoltzSwapService(
         logger.LogInformation("Successfully created reverse swap with ID: {SwapId}, lockup address: {LockupAddress}",
             response.Id, response.LockupAddress);
 
-        return new ReverseSwapResult
-        {
-            Contract = vhtlcContract,
-            Swap = response,
-            Hash = preimageHash
-        };
+        return new ReverseSwapResult(vhtlcContract, response, preimageHash);
     }
 }

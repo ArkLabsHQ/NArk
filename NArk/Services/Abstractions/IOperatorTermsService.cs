@@ -1,6 +1,6 @@
-using NArk.Services.Models;
+using NArk.Models;
 
-namespace NArk.Services;
+namespace NArk.Services.Abstractions;
 
 public interface IOperatorTermsService
 {

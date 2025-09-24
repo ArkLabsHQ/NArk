@@ -1,4 +1,5 @@
-﻿using NBitcoin;
+﻿using NArk.Services.Abstractions;
+using NBitcoin;
 using NBitcoin.Secp256k1;
 
 namespace NArk.Services;

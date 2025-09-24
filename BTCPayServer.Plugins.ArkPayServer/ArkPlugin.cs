@@ -21,6 +21,7 @@ using NBitcoin;
 using System.Reflection;
 using System.Text.Json;
 using Grpc.Net.ClientFactory;
+using NArk.Services.Abstractions;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 

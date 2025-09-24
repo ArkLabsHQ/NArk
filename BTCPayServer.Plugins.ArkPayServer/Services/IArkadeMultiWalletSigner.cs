@@ -1,4 +1,4 @@
-﻿using NArk.Services;
+﻿using NArk.Services.Abstractions;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 

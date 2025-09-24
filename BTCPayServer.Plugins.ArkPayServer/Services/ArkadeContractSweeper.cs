@@ -1,7 +1,7 @@
 using BTCPayServer.Plugins.ArkPayServer.Models.Events;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using NArk.Services;
+using NArk.Services.Abstractions;
 using NBitcoin;
 using NBXplorer;
 

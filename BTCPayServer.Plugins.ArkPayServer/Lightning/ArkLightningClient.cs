@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using NArk;
 using NArk.Contracts;
 using NArk.Extensions;
-using NArk.Services;
+using NArk.Services.Abstractions;
 using NBitcoin;
 using NodeInfo = BTCPayServer.Lightning.NodeInfo;
 

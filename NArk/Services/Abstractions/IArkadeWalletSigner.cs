@@ -1,7 +1,7 @@
 ﻿using NBitcoin;
 using NBitcoin.Secp256k1;
 
-namespace NArk.Services;
+namespace NArk.Services.Abstractions;
 
 public interface IArkadeWalletSigner
 {

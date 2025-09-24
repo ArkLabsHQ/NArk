@@ -1,6 +1,7 @@
 ﻿using NArk.Contracts;
 using NArk.Scripts;
 using NArk.Services;
+using NArk.Services.Abstractions;
 using NBitcoin;
 
 namespace NArk;

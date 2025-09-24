@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NArk;
 using NArk.Extensions;
 using NArk.Services;
-using NArk.Services.Models;
+using NArk.Models;
 using NBitcoin.Secp256k1;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Data.Entities;

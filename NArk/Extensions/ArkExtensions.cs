@@ -1,5 +1,5 @@
 ﻿using Ark.V1;
-using NArk.Services.Models;
+using NArk.Models;
 using NBitcoin;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;

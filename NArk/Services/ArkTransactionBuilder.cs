@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using NArk.Contracts;
 using NArk.Models;
 using NArk.Scripts;
-using NArk.Services.Models;
+using NArk.Services.Abstractions;
 using NBitcoin;
 
 namespace NArk.Services
@@ -112,7 +112,7 @@ namespace NArk.Services
             }
             catch (Exception e)
             {
-                logger.LogError(e, $"Error finalizing transaction\n{finalizeTxRequest}");
+                logger.LogError(e, "Error finalizing transaction {finalizeTxRequest}", finalizeTxRequest);
                 throw;
             }
         }
@@ -249,6 +249,9 @@ namespace NArk.Services
         /// </summary>
         private ArkContract CreateCheckpointContract(SpendableArkCoinWithSigner coin, ArkOperatorTerms terms)
         {
+            if (coin.Contract.Server is null)
+                throw new ArgumentException("Server key is required for checkpoint contract creation");
+
             var scriptBuilders = new List<ScriptBuilder>
             {
                 coin.SpendingScriptBuilder,
