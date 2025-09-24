@@ -1,3 +1,4 @@
+using NArk.Extensions;
 using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Crypto;
@@ -5,8 +6,6 @@ using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
 
 namespace NArk.Contracts;
-
-
 
 public class VHTLCContract : ArkContract
 {
@@ -77,7 +76,7 @@ public class VHTLCContract : ArkContract
     {
         var data = new Dictionary<string, string>
         {
-            { "server", Server.ToHex() },
+            { "server", Server!.ToHex() },
             { "sender", Sender.ToHex() },
             { "receiver", Receiver.ToHex() },
             { "hash", Hash.ToString() },
@@ -120,7 +119,7 @@ public class VHTLCContract : ArkContract
         // claim (preimage + receiver)
         var hashLock = new HashLockTapScript(Hash);
         var receiverMultisig = new NofNMultisigTapScript([Receiver]);
-        return new CollaborativePathArkTapScript(Server,
+        return new CollaborativePathArkTapScript(Server!,
             new CompositeTapScript(hashLock, new VerifyTapScript() ,receiverMultisig));
     }
 
@@ -128,14 +127,14 @@ public class VHTLCContract : ArkContract
     {
         // refund (sender + receiver + server)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender, Receiver]);
-        return new CollaborativePathArkTapScript(Server, senderReceiverMultisig);
+        return new CollaborativePathArkTapScript(Server!, senderReceiverMultisig);
     }
     public ScriptBuilder CreateRefundWithoutReceiverScript()
     {
         // refundWithoutReceiver (at refundLocktime, sender  + server)
         var senderReceiverMultisig = new NofNMultisigTapScript([Sender]);
         var lockTime = new LockTimeTapScript(RefundLocktime);
-        return new CollaborativePathArkTapScript(Server,
+        return new CollaborativePathArkTapScript(Server!,
             new CompositeTapScript(lockTime, senderReceiverMultisig));
     }
 

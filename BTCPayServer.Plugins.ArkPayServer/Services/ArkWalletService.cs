@@ -13,11 +13,11 @@ using NArk.Services;
 using NArk.Services.Models;
 using NBitcoin;
 using NBitcoin.Secp256k1;
+using NArk.Extensions;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkWalletService(
-    AsyncKeyedLocker asyncKeyedLocker,
     ArkPluginDbContextFactory dbContextFactory,
     IOperatorTermsService operatorTermsService,
     ArkSubscriptionService arkSubscriptionService,
@@ -117,7 +117,7 @@ public class ArkWalletService(
     public async Task<string> Upsert(string walletValue, string? destination, bool owner,
         CancellationToken cancellationToken = default)
     {
-        var publicKey = ArkExtensions.GetXOnlyPubKeyFromWallet(walletValue);
+        var publicKey = KeyExtensions.GetXOnlyPubKeyFromWallet(walletValue);
         var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         if (destination is not null)
         {
@@ -236,7 +236,7 @@ public class ArkWalletService(
     {
         try
         {
-            walletSigners[id] = ArkExtensions.GetKeyFromWallet(wallet);
+            walletSigners[id] = KeyExtensions.GetKeyFromWallet(wallet);
 
         }
         catch (Exception e)

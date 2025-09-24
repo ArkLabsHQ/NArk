@@ -1,12 +1,10 @@
-﻿using Ark.V1;
-using NArk.Services.Models;
 using NBitcoin;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
 
-namespace NArk;
+namespace NArk.Extensions;
 
-public static class ArkExtensions
+public static class KeyExtensions
 {
     public static ECPrivKey GetKeyFromWallet(string wallet)
     {
@@ -18,15 +16,13 @@ public static class ArkExtensions
                 encoder2.SquashBytes = true;
                 var keyData2 = encoder2.DecodeDataRaw(wallet, out _);
                 return ECPrivKey.Create(keyData2);
-            
-                
+
+
             default:
                 throw new NotSupportedException();
         }
-    
-        
     }
-    
+
     public static ECXOnlyPubKey GetXOnlyPubKeyFromWallet(string wallet)
     {
         switch (wallet.ToLowerInvariant())
@@ -43,23 +39,19 @@ public static class ArkExtensions
                 encoder2.SquashBytes = true;
                 var keyData2 = encoder2.DecodeDataRaw(wallet, out _);
                 return ECPrivKey.Create(keyData2).CreateXOnlyPubKey();
-                
+
             default:
                 throw new NotSupportedException();
         }
     }
-    
-    public static ECXOnlyPubKey ServerKey(this GetInfoResponse response)
-    {
-        return response.SignerPubkey.ToECXOnlyPubKey();
-    }
-    
+
+
     public static ECXOnlyPubKey ToECXOnlyPubKey(this string pubKeyHex)
     {
         var pubKey = new PubKey(pubKeyHex);
         return pubKey.ToECXOnlyPubKey();
     }
-    
+
     public static ECXOnlyPubKey ToECXOnlyPubKey(this byte[] pubKeyBytes)
     {
         var pubKey = new PubKey(pubKeyBytes);
@@ -71,30 +63,10 @@ public static class ArkExtensions
         var xOnly = pubKey.TaprootInternalKey.ToBytes();
         return ECXOnlyPubKey.Create(xOnly);
     }
-    
+
     public static string ToCompressedEvenYHex(this ECXOnlyPubKey xOnlyPubKey)
     {
         return "02" + xOnlyPubKey.ToHex();
-    }
-    
-    public static Sequence UnilateralExitSequence(this GetInfoResponse response)
-    {
-        return new Sequence(TimeSpan.FromSeconds(response.UnilateralExitDelay));
-    }
-
-    public static ArkOperatorTerms ArkOperatorTerms(this GetInfoResponse response)
-    {
-        
-        return new ArkOperatorTerms(
-            Dust: Money.Satoshis(response.Dust),
-            SignerKey: response.ServerKey(),
-            Network: Network.GetNetwork(response.Network)?? (response.Network.Equals("bitcoin", StringComparison.InvariantCultureIgnoreCase)? Network.Main : null),
-            UnilateralExit: response.UnilateralExitSequence());
-    }
-
-    public static string ToHex(this byte[] value)
-    {
-        return Convert.ToHexString(value).ToLowerInvariant();
     }
 
     public static string ToHex(this ECXOnlyPubKey value)
@@ -102,6 +74,20 @@ public static class ArkExtensions
         return Convert.ToHexString(value.ToBytes()).ToLowerInvariant();
     }
     
-    
-}
+    public static Key ToKey(this ECPrivKey key)
+    {
+        var bytes = new Span<byte>();
+        key.WriteToSpan(bytes);
+        return new Key(bytes.ToArray());
+    }
+    public static ECPrivKey ToKey(this Key key)
+    {
+        return ECPrivKey.Create(key.ToBytes());
+    }
 
+    public static ECXOnlyPubKey GetXOnlyPubKey(this Key key)
+    {
+        return key.ToKey().CreateXOnlyPubKey();
+    }
+
+}

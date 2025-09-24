@@ -1,4 +1,5 @@
-﻿using NArk.Scripts;
+﻿using NArk.Extensions;
+using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
@@ -11,8 +12,7 @@ public abstract class ArkContract
     static ArkContract()
     {
         Parsers.Add(new GenericArkContractParser(ArkPaymentContract.ContractType, ArkPaymentContract.Parse));
-        Parsers.Add(new GenericArkContractParser(HashLockedArkPaymentContract.ContractType,
-            HashLockedArkPaymentContract.Parse));
+        Parsers.Add(new GenericArkContractParser(HashLockedArkPaymentContract.ContractType, HashLockedArkPaymentContract.Parse));
         Parsers.Add(new GenericArkContractParser(VHTLCContract.ContractType, VHTLCContract.Parse));
         Parsers.Add(new GenericArkContractParser(ArkNoteContract.ContractType, ArkNoteContract.Parse));
     }
@@ -41,26 +41,23 @@ public abstract class ArkContract
             .Parse(contractData); // Ensure the Payment parser is registered
     }
 
-
     public abstract string Type { get; }
 
-    public ECXOnlyPubKey Server { get; }
+    public ECXOnlyPubKey? Server { get; }
 
-    protected ArkContract(ECXOnlyPubKey server)
+    protected ArkContract(ECXOnlyPubKey? server)
     {
         Server = server;
     }
 
-    public abstract IEnumerable<ScriptBuilder> GetScriptBuilders();
-
-
     public ArkAddress GetArkAddress()
     {
         var spendInfo = GetTaprootSpendInfo();
-
-        return new ArkAddress(ECXOnlyPubKey.Create(spendInfo.OutputPubKey.ToBytes()), Server);
+        return new ArkAddress(
+            ECXOnlyPubKey.Create(spendInfo.OutputPubKey.ToBytes()),
+            Server ?? throw new InvalidOperationException("Server key is required for address generation")
+        );
     }
-
 
     public virtual TaprootSpendInfo GetTaprootSpendInfo()
     {
@@ -90,5 +87,6 @@ public abstract class ArkContract
         return $"arkcontract={Type}&{dataString}";
     }
 
+    public abstract IEnumerable<ScriptBuilder> GetScriptBuilders();
     public abstract Dictionary<string, string> GetContractData();
 }

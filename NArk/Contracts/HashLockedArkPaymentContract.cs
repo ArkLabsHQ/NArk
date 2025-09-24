@@ -1,36 +1,21 @@
-﻿using NArk.Scripts;
+﻿using NArk.Extensions;
+using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Crypto;
 using NBitcoin.Secp256k1;
 
 namespace NArk.Contracts;
 
-
-public class HashLockedArkPaymentContract: ArkContract
+public class HashLockedArkPaymentContract(ECXOnlyPubKey? server, Sequence exitDelay, ECXOnlyPubKey? user, byte[] preimage, HashLockTypeOption hashLockType) : ArkContract(server)
 {
-
-    
-    
-    public HashLockedArkPaymentContract(ECXOnlyPubKey server, Sequence exitDelay, ECXOnlyPubKey user, byte[] preimage, HashLockTypeOption hashLockType) : base(server)
-    {
-        HashLockType = hashLockType;
-        ExitDelay = exitDelay;
-        User = user;
-        Preimage = preimage;
-    }
-    public HashLockTypeOption HashLockType { get; }
-    public Sequence ExitDelay { get; }
-    public ECXOnlyPubKey User { get; }
-    public byte[] Preimage { get; }
-
     public byte[] Hash
     {
         get
         {
-            return HashLockType switch
+            return hashLockType switch
             {
-                HashLockTypeOption.HASH160 =>        Hashes.Hash160(Preimage).ToBytes(),
-                HashLockTypeOption.SHA256 => Hashes.SHA256(Preimage),
+                HashLockTypeOption.HASH160 => Hashes.Hash160(preimage).ToBytes(),
+                HashLockTypeOption.SHA256 => Hashes.SHA256(preimage),
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
@@ -38,16 +23,20 @@ public class HashLockedArkPaymentContract: ArkContract
 
     public override string Type => ContractType;
     public const string ContractType = "HashLockPaymentContract";
+    public ECXOnlyPubKey? User => user;
+    public byte[] Preimage => preimage;
+    public Sequence ExitDelay => exitDelay;
+    public HashLockTypeOption HashLockType => hashLockType;
 
     public override Dictionary<string, string> GetContractData()
     {
         var data = new Dictionary<string, string>
         {
-            ["exit_delay"] = ExitDelay.Value.ToString(),
-            ["user"] = User.ToHex(),
-            ["preimage"] = Preimage.ToHex(),
-            ["server"] = Server.ToHex(),
-            ["hash_lock_type"] = Enum.GetName(HashLockType)
+            ["exit_delay"] = exitDelay.Value.ToString(),
+            ["user"] = user?.ToHex() ?? throw new InvalidOperationException("User is required for contract data generation"),
+            ["preimage"] = preimage.ToHex(),
+            ["server"] = Server?.ToHex() ?? throw new InvalidOperationException("Server key is required for contract data generation"),
+            ["hash_lock_type"] = Enum.GetName(hashLockType) ?? throw new ArgumentOutOfRangeException(nameof(hashLockType), "Invalid hash lock type")
         };
 
         return data;
@@ -63,16 +52,16 @@ public class HashLockedArkPaymentContract: ArkContract
 
     public ScriptBuilder CreateClaimScript()
     {
-        var hashLock = new HashLockTapScript(Hash, HashLockType);
-        var receiverMultisig = new NofNMultisigTapScript([User]);
+        var hashLock = new HashLockTapScript(Hash, hashLockType);
+        var receiverMultisig = new NofNMultisigTapScript([user ?? throw new InvalidOperationException("User is required for claim script generation")]);
         return new CollaborativePathArkTapScript(Server,
             new CompositeTapScript(hashLock, new VerifyTapScript() ,receiverMultisig));
     }
     
     public ScriptBuilder UnilateralPath()
     {
-        var ownerScript = new NofNMultisigTapScript( [User]);
-        return new UnilateralPathArkTapScript(ExitDelay, ownerScript);
+        var ownerScript = new NofNMultisigTapScript([user ?? throw new InvalidOperationException("User is required for unilateral script generation")]);
+        return new UnilateralPathArkTapScript(exitDelay, ownerScript);
     }
     
     public static  ArkContract? Parse(Dictionary<string, string> contractData)

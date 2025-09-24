@@ -5,6 +5,7 @@ using NBitcoin.Secp256k1;
 using NArk;
 using NArk.Contracts;
 using NArk.Scripts;
+using NArk.Extensions;
 
 namespace NArk.Tests;
 

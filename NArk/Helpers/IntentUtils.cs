@@ -1,17 +1,16 @@
 ﻿using System.Text.Json;
+using NArk.Extensions;
+using NArk.Services;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
-namespace NArk.Services;
+namespace NArk.Helpers;
 
 public class IntentUtils
 {
-
-    
     public static async Task<Transaction> CreateIntent(Network network,ECXOnlyPubKey[] cosigners, DateTimeOffset validAt, DateTimeOffset expireAt, SpendableArkCoinWithSigner[] ins,
         IntentTxOut[]? outs = null, IArkadeWalletSigner? signer = null,  CancellationToken cancellationToken = default)
     {
-        
         var msg = new RegisterIntentMessage
         {
             Type = "register",
@@ -39,7 +38,7 @@ public class IntentUtils
         var tx =toSignTx.GetGlobalTransaction();
         
         
-        if (outs?.Any() is true)
+        if (outs is not null && outs.Length != 0)
         {
             tx.Outputs.RemoveAt(0);
             tx.Outputs.AddRange(outs);
@@ -67,8 +66,10 @@ public class IntentUtils
                 toSignPrecompute,
                 new TaprootExecutionData((int)input.Index, leaf));
             var sig = await coinSigner.Sign(hash, cancellationToken);
-            var witness = new List<Op>();
-            witness.Add(Op.GetPushOp(sig.Item1.ToBytes()));
+            var witness = new List<Op>
+            {
+                Op.GetPushOp(sig.Item1.ToBytes())
+            };
             if (spendableCoin?.SpendingConditionWitness is not null)
             {
                 witness.AddRange(spendableCoin.SpendingConditionWitness.ToScript().ToOps());
@@ -82,6 +83,5 @@ public class IntentUtils
         }
         return toSignTx.Finalize().ExtractTransaction();
         // return (BIP322Signature.Full) BIP322Signature.FromPSBT(toSignTx, SignatureType.Full);
-
     }
 }

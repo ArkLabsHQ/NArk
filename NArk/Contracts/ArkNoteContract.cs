@@ -4,14 +4,9 @@ using NBitcoin.DataEncoders;
 
 namespace NArk.Contracts;
 
-public class ArkNoteContract: HashLockedArkPaymentContract
+public class ArkNoteContract(byte[] preimage) : HashLockedArkPaymentContract(null, new Sequence(), null, preimage, HashLockTypeOption.SHA256)
 {
-
-    public OutPoint Outpoint => new OutPoint(new uint256(Hash), 0);
-
-    public ArkNoteContract(byte[] preimage) : base(null, new Sequence(), null,preimage, HashLockTypeOption.SHA256)
-    {
-    }
+    public OutPoint Outpoint => new(new uint256(Hash), 0);
 
     public override string Type => ContractType;
     public new static string ContractType = "arknote";
@@ -30,16 +25,16 @@ public class ArkNoteContract: HashLockedArkPaymentContract
 
     public override Dictionary<string, string> GetContractData()
     {
-        var data = new Dictionary<string, string>();
-        data["preimage"] = Encoders.Hex.EncodeData(Preimage);
+        var data = new Dictionary<string, string>
+        {
+            ["preimage"] = Encoders.Hex.EncodeData(preimage)
+        };
         return data;
     }
 
-    public static ArkContract Parse(Dictionary<string, string> arg)
+    public new static ArkContract Parse(Dictionary<string, string> arg)
     {
         var preimage = Encoders.Hex.DecodeData(arg["preimage"]);
         return new ArkNoteContract(preimage);
     }
-    
-    
 }

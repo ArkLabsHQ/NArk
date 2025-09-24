@@ -11,6 +11,7 @@ using NArk.Contracts;
 using NBitcoin.DataEncoders;
 using Xunit;
 using Xunit.Sdk;
+using NArk.Extensions;
 
 namespace NArk.Tests
 {

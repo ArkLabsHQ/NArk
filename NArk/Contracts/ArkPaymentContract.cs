@@ -1,27 +1,16 @@
-﻿using NArk.Scripts;
+﻿using NArk.Extensions;
+using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
 namespace NArk.Contracts;
 
-public class ArkPaymentContract : ArkContract
+public class ArkPaymentContract(ECXOnlyPubKey server, Sequence exitDelay, ECXOnlyPubKey user) : ArkContract(server)
 {
-    
-    
-    public Sequence ExitDelay { get; }
-    public virtual ECXOnlyPubKey User { get; }
-    
-
-    public ArkPaymentContract(ECXOnlyPubKey server, Sequence exitDelay, ECXOnlyPubKey user) 
-        : base(server)
-    {
-        ExitDelay = exitDelay;
-        User = user;
-    }
-
     public override string Type => ContractType;
     public const string ContractType = "Payment";
     
+    public ECXOnlyPubKey User => user;
 
     public override IEnumerable<ScriptBuilder> GetScriptBuilders()
     {
@@ -33,15 +22,14 @@ public class ArkPaymentContract : ArkContract
 
     public ScriptBuilder CollaborativePath()
     {
-        var ownerScript = new NofNMultisigTapScript( [User]);
-        return new CollaborativePathArkTapScript(Server, ownerScript);
+        var ownerScript = new NofNMultisigTapScript([user]);
+        return new CollaborativePathArkTapScript(Server!, ownerScript);
     }
-    
     
     public ScriptBuilder UnilateralPath()
     {
-        var ownerScript = new NofNMultisigTapScript( [User]);
-        return new UnilateralPathArkTapScript(ExitDelay, ownerScript);
+        var ownerScript = new NofNMultisigTapScript([user]);
+        return new UnilateralPathArkTapScript(exitDelay, ownerScript);
     }
     
     public WitScript UnilateralPathWitness(SecpSchnorrSignature server,SecpSchnorrSignature user )
@@ -58,10 +46,12 @@ public class ArkPaymentContract : ArkContract
 
     public override Dictionary<string, string> GetContractData()
     {
-        var data = new Dictionary<string, string>();
-        data["exit_delay"] = ExitDelay.Value.ToString();
-        data["user"] = User.ToHex();
-        data["server"] = Server.ToHex();
+        var data = new Dictionary<string, string>
+        {
+            ["exit_delay"] = exitDelay.Value.ToString(),
+            ["user"] = user.ToHex(),
+            ["server"] = Server!.ToHex()
+        };
         return data;
     }
     

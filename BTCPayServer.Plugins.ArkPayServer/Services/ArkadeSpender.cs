@@ -150,7 +150,7 @@ public class ArkadeSpender(
 
                 break;
             case HashLockedArkPaymentContract hashLockedArkPaymentContract:
-                if (hashLockedArkPaymentContract.User.ToBytes().SequenceEqual(user.ToBytes()))
+                if (hashLockedArkPaymentContract.User!.ToBytes().SequenceEqual(user.ToBytes()))
                 {
                     return ToArkCoin(contract, vtxo, signer,
                         hashLockedArkPaymentContract.CreateClaimScript(),

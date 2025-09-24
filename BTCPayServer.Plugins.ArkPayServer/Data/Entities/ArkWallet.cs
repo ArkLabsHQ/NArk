@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using BTCPayServer.Client.Models;
 using Microsoft.EntityFrameworkCore;
 using NArk;
+using NArk.Extensions;
 using NArk.Services;
 using NArk.Services.Models;
 using NBitcoin.Secp256k1;
@@ -16,7 +17,7 @@ public class ArkWallet
     public List<ArkWalletContract> Contracts { get; set; } = [];
     
 
-    public ECXOnlyPubKey PublicKey => ArkExtensions.GetXOnlyPubKeyFromWallet(Wallet);
+    public ECXOnlyPubKey PublicKey => KeyExtensions.GetXOnlyPubKeyFromWallet(Wallet);
     
     public ArkAddress? Destination => string.IsNullOrEmpty(WalletDestination)? null: ArkAddress.Parse(WalletDestination);
 
