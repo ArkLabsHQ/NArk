@@ -1,8 +1,10 @@
 
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
+using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Payments;
+using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Models;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Plugins.ArkPayServer.Services;
@@ -23,13 +25,11 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 public class ArkController(
     StoreRepository storeRepository,
     ArkWalletService arkWalletService,
-    ArkadeWalletSignerProvider walletSignerProvider,
     PaymentMethodHandlerDictionary paymentMethodHandlerDictionary,
-    IOperatorTermsService operatorTermsService,
-    IAuthorizationService authorizationService,
-    ArkadeSpender arkadeSpender) : Controller
+    IOperatorTermsService operatorTermsService) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
     public IActionResult InitialSetup(string storeId)
     {
         var store = HttpContext.GetStoreData();
@@ -37,15 +37,17 @@ public class ArkController(
             return NotFound();
 
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
         if (config?.WalletId == null)
         {
-            return View(new ArkStoreWalletViewModel());
+            return View(new InitialWalletSetupViewModel());
         }
 
         return RedirectToAction("StoreOverview", new { storeId });
     }
 
     [HttpPost("stores/{storeId}/initial-setup")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
     public async Task<IActionResult> InitialSetup(string storeId, InitialWalletSetupViewModel model)
     {
         var store = HttpContext.GetStoreData();
@@ -56,23 +58,29 @@ public class ArkController(
         {
             var walletSettings = await GetFromInputWallet(model.Wallet);
 
-            try
+            if (walletSettings.Wallet is not null)
             {
-                walletSettings.WalletId =
-                    await arkWalletService.Upsert(
-                        model.Wallet,
-                        walletSettings.Destination,
-                        walletSettings.IsOwnedByStore,
-                        HttpContext.RequestAborted
-                    );
+                try
+                {
+                    walletSettings = walletSettings with
+                    {
+                        WalletId =
+                            await arkWalletService.Upsert(
+                                walletSettings.Wallet,
+                                walletSettings.Destination,
+                                walletSettings.IsOwnedByStore,
+                                HttpContext.RequestAborted
+                            )
+                    };
+                }
+                catch (Exception ex)
+                {
+                    TempData[WellKnownTempData.ErrorMessage] = "Could not update wallet: " + ex.Message;
+                    return View(model);
+                }
             }
-            catch (Exception ex)
-            {
-                TempData[WellKnownTempData.ErrorMessage] = "Could not update wallet: " + ex.Message;
-                return View(model);
-            }
-            
-            var config = new ArkadePaymentMethodConfig(walletSettings.WalletId, walletSettings.IsOwnedByStore);
+
+            var config = new ArkadePaymentMethodConfig(walletSettings.WalletId!, walletSettings.IsOwnedByStore);
             store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], config);
 
             await storeRepository.UpdateStore(store);
@@ -88,14 +96,93 @@ public class ArkController(
         }
     }
 
-    private async Task<TemporaryWalletSettings> GetFromInputWallet(string wallet)
+    [HttpGet("stores/{storeId}/overview")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public IActionResult StoreOverview()
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup");
+
+        var destination = arkWalletService.GetWalletDestination(config.WalletId);
+
+        return View(new StoreOverviewViewModel { IsDestinationSweepEnabled = destination is not null, IsLightningEnabled = IsArkadeLightningEnabled() });
+    }
+
+    [HttpGet("stores/{storeId}/contracts")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> Contracts(StoreContractsViewModel? model = null)
+    {
+        model ??= new StoreContractsViewModel() { Skip = 0 };
+
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup");
+
+        if (!config.GeneratedByStore)
+            return View(new StoreContractsViewModel());
+
+        var contracts = await arkWalletService.GetArkWalletContractsAsync(config.WalletId, model.Skip, model.Count);
+
+        model.Contracts = contracts;
+
+        return View(model);
+    }
+
+    [HttpPost("stores/{storeId}/enable-ln")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> EnableLightning(string storeId)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        var lnConfig = new LightningPaymentMethodConfig()
+        {
+            ConnectionString = $"type=arkade;wallet-id={config.WalletId}",
+        };
+        store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[GetLightningPaymentMethod()], lnConfig);
+        var blob = store.GetStoreBlob();
+        blob.SetExcluded(GetLightningPaymentMethod(), false);
+        store.SetStoreBlob(blob);
+        await storeRepository.UpdateStore(store);
+        TempData[WellKnownTempData.SuccessMessage] = "Lightning enabled";
+        return RedirectToAction("StoreOverview", new { storeId });
+
+    }
+
+    private bool IsArkadeLightningEnabled()
+    {
+        var store = HttpContext.GetStoreData();
+        var lnConfig =
+            store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(GetLightningPaymentMethod(), paymentMethodHandlerDictionary);
+        var lnEnabled =
+            lnConfig?.ConnectionString?.StartsWith("type=arkade", StringComparison.InvariantCultureIgnoreCase) is true;
+        return lnEnabled;
+    }
+
+    private async Task<TemporaryWalletSettings> GetFromInputWallet(string? wallet)
     {
         if (string.IsNullOrWhiteSpace(wallet))
             return new TemporaryWalletSettings(GenerateWallet(), null, null, true);
 
         if (wallet.StartsWith("nsec", StringComparison.InvariantCultureIgnoreCase))
         {
-            //TODO: more validation
             return new TemporaryWalletSettings(wallet, null, null, true);
         }
 
@@ -122,7 +209,6 @@ public class ArkController(
 
         throw new Exception("Unsupported value.");
     }
-
     private static string GenerateWallet()
     {
         var key = RandomUtils.GetBytes(32)!;
@@ -133,10 +219,13 @@ public class ArkController(
         return nsec;
     }
 
+    private static PaymentMethodId GetLightningPaymentMethod() => PaymentTypes.LN.GetPaymentMethodId("BTC");
+
     private T? GetConfig<T>(PaymentMethodId paymentMethodId, StoreData store) where T : class
     {
         return store.GetPaymentMethodConfig<T>(paymentMethodId, paymentMethodHandlerDictionary);
     }
+
+    private record TemporaryWalletSettings(string? Wallet, string? WalletId, string? Destination, bool IsOwnedByStore);
 }
 
-internal record struct TemporaryWalletSettings(string? Wallet, string? WalletId, string? Destination, bool IsOwnedByStore);

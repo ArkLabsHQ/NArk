@@ -31,14 +31,34 @@
 
     @if (ViewData.IsCategoryActive("Ark"))
     {
-        <li class="nav-item nav-item-sub">
-            <a id="StoreNav-@(nameof(StoreNavPages.LightningSettings))"
-            class="nav-link @ViewData.ActivePageClass("InitialSetup", "Ark")"
-            asp-controller="Ark"
-            asp-action="InitialSetup"
-            asp-route-storeId="@Model.Store.Id"
-            ext-translate="true">Getting Started</a>
-        </li>
+        @if (!enabled) {
+            <li class="nav-item nav-item-sub">
+                <a id="StoreNav-InitialSetup"
+                class="nav-link @ViewData.ActivePageClass("InitialSetup", "Ark")"
+                asp-controller="Ark"
+                asp-action="InitialSetup"
+                asp-route-storeId="@Model.Store.Id"
+                ext-translate="true">Getting Started</a>
+            </li>
+        }
+        else {
+            <li class="nav-item nav-item-sub">
+                <a id="StoreNav-Overview"
+                class="nav-link @ViewData.ActivePageClass("StoreOverview", "Ark")"
+                asp-controller="Ark"
+                asp-action="StoreOverview"
+                asp-route-storeId="@Model.Store.Id"
+                ext-translate="true">Overview</a>
+            </li>
+            <li class="nav-item nav-item-sub">
+                <a id="StoreNav-Overview"
+                class="nav-link @ViewData.ActivePageClass("Contracts", "Ark")"
+                asp-controller="Ark"
+                asp-action="Contracts"
+                asp-route-storeId="@Model.Store.Id"
+                ext-translate="true">Contracts</a>
+            </li>
+        }
     }
 
 </li>

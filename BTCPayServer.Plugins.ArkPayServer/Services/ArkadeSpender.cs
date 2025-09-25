@@ -1,9 +1,7 @@
 using Ark.V1;
 using AsyncKeyedLock;
-using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
 using NArk;
 using NArk.Contracts;

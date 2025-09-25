@@ -9,25 +9,30 @@
 @using NArk.Services
 @model BTCPayServer.Plugins.ArkPayServer.Models.InitialWalletSetupViewModel
 @inject IScopeProvider ScopeProvider
-@inject IOperatorTermsService Terms
-@inject ArkConfiguration ArkConfiguration
-@inject ArkSubscriptionService ArkSubscriptionService 
 
-<div class="form-group mb-3">
-    <label asp-for="Wallet" class="form-label"></label>
-    <div class="d-sm-flex">
-        <input asp-for="Wallet" class="form-control" placeholder="npub.."/>
+@{
+    ViewData.SetActivePage(category: "Ark", activePage: "InitialSetup", title: "Ark - Getting Started");
+    var storeId = ScopeProvider.GetCurrentStoreId();
+}
+
+<form asp-action="InitialSetup" method="post" asp-route-storeId="@storeId">
+    <div class="form-group mb-3">
+        <label asp-for="Wallet" class="form-label"></label>
+        <div class="d-sm-flex">
+            <input asp-for="Wallet" class="form-control" placeholder="npub.."/>
+        </div>
+
+        <span asp-validation-for="Wallet" class="text-danger"></span>
+        <div class="form-text">
+            Configure your BTCPay Ark wallet in various ways:
+            <ul>
+                <li>Enter an nsec private key to use it as a hot wallet.</li>
+                <li>Enter an Ark address to generate a transitory wallet that automatically sweeps to it.</li>
+                <li>Enter an existing wallet id from this BTCPay instance to use its configuration.</li>
+                <li>Leave blank to generate a new hot wallet.</li>
+            </ul>
+        </div>
+
+        <button name="command" type="submit" value="save" class="btn btn-primary me-2" text-translate="true">Save</button>
     </div>
-
-
-    <span asp-validation-for="Wallet" class="text-danger"></span>
-    <div class="form-text">
-        Configure your BTCPay Ark wallet in various ways:
-        <ul>
-            <li>Enter an nsec private key to use it as a hot wallet.</li>
-            <li>Enter an Ark address to generate a transitory wallet that automatically sweeps to it.</li>
-            <li>Enter an existing wallet id from this BTCPay instance to use its configuration.</li>
-            <li>Leave blank to generate a new hot wallet.</li>
-        </ul>
-    </div>
-</div>
+</form>

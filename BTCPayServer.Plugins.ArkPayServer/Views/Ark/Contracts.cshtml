@@ -1,0 +1,80 @@
+@using BTCPayServer
+@using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Services
+@using NArk.Services.Abstractions
+@using NBitcoin
+@using NArk.Contracts
+@using NArk.Services
+@model BTCPayServer.Plugins.ArkPayServer.Models.StoreContractsViewModel
+@inject IScopeProvider ScopeProvider
+@inject IOperatorTermsService Terms
+@inject ArkConfiguration ArkConfiguration
+
+
+@{
+    ViewData.SetActivePage(category: "Ark", activePage: "Contracts", title: "Ark - Contracts");
+    var storeId = ScopeProvider.GetCurrentStoreId();
+    var mainnet = true;
+    try
+    {
+        var terms = await Terms.GetOperatorTerms();
+        mainnet =  terms.Network.ChainName == ChainName.Mainnet;
+    }
+    catch (Exception ex)
+    {
+    }
+
+
+}
+
+<div class="widget">
+    <header>
+        <h5 class="mb-4 text-muted" text-translate="true">Lorem Ipsum, //TODO: what is a conract</h5>
+    </header>
+    <div class="table-responsive mt-3 mb-0">
+       <form asp-route-storeId="@storeId" asp-action="Contracts" method="get">
+            <table class="table table-hover mb-0 text-center">
+                <thead>
+                <tr>
+                    <th class="w-15px" text-translate="true">Created</th>
+                    <th class="text-nowrap" text-translate="true">Address</th>
+                    <th class="text-nowrap" text-translate="true">Contract</th>
+                    <th text-translate="true">Status</th>
+                </tr>
+                </thead>
+                <tbody>
+                @foreach (var contract in Model.Contracts)
+                {
+                    var arkContract = ArkContract.Parse(contract.Type, contract.ContractData);
+                    if (arkContract is null) continue;
+                    var link = $"{ArkConfiguration.ArkUri}/v1/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}";
+
+                    <tr>
+                        <td>@contract.CreatedAt.ToTimeAgo()</td>
+                        <td>
+                            <vc:truncate-center link="@link" text="@arkContract.GetArkAddress().ToString(mainnet)" classes="truncate-center-id"/>
+                        </td>
+                        <td>
+                            <vc:truncate-center text="@arkContract.ToString()" classes="truncate-center-id"/>
+                        </td>
+                        <td>
+                            @if (contract.Active)
+                            {
+                                <div class="badge text-bg-success">Active</div>
+                            }
+                            else 
+                            {
+                                <div class="badge text-bg-danger">Inactive</div>
+                            }   
+                                
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+            <vc:pager view-model="Model" />
+        </form>
+    </div>
+</div>

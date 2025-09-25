@@ -1,0 +1,32 @@
+@using BTCPayServer
+@using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Services
+@using NArk.Services.Abstractions
+@using NBitcoin
+@using NArk.Contracts
+@using NArk.Services
+@model BTCPayServer.Plugins.ArkPayServer.Models.StoreOverviewViewModel
+@inject IScopeProvider ScopeProvider
+
+@{
+    ViewData.SetActivePage(category: "Ark", activePage: "StoreOverview", title: "Ark - Overview");
+    var storeId = ScopeProvider.GetCurrentStoreId();
+}
+
+<div class="widget setup-guide">
+    <header>
+        <h5 class="mb-4 text-muted" text-translate="true">This store is ready to accept Ark transactions, good job!</h5>
+    </header>
+    <div class="list-group" id="SetupGuide">
+        <form asp-action="EnableLightning" method="post" asp-route-storeId="@storeId">
+            <button type="submit" class="list-group-item d-flex align-items-center" id="SetupGuide-ArkLightning">
+                <vc:icon symbol="@(Model.IsLightningEnabled ? "done" : "wallet-new")" />
+                <div class="content">
+                    <h5 class="mb-0 @(Model.IsLightningEnabled ? "text-success": "")" text-translate="true">Enable Lightning Interoperability</h5>
+                </div>
+            </button>
+        </form>
+    </div>
+</div>

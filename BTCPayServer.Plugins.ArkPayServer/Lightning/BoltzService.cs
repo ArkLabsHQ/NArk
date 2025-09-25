@@ -309,20 +309,18 @@ public class BoltzService(
         var signer = await walletService.CanHandle(walletId, cancellationToken);
         if (!signer)
         {
-             throw new InvalidOperationException("No signer found for wallet");
+            throw new InvalidOperationException("No signer found for wallet");
         }
 
         await using var dbContext = dbContextFactory.CreateContext();
         
         // Get the wallet from the database to extract the receiver key
-        var wallet = await dbContext.Wallets.FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken);
-        if (wallet == null)
-        {
-            throw new InvalidOperationException($"Wallet with ID {walletId} not found");
-        }
-        
+        var wallet =
+            await dbContext.Wallets
+                .FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken)
+                    ?? throw new InvalidOperationException($"Wallet with ID {walletId} not found");
 
-        SubmarineSwapResult swapResult = null;
+        SubmarineSwapResult? swapResult = null;
         ArkWalletContract? arkWalletContract = null;
         var contract = await walletService.DeriveNewContract(walletId, async wallet =>
         {
@@ -335,7 +333,7 @@ public class BoltzService(
                 cancellationToken: cancellationToken);
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
-            arkWalletContract =new ArkWalletContract
+            arkWalletContract = new ArkWalletContract
             {
                 Script = contractScript,
                 WalletId = walletId,
@@ -343,7 +341,8 @@ public class BoltzService(
                 Active = true,
                 ContractData = swapResult.Contract.GetContractData()
             };
-                return (arkWalletContract, swapResult.Contract);
+
+            return (arkWalletContract, swapResult.Contract);
         }, cancellationToken);
 
         if (swapResult is null || arkWalletContract is null || contract is not VHTLCContract htlcContract) 
