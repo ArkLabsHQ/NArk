@@ -22,7 +22,7 @@ public class ArkadeSpender(
     ArkWalletService arkWalletService,
     ILogger<ArkadeSpender> logger,
     IOperatorTermsService operatorTermsService,
-    ArkSubscriptionService arkSubscriptionService)
+    ArkVtxoSyncronizationService arkVtxoSyncronizationService)
 {
     public async Task<uint256> Spend(string walletId, TxOut[] outputs, CancellationToken cancellationToken = default)
     {
@@ -76,7 +76,7 @@ public class ArkadeSpender(
                 .Concat(
                     outputs.Select(y => y.ScriptPubKey.ToHex())).ToHashSet();
 
-            await arkSubscriptionService.PollScripts(scripts.ToArray(), cancellationToken);
+            await arkVtxoSyncronizationService.PollScriptsForVtxos(scripts.ToHashSet(), cancellationToken);
             throw;
         }
     }

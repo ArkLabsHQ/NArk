@@ -14,7 +14,7 @@ public class ArkadeContractSweeper : IHostedService
     private readonly EventAggregator _eventAggregator;
     private readonly ILogger<ArkadeContractSweeper> _logger;
     private readonly IOperatorTermsService _operatorTermsService;
-    private readonly ArkSubscriptionService _arkSubscriptionService;
+    private readonly ArkVtxoSyncronizationService _arkSubscriptionService;
     private CompositeDisposable _leases = new();
     private CancellationTokenSource _cts = new();
     private TaskCompletionSource? _tcsWaitForNextPoll;
@@ -25,7 +25,7 @@ public class ArkadeContractSweeper : IHostedService
         EventAggregator eventAggregator,
         ILogger<ArkadeContractSweeper> logger,
         IOperatorTermsService operatorTermsService,
-        ArkSubscriptionService arkSubscriptionService)
+        ArkVtxoSyncronizationService arkSubscriptionService)
     {
         _arkadeSpender = arkadeSpender;
         _arkWalletService = arkWalletService;
@@ -45,7 +45,7 @@ public class ArkadeContractSweeper : IHostedService
 
     private async Task PollForVTXOToSweep()
     {
-        await _arkSubscriptionService.StartedTask.WithCancellation(_cts.Token);
+        await _arkSubscriptionService.Started.WithCancellation(_cts.Token);
         while (!_cts.IsCancellationRequested)
         {
             _logger.LogInformation("Polling for vtxos to sweep.");

@@ -15,13 +15,15 @@ using NBitcoin;
 using NBitcoin.Secp256k1;
 using NArk.Extensions;
 using NArk.Services.Abstractions;
+using BTCPayServer.Plugins.ArkPayServer.Cache;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkWalletService(
+    ActiveContractsCache activeContractsCache,
     ArkPluginDbContextFactory dbContextFactory,
     IOperatorTermsService operatorTermsService,
-    ArkSubscriptionService arkSubscriptionService,
+    ArkVtxoSyncronizationService arkVtxoSyncronizationService,
     IMemoryCache memoryCache,
     ILogger<ArkWalletService> logger) : IHostedService, IArkadeMultiWalletSigner
 {
@@ -102,17 +104,16 @@ public class ArkWalletService(
             throw new InvalidOperationException($"Could not derive contract for wallet {walletId}");
         }
 
-        var result = await dbContext.WalletContracts.Upsert(contract.Value.Item1)
+        var result = await dbContext.WalletContracts.Upsert(contract.Value.newContractData)
             .RunAndReturnAsync();
         
-        if(result.Any())
+        if(result.Count != 0)
             logger.LogInformation("New contract derived for wallet {WalletId}: {Script}", walletId,
-            contract.Value.Item1.Script);
+            contract.Value.newContractData.Script);
 
-        _ =  arkSubscriptionService.UpdateManualSubscriptionAsync(contract.Value.Item1.Script,
-            contract.Value.Item1.Active, cancellationToken);
+        activeContractsCache.TriggerUpdate();
 
-        return contract.Value.Item2;
+        return contract.Value.newContract;
     }
 
     public async Task<string> Upsert(string walletValue, string? destination, bool owner,
@@ -189,7 +190,7 @@ public class ArkWalletService(
         contract.Active = active;
         if (await dbContext.SaveChangesAsync() > 0)
         {
-            await arkSubscriptionService.UpdateManualSubscriptionAsync(script, active, CancellationToken.None);
+            activeContractsCache.TriggerUpdate();
         }
     }
 
@@ -279,7 +280,7 @@ public class ArkWalletService(
             .Select(c => c.Script)
             .ToListAsync(cancellationToken);
 
-        await arkSubscriptionService.PollScripts(wallets.ToArray(), cancellationToken);
+        await arkVtxoSyncronizationService.PollScriptsForVtxos(wallets.ToHashSet(), cancellationToken);
     }
 
     public async Task<IReadOnlyCollection<ArkWalletContract>> GetArkWalletContractsAsync(string walletId, int skip = 0, int count = 10, CancellationToken cancellationToken = default)

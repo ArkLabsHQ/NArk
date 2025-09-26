@@ -11,7 +11,7 @@
 @inject IScopeProvider ScopeProvider
 @inject IOperatorTermsService Terms
 @inject ArkConfiguration ArkConfiguration
-@inject ArkSubscriptionService ArkSubscriptionService 
+@inject ArkVtxoSyncronizationService ArkVtxoSyncronizationService
 @{
   
     Layout = "Views/UIStores/_LayoutWalletSetup";
@@ -23,10 +23,9 @@ var mainnet = true;
     {
 
         var terms = await Terms.GetOperatorTerms();
-        var subStatus = ArkSubscriptionService.SubscriptionStream?.GetStatus();
-    
-        connectionStatus = subStatus is null ? "Unknown" : subStatus.Value.ToString();
-mainnet =  terms.Network.ChainName == ChainName.Mainnet;
+        var subStatus = ArkVtxoSyncronizationService.IsActive;
+        connectionStatus = subStatus ? "Active" : "Inactive";
+        mainnet =  terms.Network.ChainName == ChainName.Mainnet;
     }
     catch (Exception ex)
     {

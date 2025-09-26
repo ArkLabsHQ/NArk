@@ -22,6 +22,7 @@ using System.Reflection;
 using System.Text.Json;
 using Grpc.Net.ClientFactory;
 using NArk.Services.Abstractions;
+using BTCPayServer.Plugins.ArkPayServer.Cache;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 
@@ -81,10 +82,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<ICheckoutModelExtension>(provider => provider.GetRequiredService<ArkadeCheckoutModelExtension>());
         serviceCollection.AddSingleton<ICheckoutCheatModeExtension>(provider => provider.GetRequiredService<ArkadeCheckoutCheatModeExtension>());
         serviceCollection.AddSingleton<IArkadeMultiWalletSigner>(provider => provider.GetRequiredService<ArkWalletService>());
-        serviceCollection.AddSingleton<ArkSubscriptionService>();
+        serviceCollection.AddSingleton<ArkVtxoSyncronizationService>();
         serviceCollection.AddSingleton<ArkContractInvoiceListener>();
         serviceCollection.AddHostedService<ArkWalletService>(provider => provider.GetRequiredService<ArkWalletService>());
-        serviceCollection.AddHostedService<ArkSubscriptionService>(provider => provider.GetRequiredService<ArkSubscriptionService>());
+        serviceCollection.AddHostedService<ArkVtxoSyncronizationService>(provider => provider.GetRequiredService<ArkVtxoSyncronizationService>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
         serviceCollection.AddHostedService<ArkadeContractSweeper>(provider => provider.GetRequiredService<ArkadeContractSweeper>());
         
@@ -93,7 +94,9 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<BoltzService>();
         serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
 
-        
+        serviceCollection.AddSingleton<ActiveContractsCache>();
+        serviceCollection.AddHostedService<ActiveContractsCache>(provider => provider.GetRequiredService<ActiveContractsCache>());
+
         serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/OldArk/ArkLNSetupTabhead.cshtml");
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/OldArk/ArkPaymentData.cshtml");
         // Display Ark as a wallet type in navigation sidebar
