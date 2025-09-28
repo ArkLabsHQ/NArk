@@ -362,7 +362,7 @@ public class BoltzService(
             ContractScript = contractScript,
             Contract = arkWalletContract!,
             Status = ArkSwapStatus.Pending,
-            Hash = new uint256(Hashes.SHA256(htlcContract.Preimage)).ToString()
+            Hash = paymentRequest.Hash.ToString()
         };
         await dbContext.Swaps.AddAsync(submarineSwap, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);

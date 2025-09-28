@@ -16,6 +16,7 @@ using NBitcoin.Secp256k1;
 using NArk.Extensions;
 using NArk.Services.Abstractions;
 using BTCPayServer.Plugins.ArkPayServer.Cache;
+using BTCPayServer.Lightning;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
@@ -63,7 +64,24 @@ public class ArkWalletService(
         
         return result.Values.ToArray();
     }
-    
+
+    public async Task<decimal> GetBalanceInSats(string walletId, CancellationToken cancellation)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+
+        var contracts = await dbContext.WalletContracts
+            .Where(c => c.WalletId == walletId)
+            .Select(c => c.Script)
+            .ToListAsync(cancellation);
+
+        var sum = await dbContext.Vtxos
+            .Where(vtxo => contracts.Contains(vtxo.Script))
+            .Where(vtxo => (vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == "") && !vtxo.IsNote)
+            .SumAsync(vtxo => vtxo.Amount, cancellationToken: cancellation);
+
+
+        return sum;
+    }
 
     public async Task<ArkContract> DerivePaymentContract(string walletId, CancellationToken cancellationToken)
     {
@@ -310,7 +328,7 @@ public class ArkWalletService(
         var contracts = await contractsQuery.ToArrayAsync(cancellationToken);
 
         if (contracts.Length == 0)
-            return new Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>();
+            return [];
 
         // Get VTXOs that match any of the contract scripts
         var contractScripts = contracts.Select(c => c.Script).ToHashSet();

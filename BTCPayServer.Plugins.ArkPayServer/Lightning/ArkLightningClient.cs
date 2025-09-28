@@ -222,12 +222,11 @@ public class ArkLightningClient(
         var contracts = await dbContext.WalletContracts
             .Where(c => c.WalletId == walletId).Select(c => c.Script).ToListAsync(cancellation);
 
-        var vtxos = await dbContext.Vtxos
+        var sum = await dbContext.Vtxos
             .Where(vtxo => contracts.Contains(vtxo.Script))
             .Where(vtxo => (vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == "") && !vtxo.IsNote) 
-            .ToListAsync(cancellation);
+            .SumAsync(v => v.Amount, cancellation);
 
-        var sum = vtxos.Sum(vtxo => vtxo.Amount);
         return new LightningNodeBalance()
         {
             OffchainBalance = new OffchainBalance()

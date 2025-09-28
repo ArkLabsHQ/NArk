@@ -102,7 +102,7 @@ namespace NArk.Tests
                 var server = FromTest(testCase.Server);
                 var sender =FromTest(testCase.Sender);
                 var receiver =FromTest(testCase.Receiver);
-                var hash = new uint160(new uint160(testCase.PreimageHash).ToBytes(false));
+                var hash = new uint160(testCase.PreimageHash);
 
                 var contract = new VHTLCContract(
                     server,

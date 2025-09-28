@@ -1,0 +1,161 @@
+
+@using BTCPayServer
+@using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Data
+@using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.PaymentHandler
+@using BTCPayServer.Services.Invoices
+@using BTCPayServer.Views.Stores
+@inject IScopeProvider ScopeProvider
+@model BTCPayServer.Plugins.ArkPayServer.Models.SpendOverviewViewModel
+
+@{
+    ViewData.SetActivePage(category: "Ark", activePage: "SpendOverview", title: "Ark - Transfer");
+    var storeId = ScopeProvider.GetCurrentStoreId()!;
+}
+
+<style>    
+    .stats-card {
+        border: none;
+        border-radius: 15px;
+        transition: all 0.3s ease;
+        overflow: hidden;
+    }
+
+    .stats-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 8px 15px rgba(0, 0, 0, .1);
+    }
+
+    .card-hover-primary:hover {
+        background: linear-gradient(45deg, #4e73df, #224abe);
+    }
+
+    .card-hover-success:hover {
+        background: linear-gradient(45deg, #1cc88a, #169a6b);
+    }
+
+    .card-hover-info:hover {
+        background: linear-gradient(45deg, #36b9cc, #258391);
+    }
+
+    .card-hover-warning:hover {
+        background: linear-gradient(45deg, #f6c23e, #dda20a);
+    }
+
+    .stats-card:hover .text-primary,
+    .stats-card:hover .text-success,
+    .stats-card:hover .text-info,
+    .stats-card:hover .text-warning,
+    .stats-card:hover .text-muted,
+    .stats-card:hover .card-title {
+        color: white !important;
+    }
+
+    .icon-circle {
+        height: 60px;
+        width: 60px;
+        border-radius: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.8rem;
+        background: rgba(0, 0, 0, .05);
+        transition: all 0.3s ease;
+    }
+
+    .stats-card:hover .icon-circle {
+        background: rgba(255, 255, 255, .2);
+    }
+
+    .stat-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        margin: 10px 0;
+    }
+
+    .progress {
+        height: 8px;
+        border-radius: 4px;
+        background: rgba(0, 0, 0, .05);
+    }
+
+    .progress-bar {
+        border-radius: 4px;
+    }
+
+    .stat-change {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 0.9rem;
+    }
+
+    .trend-icon {
+        font-size: 0.8rem;
+    }
+
+    .mini-chart {
+        height: 50px;
+        margin-top: 10px;
+        display: flex;
+        align-items: flex-end;
+        gap: 3px;
+    }
+
+    .chart-bar {
+        flex: 1;
+        background: rgba(0, 0, 0, .05);
+        border-radius: 3px 3px 0 0;
+        transition: all 0.3s ease;
+    }
+
+    .stats-card:hover .chart-bar {
+        background: rgba(255, 255, 255, .2);
+    }
+</style>
+
+<div class="col-xl-3 col-md-6">
+    <div class="card stats-card card-hover-primary shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-muted text-uppercase fw-bold small">Available Ark Balance</div>
+                    <div class="stat-value text-primary">@Model.AvailableBalance sats</div>
+                </div>
+                <svg width="100%" class="icon-circle text-primary" height="100%" viewBox="0 0 41 41" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <rect x="20.5" width="10.2499" height="10.2499" fill="#381993"></rect>
+                    <rect x="10.25" width="10.2499" height="10.2499" fill="#381993"></rect>
+                    <rect x="30.75" y="10.25" width="10.2499" height="10.2499" fill="#381993"></rect>
+                    <rect width="10.2499" height="10.2499" transform="matrix(-1 0 0 1 10.25 10.25)" fill="#381993"></rect>
+                    <rect width="10.2499" height="10.2499" transform="matrix(-1 0 0 1 20.5 20.5)" fill="#381993"></rect>
+                    <rect width="10.2499" height="10.2499" transform="matrix(-1 0 0 1 30.75 20.5)" fill="#381993"></rect>
+                    <rect x="30.75" y="30.75" width="10.2499" height="10.2499" fill="#381993"></rect>
+                    <rect width="10.2499" height="10.2499" transform="matrix(-1 0 0 1 10.25 30.75)" fill="#381993"></rect>
+                    <path d="M30.75 0L40.9999 10.2499H30.75V0Z" fill="#381993"></path>
+                    <path d="M10.25 0L5.91278e-05 10.2499H10.25V0Z" fill="#381993"></path>
+                </svg>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card my-2">
+    <div class="card-body">
+        <h5 class="card-title">Transfer</h5>
+        <form asp-action="SpendOverview" method="post" asp-route-storeId="@storeId">
+            <div class="form-group mb-3">
+                <label asp-for="Destination" class="form-label">Destination</label>
+                <div class="d-sm-flex">
+                    <input asp-for="Destination" class="form-control" required readonly="@(Model.AvailableBalance is 0)"/>
+                </div>
+            
+                <span asp-validation-for="Destination" class="text-danger"></span>
+                <div class="form-text">
+                    Enter BIP21/LN invoice to initiate transfer
+                </div>
+            </div>
+            <button name="command" type="submit" value="transfer" class="btn btn-danger me-2" text-translate="true">Transfer</button>
+        </form>
+    </div>
+</div>

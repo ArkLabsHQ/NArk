@@ -51,13 +51,23 @@
                 ext-translate="true">Overview</a>
             </li>
             <li class="nav-item nav-item-sub">
-                <a id="StoreNav-Overview"
+                <a id="StoreNav-Contracts"
                 class="nav-link @ViewData.ActivePageClass("Contracts", "Ark")"
                 asp-controller="Ark"
                 asp-action="Contracts"
                 asp-route-storeId="@Model.Store.Id"
                 ext-translate="true">Contracts</a>
             </li>
+            @if (config?.GeneratedByStore is true){
+                 <li class="nav-item nav-item-sub">
+                    <a id="StoreNav-SpendOverview"
+                    class="nav-link @ViewData.ActivePageClass("SpendOverview", "Ark")"
+                    asp-controller="Ark"
+                    asp-action="SpendOverview"
+                    asp-route-storeId="@Model.Store.Id"
+                    ext-translate="true">Transfer</a>
+                </li>
+            }
         }
     }
 

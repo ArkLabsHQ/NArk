@@ -32,7 +32,7 @@ public class BoltzSwapService(
             To = "BTC",
         });
 
-        var hash = new uint160(Hashes.RIPEMD160(invoice.PaymentHash.ToBytes()));
+        var hash = new uint160(Hashes.RIPEMD160(invoice.PaymentHash.ToBytes(false)), false);
         var receiver = response.ClaimPublicKey.ToECXOnlyPubKey();
 
         var vhtlcContract = new VHTLCContract(
