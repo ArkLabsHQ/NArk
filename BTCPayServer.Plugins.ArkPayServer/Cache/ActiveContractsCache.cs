@@ -5,16 +5,27 @@ using BTCPayServer.Plugins.ArkPayServer.Models.Events;
 using ExchangeSharp;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Cache;
 
-public class ActiveContractsCache(ArkPluginDbContextFactory arkPluginDbContextFactory, EventAggregator eventAggregator): BackgroundService
+public class ActiveContractsCache(ArkPluginDbContextFactory arkPluginDbContextFactory, EventAggregator eventAggregator, ILogger<ActiveContractsCache> logger): BackgroundService
 {
     private readonly SemaphoreSlim _updateTrigger = new(0, 1);
 
     public IReadOnlySet<ArkWalletContract> Contracts = new HashSet<ArkWalletContract>(comparer: new ContractScriptComparer());
 
-    public void TriggerUpdate() => _updateTrigger.Release();
+    public void TriggerUpdate()
+    {
+        try
+        {
+            _updateTrigger.Release();
+        }
+        catch
+        {
+            // ignored
+        }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -22,6 +33,8 @@ public class ActiveContractsCache(ArkPluginDbContextFactory arkPluginDbContextFa
         {
             try
             {
+                logger.LogInformation("[ARK]: Refreshing active contract cache");
+
                 await using var dbContext = arkPluginDbContextFactory.CreateContext();
 
                 var allContracts = await dbContext.WalletContracts

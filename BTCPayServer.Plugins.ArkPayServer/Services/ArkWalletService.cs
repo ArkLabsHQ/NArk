@@ -209,7 +209,7 @@ public class ArkWalletService(
             return null;
         }
 
-        Dictionary<ArkWalletContract, VTXO[]> contracts = null;
+        Dictionary<ArkWalletContract, VTXO[]>? contracts = null;
         if (includeData)
         {
             var ccc = await GetVTXOsAndContracts([walletId], true, true, cancellationToken);
@@ -297,7 +297,7 @@ public class ArkWalletService(
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>?> GetVTXOsAndContracts(string[]? walletIds, bool allowSpent, bool allowNote, CancellationToken cancellationToken)
+    public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>> GetVTXOsAndContracts(string[]? walletIds, bool allowSpent, bool allowNote, CancellationToken cancellationToken)
     {
         await using var dbContext = dbContextFactory.CreateContext();
 
