@@ -164,10 +164,7 @@ namespace NArk.Services
                 checkpointTx = PSBT.FromTransaction(ctx, terms.Network, PSBTVersion.PSBTv0);
                 checkpoint.UpdatePSBT(checkpointTx);
 
-                var psbtInput = checkpointTx.Inputs.FindIndexedInput(coin.Outpoint)!;
-                // Add Ark PSBT fields
-                psbtInput.Unknown.SetArkField(coin.Contract.GetTapScriptList());
-                psbtInput.SetTaprootLeafScript(coin.Contract.GetTaprootSpendInfo(), coin.SpendingScript);
+                _ = coin.FillPSBTInput(checkpointTx);
                 checkpoints.Add(checkpointTx);
 
                 // Create checkpoint coin for the Ark transaction

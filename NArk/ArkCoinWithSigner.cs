@@ -39,20 +39,30 @@ public class SpendableArkCoinWithSigner : ArkCoin
         
     }
 
+    public PSBTInput? FillPSBTInput(PSBT psbt)
+    {
+        var psbtInput = psbt.Inputs.FindIndexedInput(Outpoint);
+        if (psbtInput is null)
+        {
+            return null;
+        }
+        
+        psbtInput.Unknown.SetArkField(Contract.GetTapScriptList());
+        psbtInput.SetTaprootLeafScript(Contract.GetTaprootSpendInfo(), SpendingScript);
+        
+        return psbtInput;
+    }
+    
     public async Task SignAndFillPSBT(
         PSBT psbt, 
         TaprootReadyPrecomputedTransactionData precomputedTransactionData,
         CancellationToken cancellationToken)
     {
-        var psbtInput = psbt.Inputs.FindIndexedInput(Outpoint);
+        var psbtInput = FillPSBTInput(psbt);
         if (psbtInput is null)
         {
             return;
         }
-        
-        psbtInput.Unknown.SetArkField(Contract.GetTapScriptList());
-        psbtInput.SetTaprootLeafScript(Contract.GetTaprootSpendInfo(), SpendingScript);
-
         
         var gtx = psbt.GetGlobalTransaction();
         var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
@@ -64,6 +74,5 @@ public class SpendableArkCoinWithSigner : ArkCoin
         {
             psbtInput.Unknown.SetArkField(SpendingConditionWitness);
         }
-
     }
 }
