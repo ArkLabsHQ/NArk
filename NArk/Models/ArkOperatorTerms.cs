@@ -1,6 +1,15 @@
-﻿using NBitcoin;
+using NBitcoin;
 using NBitcoin.Secp256k1;
 
 namespace NArk.Models;
 
-public record ArkOperatorTerms(Money Dust, ECXOnlyPubKey SignerKey, Network Network, Sequence UnilateralExit);
+public record ArkOperatorTerms(
+    Money Dust,
+    ECXOnlyPubKey SignerKey,
+    Dictionary<ECXOnlyPubKey, long> DeprecatedSigners,
+    Network Network,
+    Sequence UnilateralExit,
+    Sequence BoardingExit,
+    BitcoinAddress ForfeitAddress,
+    ECXOnlyPubKey ForfeitPubKey,
+    TapScript CheckpointTapscript);

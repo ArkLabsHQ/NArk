@@ -26,7 +26,7 @@ public class ArkadeSpender(
 {
     public async Task<uint256> Spend(string walletId, TxOut[] outputs, CancellationToken cancellationToken = default)
     {
-        var coinSet = await GetSpendableCoins([walletId], cancellationToken);
+        var coinSet = await GetSpendableCoins([walletId],false, cancellationToken);
 
         if (!coinSet.TryGetValue(walletId, out var coins) || coins.Count == 0)
         {
@@ -81,10 +81,26 @@ public class ArkadeSpender(
         }
     }
 
-    public async Task<Dictionary<string, List<SpendableArkCoinWithSigner>>> GetSpendableCoins(string[]? walletIds,
+    public async Task<Dictionary<string, List<SpendableArkCoinWithSigner>>> GetSpendableCoins(string[]? walletIds, bool includeRecoverable,
         CancellationToken cancellationToken)
     {
-        var vtxosAndContracts = await arkWalletService.GetVTXOsAndContracts(walletIds, false, false, cancellationToken);
+        return await GetSpendableCoins(walletIds, includeRecoverable, cancellationToken);
+    }
+
+    /// <summary>
+    /// Get spendable coins for specified wallets, optionally filtered by specific VTXO outpoints
+    /// </summary>
+    /// <param name="walletIds">Wallet IDs to get coins for</param>
+    /// <param name="vtxoOutpoints">Optional set of VTXO outpoints to filter by. If null, returns all spendable coins.</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    public async Task<Dictionary<string, List<SpendableArkCoinWithSigner>>> GetSpendableCoins(
+        string[]? walletIds,
+        HashSet<OutPoint>? vtxoOutpoints,
+        bool includeRecoverable,
+        CancellationToken cancellationToken)
+    {
+        // Filter VTXOs at database level for efficiency
+        var vtxosAndContracts = await arkWalletService.GetVTXOsAndContracts(walletIds, false, includeRecoverable, vtxoOutpoints, cancellationToken);
 
         walletIds = vtxosAndContracts.Select(grouping => grouping.Key).ToArray();
         var signers = await arkadeWalletSignerProvider.GetSigners(walletIds, cancellationToken);
@@ -97,7 +113,8 @@ public class ArkadeSpender(
             var signer = walletSigner.Value;
             if (!vtxosAndContracts.TryGetValue(walletId, out var group))
                 continue;
-            var coins = await GetSpendableCoins(group, signer, operatorTerms);
+            // No need to filter again - already filtered at DB level
+            var coins = await GetSpendableCoins(group, signer, operatorTerms, false, null);
             res.Add(walletId, coins);
         }
         
@@ -106,7 +123,7 @@ public class ArkadeSpender(
 
     private async Task<List<SpendableArkCoinWithSigner>> GetSpendableCoins(
         Dictionary<ArkWalletContract, VTXO[]> group, IArkadeWalletSigner signer,
-        ArkOperatorTerms operatorTerms)
+        ArkOperatorTerms operatorTerms, bool includeRecoverable, HashSet<OutPoint>? vtxoOutpoints = null)
     {
         var coins = new List<SpendableArkCoinWithSigner>();
 
@@ -117,16 +134,29 @@ public class ArkadeSpender(
                 continue;
             foreach (var vtxo in contractData.Value)
             {
-                if (vtxo.IsNote || vtxo.SpentByTransactionId is not null)
+                if (vtxo.SpentByTransactionId is not null)
                     continue;
+                if (!includeRecoverable || vtxo.Recoverable)
+                {
+                    continue;
+                }
 
+                // Filter by specific VTXO outpoints if provided
+                if (vtxoOutpoints != null)
+                {
+                    var vtxoOutpoint = new OutPoint(uint256.Parse(vtxo.TransactionId), (uint)vtxo.TransactionOutputIndex);
+                    if (!vtxoOutpoints.Contains(vtxoOutpoint))
+                    {
+                        continue;
+                    }
+                }
 
                 if (!operatorTerms.SignerKey.ToBytes().SequenceEqual(contract.Server.ToBytes()))
                 {
                     continue;
                 }
 
-                var res = await GetSpendableCoin(signer, contract, vtxo.ToCoin());
+                var res = await GetSpendableCoin(signer, contract, vtxo.ToCoin(), vtxo.Recoverable, vtxo.ExpiresAt);
                 if (res is not null)
                     coins.Add(res);
             }
@@ -136,15 +166,15 @@ public class ArkadeSpender(
     }
 
     private static async Task<SpendableArkCoinWithSigner?> GetSpendableCoin(IArkadeWalletSigner signer,
-        ArkContract contract, ICoinable vtxo)
+        ArkContract contract, ICoinable vtxo, bool recoverable, DateTimeOffset expiresAt)
     {
-        ECXOnlyPubKey user = await signer.GetPublicKey();
+        ECXOnlyPubKey user = await signer.GetXOnlyPublicKey();
         switch (contract)
         {
             case ArkPaymentContract arkPaymentContract:
                 if (arkPaymentContract.User.ToBytes().SequenceEqual(user.ToBytes()))
                 {
-                    return ToArkCoin(contract, vtxo, signer, arkPaymentContract.CollaborativePath(), null, null, null);
+                    return ToArkCoin(contract, vtxo, signer, arkPaymentContract.CollaborativePath(), null, null, null, recoverable, expiresAt);
                 }
 
                 break;
@@ -153,7 +183,7 @@ public class ArkadeSpender(
                 {
                     return ToArkCoin(contract, vtxo, signer,
                         hashLockedArkPaymentContract.CreateClaimScript(),
-                        new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null, null);
+                        new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null, null, recoverable,expiresAt);
                 }
 
                 break;
@@ -162,7 +192,7 @@ public class ArkadeSpender(
                 {
                     return ToArkCoin(contract, vtxo, signer,
                         htlc.CreateClaimScript(),
-                        new WitScript(Op.GetPushOp(htlc.Preimage!)), null, null);
+                        new WitScript(Op.GetPushOp(htlc.Preimage!)), null, null, recoverable, expiresAt);
                 }
 
                 if (htlc.RefundLocktime.IsTimeLock &&
@@ -170,7 +200,7 @@ public class ArkadeSpender(
                 {
                     return ToArkCoin(contract, vtxo, signer,
                         htlc.CreateRefundWithoutReceiverScript(),
-                        null, htlc.RefundLocktime, null);
+                        null, htlc.RefundLocktime, null, recoverable, expiresAt);
                 }
 
                 break;
@@ -180,9 +210,9 @@ public class ArkadeSpender(
     }
 
     private static SpendableArkCoinWithSigner ToArkCoin(ArkContract c, ICoinable vtxo, IArkadeWalletSigner signer,
-        ScriptBuilder leaf, WitScript? witness, LockTime? lockTime, Sequence? sequence)
+        ScriptBuilder leaf, WitScript? witness, LockTime? lockTime, Sequence? sequence, bool recoverable, DateTimeOffset expiry )
     {
-        return new SpendableArkCoinWithSigner(c, vtxo.Outpoint, vtxo.TxOut, signer, leaf, witness, lockTime, sequence);
+        return new SpendableArkCoinWithSigner(c, expiry, vtxo.Outpoint, vtxo.TxOut, signer, leaf, witness, lockTime, sequence, recoverable);
     }
 
     public Task<ArkAddress> GetDestination(ArkWallet wallet, ArkOperatorTerms arkOperatorTerms)

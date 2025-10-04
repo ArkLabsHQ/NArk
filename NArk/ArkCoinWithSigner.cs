@@ -14,24 +14,27 @@ public class SpendableArkCoinWithSigner : ArkCoin
     public ScriptBuilder SpendingScriptBuilder { get; set; }
     public TapScript SpendingScript  => SpendingScriptBuilder.Build();
     public WitScript? SpendingConditionWitness { get; set; }
+
+    public bool Recoverable { get; set; }
     
 
-    public SpendableArkCoinWithSigner(
-        ArkContract contract, 
-        OutPoint outpoint, 
+    public SpendableArkCoinWithSigner(ArkContract contract,
+        DateTimeOffset expiresAt,
+        OutPoint outpoint,
         TxOut txout,
         IArkadeWalletSigner signer,
         ScriptBuilder spendingScriptBuilder,
         WitScript? spendingConditionWitness,
         LockTime? lockTime,
-        Sequence? sequence
-        ) : base(contract, outpoint, txout)
+        Sequence? sequence, bool recoverable) : base(contract, outpoint, txout, expiresAt)
     {
         Signer = signer;
         SpendingScriptBuilder = spendingScriptBuilder;
         SpendingConditionWitness = spendingConditionWitness;
         SpendingLockTime = lockTime;
         SpendingSequence = sequence;
+        Recoverable = recoverable;
+        
         if (sequence is null && spendingScriptBuilder.BuildScript().Contains(OpcodeType.OP_CHECKSEQUENCEVERIFY))
         {
             throw new InvalidOperationException("Sequence is required");
@@ -47,7 +50,7 @@ public class SpendableArkCoinWithSigner : ArkCoin
             return null;
         }
         
-        psbtInput.Unknown.SetArkField(Contract.GetTapScriptList());
+        psbtInput.SetArkFieldTapTree(Contract.GetTapScriptList());
         psbtInput.SetTaprootLeafScript(Contract.GetTaprootSpendInfo(), SpendingScript);
         
         return psbtInput;
@@ -72,7 +75,7 @@ public class SpendableArkCoinWithSigner : ArkCoin
         psbtInput.SetTaprootScriptSpendSignature(ourKey, SpendingScript.LeafHash, sig);
         if (SpendingConditionWitness is not null)
         {
-            psbtInput.Unknown.SetArkField(SpendingConditionWitness);
+            psbtInput.SetArkFieldConditionWitness(SpendingConditionWitness);
         }
     }
 }

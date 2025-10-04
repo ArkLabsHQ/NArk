@@ -51,7 +51,7 @@ public class ArkadeContractSweeper : IHostedService
             _logger.LogInformation("Polling for vtxos to sweep.");
             try
             {
-                var spendableCoinsByWallet = await _arkadeSpender.GetSpendableCoins(null, _cts.Token);
+                var spendableCoinsByWallet = await _arkadeSpender.GetSpendableCoins(null, false, _cts.Token);
                 var wallets = await _arkWalletService.GetWallets(spendableCoinsByWallet.Keys.ToArray(), _cts.Token);
                 var terms = await _operatorTermsService.GetOperatorTerms(_cts.Token);
                 foreach (var group in spendableCoinsByWallet)

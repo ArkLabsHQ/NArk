@@ -43,6 +43,148 @@ namespace NArk.Services
             return arkTx.GetGlobalTransaction().GetHash();
         }
 
+        public async Task<PSBT> ConstructForfeitTx(SpendableArkCoinWithSigner coin, Coin? connector, IDestination forfeitDestination, CancellationToken cancellationToken = default)
+        {
+            logger.LogDebug("Constructing forfeit transaction for coin {Outpoint}", coin.Outpoint);
+            
+            var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+            var p2a = Script.FromHex("51024e73"); // Standard Ark protocol marker
+            
+            // Determine sighash based on whether we have a connector
+            // Without connector: ANYONECANPAY|ALL (allows adding connector later)
+            // With connector: DEFAULT (signs all inputs)
+            var sighash = connector is null 
+                ? TaprootSigHash.AnyoneCanPay | TaprootSigHash.All 
+                : TaprootSigHash.Default;
+            
+            // Build forfeit transaction
+            var txBuilder = terms.Network.CreateTransactionBuilder();
+            txBuilder.SetVersion(3);
+            txBuilder.SetFeeWeight(0);
+            txBuilder.DustPrevention = false;
+            
+            // Add VTXO input
+            txBuilder.AddCoin(coin, new CoinOptions()
+            {
+                Sequence = coin.SpendingSequence
+            });
+            
+            // Add connector input if provided
+            if (connector != null)
+            {
+                txBuilder.AddCoin(connector);
+            }
+            
+            // Calculate total input amount based on connector + input OR assumed connector amount (dust)
+            var totalInput = coin.Amount + (connector?.Amount ?? terms.Dust);
+            
+            // Send to forfeit destination (operator's forfeit address)
+            txBuilder.Send(forfeitDestination, totalInput);
+            
+            // Add P2A output
+            var forfeitTx = txBuilder.BuildPSBT(false, PSBTVersion.PSBTv0);
+            var gtx = forfeitTx.GetGlobalTransaction();
+            gtx.Outputs.Add(new TxOut(Money.Zero, p2a));
+            forfeitTx = PSBT.FromTransaction(gtx, terms.Network, PSBTVersion.PSBTv0);
+            txBuilder.UpdatePSBT(forfeitTx);
+            
+            // Fill PSBT input for the VTXO
+            coin.FillPSBTInput(forfeitTx);
+            
+            // Sign the VTXO input with the appropriate sighash
+            var coins = connector != null 
+                ? new[] { coin.TxOut, connector.TxOut } 
+                : new[] { coin.TxOut };
+            
+            var precomputedData = gtx.PrecomputeTransactionData(coins);
+            
+            // Sign with custom sighash
+            var vtxoInput = forfeitTx.Inputs.FindIndexedInput(coin.Outpoint)!;
+            var hash = gtx.GetSignatureHashTaproot(
+                precomputedData,
+                new TaprootExecutionData((int)vtxoInput.Index, coin.SpendingScriptBuilder?.Build()?.LeafHash)
+                {
+                    SigHash = sighash
+                });
+            
+            var (signature, _) = await coin.Signer.Sign(hash, cancellationToken);
+            
+            // Build witness
+            var witness = new List<Op>
+            {
+                Op.GetPushOp(signature.ToBytes())
+            };
+            
+            if (coin.SpendingConditionWitness is not null)
+            {
+                witness.AddRange(coin.SpendingConditionWitness.ToScript().ToOps());
+            }
+            
+            if (coin.SpendingScriptBuilder is not null)
+            {
+                var script = coin.SpendingScriptBuilder.Build();
+                var controlBlock = coin.Contract.GetTaprootSpendInfo().GetControlBlock(script);
+                witness.AddRange([
+                    Op.GetPushOp(script.Script.ToBytes()), 
+                    Op.GetPushOp(controlBlock.ToBytes())
+                ]);
+            }
+            
+            vtxoInput.FinalScriptWitness = new WitScript(witness.ToArray());
+            
+            logger.LogInformation("Forfeit transaction constructed successfully for coin {Outpoint}", coin.Outpoint);
+            
+            return forfeitTx;
+        }
+
+        /// <summary>
+        /// Completes an existing forfeit PSBT by adding a connector coin.
+        /// The existing forfeit must have the VTXO input signed with ANYONECANPAY|ALL sighash.
+        /// This method adds the connector coin and signs it with DEFAULT sighash.
+        /// </summary>
+        public async Task<PSBT> CompleteForfeitTx(PSBT existingForfeit, Coin connector, IArkadeWalletSigner delegateSigner, CancellationToken cancellationToken = default)
+        {
+            logger.LogDebug("Completing forfeit transaction by adding connector {ConnectorOutpoint}", connector.Outpoint);
+            
+            var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+            
+            // Parse the existing transaction
+            var gtx = existingForfeit.GetGlobalTransaction();
+            
+            // Add connector input
+            gtx.Inputs.Add(new TxIn(connector.Outpoint));
+            
+            // Create new PSBT with updated transaction
+            var completedForfeit = PSBT.FromTransaction(gtx, terms.Network, PSBTVersion.PSBTv0);
+            completedForfeit = completedForfeit.UpdateFrom(existingForfeit);
+            
+            // Add connector coin to PSBT
+            var connectorInput = completedForfeit.Inputs.FindIndexedInput(connector.Outpoint);
+            if (connectorInput == null)
+            {
+                throw new InvalidOperationException($"Could not find connector input {connector.Outpoint} in PSBT");
+            }
+            connectorInput.WitnessUtxo = connector.TxOut;
+            
+            var vtxo = completedForfeit.Inputs.FindIndexedInput(existingForfeit.Inputs[0].PrevOut)!;
+            
+            // Sign the connector input with DEFAULT sighash
+            var precomputedTransactionData = completedForfeit.PrecomputeTransactionData();
+
+            var leafScript = vtxo.GetTaprootLeafScript()[0];
+            
+            var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
+                new TaprootExecutionData((int)vtxo.Index, leafScript.leafScript.LeafHash));
+            
+            var (signature, pubKey) = await delegateSigner.Sign(hash, cancellationToken);
+            
+            vtxo.SetTaprootScriptSpendSignature(pubKey, leafScript.leafScript.LeafHash, signature);
+            
+           
+            logger.LogInformation("Existing Forfeit transaction finished successfully for coin {Outpoint}", vtxo.PrevOut);
+            
+            return completedForfeit;
+        }
 
         public async Task<Ark.V1.FinalizeTxResponse> SubmitArkTransaction(
             IEnumerable<SpendableArkCoinWithSigner> arkCoins,
@@ -175,13 +317,15 @@ namespace NArk.Services
                 checkpointCoins.Add(
                     new SpendableArkCoinWithSigner(
                         checkpointContract,
+                        coin.ExpiresAt,
                         outpoint,
                         txout.GetTxOut()!,
                         coin.Signer,
                         coin.SpendingScriptBuilder,
                         coin.SpendingConditionWitness,
                         coin.SpendingLockTime,
-                        coin.SpendingSequence
+                        coin.SpendingSequence,
+                        coin.Recoverable
                     )
                 );
             }
@@ -249,10 +393,11 @@ namespace NArk.Services
             if (coin.Contract.Server is null)
                 throw new ArgumentException("Server key is required for checkpoint contract creation");
 
+           
             var scriptBuilders = new List<ScriptBuilder>
             {
                 coin.SpendingScriptBuilder,
-                new UnilateralPathArkTapScript(terms.UnilateralExit, new NofNMultisigTapScript([coin.Contract.Server]))
+                new GenericTapScript(terms.CheckpointTapscript)
             };
 
             return new GenericArkContract(coin.Contract.Server, scriptBuilders);

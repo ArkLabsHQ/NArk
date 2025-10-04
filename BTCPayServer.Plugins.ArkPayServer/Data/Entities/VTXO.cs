@@ -13,9 +13,9 @@ public class VTXO
     public long Amount { get; set; }
     public DateTimeOffset SeenAt { get; set; }
     // public DateTimeOffset? SpentAt { get; set; }
-    public bool IsNote { get; set; }
-    // public ArkStoredTransaction? SpentByTransaction { get; set; }
-    // public ArkStoredTransaction CreatedByTransaction { get; set; }
+    public bool Recoverable { get; set; }
+
+    public DateTimeOffset ExpiresAt { get; set; }
 
     public ICoinable ToCoin()
     { 

@@ -16,6 +16,10 @@ public class ArkWallet
     public string? WalletDestination { get; set; }
     public List<ArkWalletContract> Contracts { get; set; } = [];
     
+    /// <summary>
+    /// JSON-serialized intent scheduling policies for this wallet
+    /// </summary>
+    public string? IntentSchedulingPolicy { get; set; }
 
     public ECXOnlyPubKey PublicKey => KeyExtensions.GetXOnlyPubKeyFromWallet(Wallet);
     

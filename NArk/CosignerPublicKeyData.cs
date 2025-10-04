@@ -1,7 +1,9 @@
-﻿namespace NArk;
+﻿using NBitcoin.Secp256k1;
+
+namespace NArk;
 
 public class CosignerPublicKeyData
 {
     public byte Index { get; set; }
-    public byte[] Key { get; set; }
+    public ECPubKey Key { get; set; }
 }

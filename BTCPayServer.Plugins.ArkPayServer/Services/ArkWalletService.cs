@@ -76,7 +76,7 @@ public class ArkWalletService(
 
         var sum = await dbContext.Vtxos
             .Where(vtxo => contracts.Contains(vtxo.Script))
-            .Where(vtxo => (vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == "") && !vtxo.IsNote)
+            .Where(vtxo => (vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == "") && !vtxo.Recoverable)
             .SumAsync(vtxo => vtxo.Amount, cancellationToken: cancellation);
 
 
@@ -315,7 +315,24 @@ public class ArkWalletService(
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>> GetVTXOsAndContracts(string[]? walletIds, bool allowSpent, bool allowNote, CancellationToken cancellationToken)
+    public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>> GetVTXOsAndContracts(
+        string[]? walletIds, 
+        bool allowSpent, 
+        bool allowNote, 
+        CancellationToken cancellationToken)
+    {
+        return await GetVTXOsAndContracts(walletIds, allowSpent, allowNote, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Get VTXOs and contracts for specified wallets, optionally filtered by specific VTXO outpoints
+    /// </summary>
+    public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>> GetVTXOsAndContracts(
+        string[]? walletIds, 
+        bool allowSpent, 
+        bool allowNote, 
+        HashSet<OutPoint>? vtxoOutpoints,
+        CancellationToken cancellationToken)
     {
         await using var dbContext = dbContextFactory.CreateContext();
 
@@ -332,11 +349,26 @@ public class ArkWalletService(
 
         // Get VTXOs that match any of the contract scripts
         var contractScripts = contracts.Select(c => c.Script).ToHashSet();
-        var vtxos = await dbContext.Vtxos
+        
+        var vtxosQuery = dbContext.Vtxos
             .Where(vtxo =>
-                          (allowSpent || vtxo.SpentByTransactionId == null) &&
-                          (allowNote || !vtxo.IsNote) &&
-                          contractScripts.Contains(vtxo.Script))
+                (allowSpent || vtxo.SpentByTransactionId == null) &&
+                (allowNote || !vtxo.Recoverable) &&
+                contractScripts.Contains(vtxo.Script));
+        
+        // Filter by specific VTXO outpoints if provided
+        if (vtxoOutpoints != null && vtxoOutpoints.Count > 0)
+        {
+            // Convert outpoints to a format we can query
+            var outpointPairs = vtxoOutpoints
+                .Select(op => new { TxId = op.Hash.ToString(), Vout = (int)op.N })
+                .ToList();
+            
+            vtxosQuery = vtxosQuery.Where(vtxo => 
+                outpointPairs.Any(op => op.TxId == vtxo.TransactionId && op.Vout == vtxo.TransactionOutputIndex));
+        }
+        
+        var vtxos = await vtxosQuery
             .OrderByDescending(vtxo => vtxo.SeenAt)
             .ToArrayAsync(cancellationToken);
 
@@ -356,5 +388,48 @@ public class ArkWalletService(
                         contractGroup => contractGroup.Select(x => x.Vtxo).ToArray()
                     )
             );
+    }
+
+    public event EventHandler<string>? WalletPolicyChanged;
+
+    public async Task<ArkWallet[]> GetWalletsWithPolicies(CancellationToken cancellationToken = default)
+    {
+        await started.Task;
+        
+        await using var dbContext = dbContextFactory.CreateContext();
+        var wallets = await dbContext.Wallets
+            .Where(w => w.IntentSchedulingPolicy != null && w.IntentSchedulingPolicy != "")
+            .ToArrayAsync(cancellationToken);
+        
+        // Cache them
+        foreach (var wallet in wallets)
+        {
+            memoryCache.Set("ark-wallet-" + wallet.Id, wallet);
+        }
+        
+        return wallets;
+    }
+
+    public async Task UpdateWalletIntentSchedulingPolicy(string walletId, string? policyJson, CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+        
+        var wallet = await dbContext.Wallets.FindAsync(new object[] { walletId }, cancellationToken);
+        if (wallet == null)
+        {
+            logger.LogWarning("Wallet {WalletId} not found, cannot update intent scheduling policy", walletId);
+            return;
+        }
+        
+        wallet.IntentSchedulingPolicy = policyJson;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        
+        // Invalidate cache
+        memoryCache.Remove("ark-wallet-" + walletId);
+        
+        logger.LogDebug("Updated intent scheduling policy for wallet {WalletId}", walletId);
+        
+        // Notify listeners of policy change
+        WalletPolicyChanged?.Invoke(this, walletId);
     }
 }

@@ -115,9 +115,21 @@ public class ArkVtxoSynchronizationService(
             await foreach (var response in stream.ResponseStream.ReadAllAsync(token))
             {
                 if (response == null) continue;
-                logger.LogDebug("Received update for {Count} scripts.", response.Scripts.Count);
+                switch (response.DataCase)
+                {
+                    case GetSubscriptionResponse.DataOneofCase.None:
+                        break;
+                    case GetSubscriptionResponse.DataOneofCase.Heartbeat:
+                        break;
+                    case GetSubscriptionResponse.DataOneofCase.Event when response.Event is not null :
+                        await PollScriptsForVtxos( response.Event.Scripts.ToHashSet(), token);
+                        logger.LogDebug("Received update for {Count} scripts.", response.Event.Scripts.Count);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
 
-                await PollScriptsForVtxos(response.Scripts.ToHashSet(), token);
+                
             }
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
@@ -214,20 +226,20 @@ public class ArkVtxoSynchronizationService(
 
     public static VTXO Map(IndexerVtxo vtxo, VTXO? existing = null)
     {
+        
         existing ??= new VTXO();
 
         existing.TransactionId = vtxo.Outpoint.Txid;
         existing.TransactionOutputIndex = (int)vtxo.Outpoint.Vout;
         existing.Amount = (long)vtxo.Amount;
-        existing.IsNote = vtxo.IsSwept;
+        existing.Recoverable = vtxo.IsSwept;
         existing.SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt);
+        existing.ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt);
         existing.SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy) ? null : vtxo.SpentBy;
         existing.Script = vtxo.Script;
 
         return existing;
     }
-    
-    private record struct VtxoIdentifier(string TxId, uint Vout);
 
 
 }

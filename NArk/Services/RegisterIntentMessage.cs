@@ -6,6 +6,18 @@ namespace NArk.Services;
 
 
 
+public class DeleteIntentMessage
+{
+    // expire_at: nowSeconds + 2 * 60, // valid for 2 minutes
+    
+    [JsonPropertyName("type")]
+    [JsonPropertyOrder(0)]
+    public string Type { get; set; }
+    
+    [JsonPropertyName("expire_at")]
+    [JsonPropertyOrder(1)]
+    public long ExpireAt { get; set; }
+}
 
 public class RegisterIntentMessage
 {

@@ -72,6 +72,10 @@ public static class KeyExtensions
     public static string ToHex(this ECXOnlyPubKey value)
     {
         return Convert.ToHexString(value.ToBytes()).ToLowerInvariant();
+    }    
+    public static string ToHex(this ECPubKey value)
+    {
+        return Convert.ToHexString(value.ToBytes()).ToLowerInvariant();
     }
     
     public static Key ToKey(this ECPrivKey key)
