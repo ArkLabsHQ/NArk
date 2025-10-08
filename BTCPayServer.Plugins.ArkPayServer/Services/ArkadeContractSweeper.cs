@@ -14,7 +14,7 @@ public class ArkadeContractSweeper : IHostedService
     private readonly EventAggregator _eventAggregator;
     private readonly ILogger<ArkadeContractSweeper> _logger;
     private readonly IOperatorTermsService _operatorTermsService;
-    private readonly ArkVtxoSyncronizationService _arkSubscriptionService;
+    private readonly ArkVtxoSynchronizationService _arkSubscriptionService;
     private CompositeDisposable _leases = new();
     private CancellationTokenSource _cts = new();
     private TaskCompletionSource? _tcsWaitForNextPoll;
@@ -25,7 +25,7 @@ public class ArkadeContractSweeper : IHostedService
         EventAggregator eventAggregator,
         ILogger<ArkadeContractSweeper> logger,
         IOperatorTermsService operatorTermsService,
-        ArkVtxoSyncronizationService arkSubscriptionService)
+        ArkVtxoSynchronizationService arkSubscriptionService)
     {
         _arkadeSpender = arkadeSpender;
         _arkWalletService = arkWalletService;

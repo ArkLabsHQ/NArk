@@ -21,7 +21,7 @@
 }
 
 <li class="nav-item">
-    <a asp-area="" asp-controller="Ark" asp-action="@(enabled ? "StoreOverview" : "InitialSetup")"
+    <a asp-controller="Ark" asp-action="@(enabled ? "StoreOverview" : "InitialSetup")"
        asp-route-storeId="@Model.Store.Id"
        class="nav-link @ViewData.ActivePageClass("Ark", nameof(StoreNavPages))"
        id="StoreNav-Ark">

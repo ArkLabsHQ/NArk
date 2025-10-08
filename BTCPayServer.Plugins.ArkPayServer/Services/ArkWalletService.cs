@@ -21,10 +21,10 @@ using BTCPayServer.Lightning;
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkWalletService(
-    ActiveContractsCache activeContractsCache,
+    TrackedContractsCache activeContractsCache,
     ArkPluginDbContextFactory dbContextFactory,
     IOperatorTermsService operatorTermsService,
-    ArkVtxoSyncronizationService arkVtxoSyncronizationService,
+    ArkVtxoSynchronizationService arkVtxoSyncronizationService,
     IMemoryCache memoryCache,
     ILogger<ArkWalletService> logger) : IHostedService, IArkadeMultiWalletSigner
 {

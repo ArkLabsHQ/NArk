@@ -15,6 +15,8 @@
     var storeId = ScopeProvider.GetCurrentStoreId();
 }
 
+<partial name="_StatusMessage" />
+
 <form asp-action="InitialSetup" method="post" asp-route-storeId="@storeId">
     <div class="form-group mb-3">
         <label asp-for="Wallet" class="form-label"></label>

@@ -7,6 +7,7 @@ using BTCPayServer.Data;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Lightning;
+using BTCPayServer.Plugins.ArkPayServer.Exceptions;
 using BTCPayServer.Plugins.ArkPayServer.Models;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Plugins.ArkPayServer.Services;
@@ -30,8 +31,7 @@ public class ArkController(
     ArkWalletService arkWalletService,
     PaymentMethodHandlerDictionary paymentMethodHandlerDictionary,
     IOperatorTermsService operatorTermsService,
-    ArkadeWalletSignerProvider walletSignerProvider,
-    ArkadeSpender arkadeSpender) : Controller
+    ArkadeSpendingService arkadeSpendingService) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
@@ -90,9 +90,9 @@ public class ArkController(
 
             await storeRepository.UpdateStore(store);
 
-            TempData[WellKnownTempData.SuccessMessage] = $"Ark Payment method updated.";
+            TempData[WellKnownTempData.SuccessMessage] = "Ark Payment method updated.";
 
-            return RedirectToAction("StoreOverview", new { storeId });
+            return RedirectToAction(nameof(InitialSetup), new { storeId });
         }
         catch (Exception ex)
         {
@@ -112,7 +112,7 @@ public class ArkController(
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
 
         if (config?.WalletId is null)
-            return RedirectToAction("InitialSetup");
+            return RedirectToAction(nameof(InitialSetup), new { storeId = store.Id });
 
         var destination = arkWalletService.GetWalletDestination(config.WalletId);
 
@@ -121,7 +121,7 @@ public class ArkController(
 
     [HttpGet("stores/{storeId}/spend")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-    public async Task<IActionResult> SpendOverview(CancellationToken token)
+    public async Task<IActionResult> SpendOverview(string[]? destinations, CancellationToken token)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -130,13 +130,14 @@ public class ArkController(
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
 
         if (config?.WalletId is null)
-            return RedirectToAction("InitialSetup");
+            return RedirectToAction(nameof(InitialSetup), new { storeId = store.Id });
 
         if (!config.GeneratedByStore)
-            return RedirectToAction("StoreOverview");
+            return RedirectToAction(nameof(StoreOverview), new { storeId = store.Id });
 
         return View(new SpendOverviewViewModel
         {
+            PrefilledDestination = destinations?.ToList() ?? [],
             AvailableBalance = await arkWalletService.GetBalanceInSats(config.WalletId, cancellation: token)
         });
     }
@@ -152,97 +153,31 @@ public class ArkController(
         if (store == null)
             return NotFound();
 
-        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
-
-        if (config?.WalletId is null)
-            return RedirectToAction("InitialSetup");
-
-        if (!config.GeneratedByStore)
-            return RedirectToAction("StoreOverview");
-
-        var signer = await walletSignerProvider.GetSigner(config.WalletId, HttpContext.RequestAborted);
-        if (signer is null)
-            return NotFound();
-
-        ArkOperatorTerms terms;
         try
         {
-            terms = await operatorTermsService.GetOperatorTerms(HttpContext.RequestAborted);
+            var maybeProof = await arkadeSpendingService.Spend(store, model.Destination, token);
+            TempData[WellKnownTempData.SuccessMessage] = $"Payment sent to {model.Destination}";
+            model.PrefilledDestination.Remove(model.Destination);
+            return RedirectToAction(nameof(SpendOverview),
+                new { storeId = store.Id, destinations = model.PrefilledDestination });
         }
-        catch (Exception e)
+        catch (IncompleteArkadeSetupException e)
         {
-            return NotFound();
+            TempData[WellKnownTempData.ErrorMessage] = "Payment failed: incomplete arkade setup!";
+            return RedirectToAction(nameof(InitialSetup), new { storeId = store.Id });
         }
-
-
-        if (model.Destination.Replace("lightning:", "", StringComparison.InvariantCultureIgnoreCase) is { } lnbolt11 &&
-            BOLT11PaymentRequest.TryParse(lnbolt11, out var bolt11, terms.Network))
+        catch (MalformedPaymentDestination e)
         {
-            if (bolt11 is null)
-            {
-                TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: malfomed destination!";
-                return RedirectToAction(nameof(SpendOverview), new { storeId = store.Id });
-            }
-
-            var lnConfig =
-                store
-                    .GetPaymentMethodConfig<LightningPaymentMethodConfig>(
-                        GetLightningPaymentMethod(),
-                        paymentMethodHandlerDictionary
-                    );
-
-            if (lnConfig is null)
-            {
-                TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: lightning compatiblity is not enabled!";
-                return RedirectToAction(nameof(SpendOverview), new { storeId = store.Id });
-            }
-
-            var lnClient = paymentMethodHandlerDictionary.GetLightningHandler("BTC").CreateLightningClient(lnConfig);
-            var resp = await lnClient.Pay(bolt11.ToString(), HttpContext.RequestAborted);
-            if (resp.Result == PayResult.Ok)
-            {
-                TempData[WellKnownTempData.SuccessMessage] = $"Payment sent to {bolt11}";
-                return RedirectToAction(nameof(SpendOverview), new { storeId = store.Id });
-            }
-
-            TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: {resp?.Details?.Status}";
+            TempData[WellKnownTempData.ErrorMessage] = "Payment failed: malfomed destination!";
+            return RedirectToAction(nameof(SpendOverview),
+                new { storeId = store.Id, destinations = model.PrefilledDestination });
         }
-        else if (Uri.TryCreate(model.Destination, UriKind.Absolute, out var uri) && uri.Scheme.Equals("bitcoin", StringComparison.InvariantCultureIgnoreCase))
+        catch (ArkadePaymentFailedException e)
         {
-            var host = uri.AbsoluteUri[(uri.Scheme.Length + 1)..].Split('?')[0]; // uri.Host is empty so we must parse it ourselves
-
-            var qs = uri.ParseQueryString();
-            if (ArkAddress.TryParse(host, out var address) ||
-                (qs["ark"] is { } arkQs && ArkAddress.TryParse(arkQs, out address)))
-            {
-                if (address is null)
-                {
-                    TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: malformed destination!";
-                    return RedirectToAction(nameof(SpendOverview), new { storeId = store.Id });
-                }
-
-                var amount = decimal.Parse(qs["amount"] ?? "0", CultureInfo.InvariantCulture);
-
-                try
-                {
-                    var txId = await arkadeSpender.Spend(config.WalletId, [new TxOut(Money.Coins(amount), address)],
-                        HttpContext.RequestAborted);
-
-                    await arkWalletService.UpdateBalances(config.WalletId, true, token);
-                    TempData[WellKnownTempData.SuccessMessage] = $"Payment sent to {address.ToString(terms.Network.ChainName == ChainName.Mainnet)} with txid {txId}";
-                }
-                catch (Exception e)
-                {
-                    TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: {e.Message}";
-                }
-            }
+            TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: reason: {e.Message}";
+            return RedirectToAction(nameof(SpendOverview),
+                new { storeId = store.Id, destinations = model.PrefilledDestination });
         }
-        else
-        {
-            TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: unsupported destination!";
-        }
-
-        return RedirectToAction(nameof(SpendOverview), new {storeId = store.Id});
     }
 
 
@@ -295,7 +230,6 @@ public class ArkController(
         await storeRepository.UpdateStore(store);
         TempData[WellKnownTempData.SuccessMessage] = "Lightning enabled";
         return RedirectToAction("StoreOverview", new { storeId });
-
     }
 
     private bool IsArkadeLightningEnabled()
@@ -330,8 +264,8 @@ public class ArkController(
 
         if (HexEncoder.IsWellFormed(wallet) &&
             Encoders.Hex.DecodeData(wallet) is
-            { Length: 32 } potentialwalletBytes &&
-            ECXOnlyPubKey.TryCreate(potentialwalletBytes, out _))
+            { Length: 32 } potentialWalletBytes &&
+            ECXOnlyPubKey.TryCreate(potentialWalletBytes, out _))
         {
             if (!await arkWalletService.WalletExists(wallet, HttpContext.RequestAborted))
                 throw new Exception("Unsupported value.");

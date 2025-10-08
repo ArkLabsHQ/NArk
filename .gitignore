@@ -3,3 +3,4 @@
 **/bin
 .cache
 volumes
+*.user

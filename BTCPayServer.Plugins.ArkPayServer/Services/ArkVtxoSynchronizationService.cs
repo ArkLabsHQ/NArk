@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Ark.V1;
 using AsyncKeyedLock;
+using BTCPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Cache;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Models.Events;
@@ -8,10 +9,23 @@ using Microsoft.Extensions.Hosting;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
+using BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
+using BTCPayServer.Services;
+using NArk;
+using NArk.Services.Abstractions;
+using NBitcoin;
+using NBitcoin.Payment;
+using PayoutData = BTCPayServer.Data.PayoutData;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
-public class ArkVtxoSyncronizationService(ILogger<ArkVtxoSyncronizationService> logger, AsyncKeyedLocker asyncKeyedLocker, EventAggregator eventAggregator, ActiveContractsCache contractsCache, ArkPluginDbContextFactory arkPluginDbContextFactory, IndexerService.IndexerServiceClient indexerClient) : BackgroundService
+public class ArkVtxoSynchronizationService(
+    ILogger<ArkVtxoSynchronizationService> logger,
+    AsyncKeyedLocker asyncKeyedLocker,
+    EventAggregator eventAggregator,
+    TrackedContractsCache contractsCache,
+    ArkPluginDbContextFactory arkPluginDbContextFactory,
+    IndexerService.IndexerServiceClient indexerClient) : BackgroundService
 {
     private CancellationTokenSource? _lastLoopCts = null;
     private Task? _lastListeningLoop = null;
@@ -19,8 +33,7 @@ public class ArkVtxoSyncronizationService(ILogger<ArkVtxoSyncronizationService> 
     private readonly TaskCompletionSource _startedTcs = new();
     public Task Started => _startedTcs.Task;
     public bool IsActive => _lastListeningLoop is not null && _lastListeningLoop.Status == TaskStatus.Running;
-
-
+    
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await SubscriptionUpdateLoop(stoppingToken);
@@ -31,16 +44,26 @@ public class ArkVtxoSyncronizationService(ILogger<ArkVtxoSyncronizationService> 
         while (!stoppingToken.IsCancellationRequested)
         {
             var waitForCacheUpdate = await eventAggregator.WaitNext<ArkCacheUpdated>(stoppingToken);
-            if (waitForCacheUpdate.CacheName is not nameof(ActiveContractsCache)) continue;
+            if (waitForCacheUpdate.CacheName is not nameof(TrackedContractsCache)) continue;
             var contracts = contractsCache.Contracts;
-            var subscribedScripts = contracts.Select(c => c.Script).ToHashSet();
+            var payouts = contractsCache.Payouts;
+            
+            var subscribedContractScripts = contracts.Select(c => c.Script).ToHashSet();
+            var subscribedPayoutScripts = payouts.Select(GetPayoutScript).ToHashSet();
 
-            logger.LogInformation("Updating subscription with {Count} active contracts.", subscribedScripts.Count);
+            var subscribedScripts = subscribedContractScripts.Concat(subscribedPayoutScripts).ToHashSet();
+            
+            logger.LogInformation(
+                "Updating subscription with {ActiveContractsCount} active contracts and {PendingPayoutsCount}.",
+                subscribedContractScripts.Count,
+                subscribedPayoutScripts.Count
+            );
 
             var req = new SubscribeForScriptsRequest();
 
             // Only use existing subscriptionId when fake flag is false, true IsFake flag shows that something has gone wrong 
-            if (_subscriptionId is not null && !waitForCacheUpdate.IsFake) req.SubscriptionId = _subscriptionId;
+            if (_subscriptionId is not null && !waitForCacheUpdate.IsFake)
+                req.SubscriptionId = _subscriptionId;
 
             req.Scripts.AddRange(subscribedScripts);
 
@@ -62,6 +85,11 @@ public class ArkVtxoSyncronizationService(ILogger<ArkVtxoSyncronizationService> 
             }
 
         }
+    }
+
+    private string GetPayoutScript(PayoutData payout)
+    {
+        return ArkAddress.Parse(payout.DedupId!).ScriptPubKey.ToHex();
     }
 
     private void StartListening(string subscriptionId, CancellationToken stoppingToken)
@@ -101,7 +129,7 @@ public class ArkVtxoSyncronizationService(ILogger<ArkVtxoSyncronizationService> 
             logger.LogError(ex, "Stream listener failed. It will be restarted on the next check.");
             // The main loop will handle restarting the subscription.
             // To ensure it restarts, we can trigger a check.
-            eventAggregator.Publish(new ArkCacheUpdated(nameof(ActiveContractsCache), true));
+            eventAggregator.Publish(new ArkCacheUpdated(nameof(TrackedContractsCache), true));
         }
         finally
         {

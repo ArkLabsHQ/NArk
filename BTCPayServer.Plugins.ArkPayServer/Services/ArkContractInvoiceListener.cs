@@ -102,8 +102,9 @@ public class ArkContractInvoiceListener(
         }.Set(invoice, handler, details);
 
 
-        var alreadyExistingPaymentThatMatches = invoice.GetPayments(false).SingleOrDefault(c =>
-            c.Id == paymentData.Id && c.PaymentMethodId == pmi);
+        var alreadyExistingPaymentThatMatches = invoice
+            .GetPayments(false)
+            .SingleOrDefault(c => c.Id == paymentData.Id && c.PaymentMethodId == pmi);
 
         if (alreadyExistingPaymentThatMatches == null)
         {

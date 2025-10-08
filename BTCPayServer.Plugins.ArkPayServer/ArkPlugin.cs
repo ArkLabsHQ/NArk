@@ -23,6 +23,7 @@ using System.Text.Json;
 using Grpc.Net.ClientFactory;
 using NArk.Services.Abstractions;
 using BTCPayServer.Plugins.ArkPayServer.Cache;
+using BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 
@@ -33,7 +34,6 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
 
     internal static PaymentMethodId ArkadePaymentMethodId = new PaymentMethodId("ARKADE");
     
-    /*
     internal static PayoutMethodId ArkadePayoutMethodId = Create();
 
 
@@ -43,7 +43,6 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         var constructor = typeof(PayoutMethodId).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, new[] { typeof(string) })!;
         return (PayoutMethodId) constructor.Invoke(new object[] { "ARKADE" })!;
     }
-    */
     
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =
     [
@@ -82,20 +81,22 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<ICheckoutModelExtension>(provider => provider.GetRequiredService<ArkadeCheckoutModelExtension>());
         serviceCollection.AddSingleton<ICheckoutCheatModeExtension>(provider => provider.GetRequiredService<ArkadeCheckoutCheatModeExtension>());
         serviceCollection.AddSingleton<IArkadeMultiWalletSigner>(provider => provider.GetRequiredService<ArkWalletService>());
-        serviceCollection.AddSingleton<ArkVtxoSyncronizationService>();
+        serviceCollection.AddSingleton<ArkVtxoSynchronizationService>();
         serviceCollection.AddSingleton<ArkContractInvoiceListener>();
         serviceCollection.AddHostedService<ArkWalletService>(provider => provider.GetRequiredService<ArkWalletService>());
-        serviceCollection.AddHostedService<ArkVtxoSyncronizationService>(provider => provider.GetRequiredService<ArkVtxoSyncronizationService>());
+        serviceCollection.AddHostedService<ArkVtxoSynchronizationService>(provider => provider.GetRequiredService<ArkVtxoSynchronizationService>());
         serviceCollection.AddHostedService<ArkContractInvoiceListener>(provider => provider.GetRequiredService<ArkContractInvoiceListener>());
         serviceCollection.AddHostedService<ArkadeContractSweeper>(provider => provider.GetRequiredService<ArkadeContractSweeper>());
+        
+        serviceCollection.AddSingleton<ArkadeSpendingService>();
         
         // Register the Boltz swap services
         serviceCollection.AddSingleton<BoltzSwapService>();
         serviceCollection.AddSingleton<BoltzService>();
         serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
 
-        serviceCollection.AddSingleton<ActiveContractsCache>();
-        serviceCollection.AddHostedService<ActiveContractsCache>(provider => provider.GetRequiredService<ActiveContractsCache>());
+        serviceCollection.AddSingleton<TrackedContractsCache>();
+        serviceCollection.AddHostedService<TrackedContractsCache>(provider => provider.GetRequiredService<TrackedContractsCache>());
 
         serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/OldArk/ArkLNSetupTabhead.cshtml");
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/OldArk/ArkPaymentData.cshtml");
@@ -140,6 +141,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         }
     }
 
+    
     private static (string? ArkUri, string? BoltzUri) GetServiceUris(PluginServiceCollection pluginServiceCollection)
     {
         var networkType = 
@@ -208,6 +210,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<ArkadePaymentLinkExtension>();
         serviceCollection.AddSingleton<IPaymentLinkExtension>(provider => provider.GetRequiredService<ArkadePaymentLinkExtension>());
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
+        serviceCollection.AddSingleton<ArkPayoutHandler>();
+        serviceCollection.AddSingleton<IPayoutHandler>(provider => provider.GetRequiredService<ArkPayoutHandler>());
         
         serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
     }

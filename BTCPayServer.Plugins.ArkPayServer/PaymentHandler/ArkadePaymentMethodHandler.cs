@@ -40,8 +40,9 @@ public class ArkadePaymentMethodHandler(
         if (ParsePaymentMethodConfig(store.GetPaymentMethodConfigs()[PaymentMethodId]) is not ArkadePaymentMethodConfig
             arkadePaymentMethodConfig)
         {
-            throw new PaymentMethodUnavailableException($"Arkade payment method not configured");
+            throw new PaymentMethodUnavailableException("Arkade payment method not configured");
         }
+
         var contract = await arkWalletService.DerivePaymentContract(arkadePaymentMethodConfig.WalletId, CancellationToken.None);
         var details = new ArkadePromptDetails(arkadePaymentMethodConfig.WalletId, contract);
         var address = contract.GetArkAddress();

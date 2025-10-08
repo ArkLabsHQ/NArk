@@ -14,6 +14,8 @@ namespace BTCPayServer.Plugins.ArkPayServer.Payouts.Ark
         public string? Id => Address.ToString(IsMainNet);
 
         public virtual decimal? Amount => null;
+
+        public override string ToString() => Id ?? throw new NotImplementedException();
     }
 
 }

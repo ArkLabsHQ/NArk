@@ -22,7 +22,7 @@ public class ArkadeSpender(
     ArkWalletService arkWalletService,
     ILogger<ArkadeSpender> logger,
     IOperatorTermsService operatorTermsService,
-    ArkVtxoSyncronizationService arkVtxoSyncronizationService)
+    ArkVtxoSynchronizationService arkVtxoSyncronizationService)
 {
     public async Task<uint256> Spend(string walletId, TxOut[] outputs, CancellationToken cancellationToken = default)
     {
