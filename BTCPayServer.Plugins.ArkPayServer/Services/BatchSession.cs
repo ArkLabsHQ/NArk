@@ -302,6 +302,9 @@ public class BatchSession
         var connectorsLeaves = connectorsGraph?.Leaves().ToList() ?? new List<PSBT>();
         int connectorIndex = 0;
 
+
+        var partialForfeits = _arkIntent.PartialForfeits.Select(p => PSBT.Parse(p, _network)).ToDictionary(psbt => psbt.Inputs[0].PrevOut);
+
         foreach (var vtxoCoin in _ins)
         {
             // Skip recoverable coins (notes) - they don't need forfeit transactions
@@ -326,7 +329,7 @@ public class BatchSession
             // Get the next connector leaf
             var connectorLeaf = connectorsLeaves[connectorIndex];
             var connectorOutput = connectorLeaf.Outputs.FirstOrDefault();
-            
+
             if (connectorOutput == null)
             {
                 throw new InvalidOperationException($"Connector leaf at index {connectorIndex} has no outputs");
@@ -340,18 +343,36 @@ public class BatchSession
 
             connectorIndex++;
 
-            _logger.LogDebug("Constructing forfeit tx for VTXO {Outpoint} with connector {ConnectorOutpoint}", 
+            _logger.LogDebug("Constructing forfeit tx for VTXO {Outpoint} with connector {ConnectorOutpoint}",
                 vtxoCoin.Outpoint, connectorCoin.Outpoint);
 
-            // Construct and sign forfeit transaction
-            var forfeitTx = await _arkTransactionBuilder.ConstructForfeitTx(
-                vtxoCoin,
-                connectorCoin,
-                operatorTerms.ForfeitAddress,
-                cancellationToken);
+            if (partialForfeits.TryGetValue(vtxoCoin.Outpoint, out var forfeit))
+            {
 
-            signedForfeits.Add(forfeitTx.ToBase64());
-            _logger.LogDebug("Forfeit tx constructed for VTXO {Outpoint}", vtxoCoin.Outpoint);
+                var forfeitTx =
+                    await _arkTransactionBuilder.CompleteForfeitTx(forfeit, connectorCoin, _signer, cancellationToken);
+
+                signedForfeits.Add(forfeitTx.ToBase64());
+                _logger.LogDebug("Forfeit tx constructed for VTXO {Outpoint}", vtxoCoin.Outpoint);
+
+            }
+            else
+            {
+
+
+                // Construct and sign forfeit transaction
+
+                var forfeitTx = await _arkTransactionBuilder.ConstructForfeitTx(
+                    vtxoCoin,
+                    connectorCoin,
+                    operatorTerms.ForfeitAddress,
+                    cancellationToken);
+
+                signedForfeits.Add(forfeitTx.ToBase64());
+                _logger.LogDebug("Forfeit tx constructed for VTXO {Outpoint}", vtxoCoin.Outpoint);
+            }
+
+
         }
 
         // Submit all signed forfeit transactions

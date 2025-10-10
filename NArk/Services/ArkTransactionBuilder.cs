@@ -153,10 +153,8 @@ namespace NArk.Services
             
             // Add connector input
             gtx.Inputs.Add(new TxIn(connector.Outpoint));
-            
-            // Create new PSBT with updated transaction
-            var completedForfeit = PSBT.FromTransaction(gtx, terms.Network, PSBTVersion.PSBTv0);
-            completedForfeit = completedForfeit.UpdateFrom(existingForfeit);
+
+            var completedForfeit = PSBT.FromTransaction(gtx, existingForfeit.Network).UpdateFrom(existingForfeit);
             
             // Add connector coin to PSBT
             var connectorInput = completedForfeit.Inputs.FindIndexedInput(connector.Outpoint);

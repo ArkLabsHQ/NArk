@@ -105,7 +105,7 @@ public class ArkIntentService : IHostedService, IDisposable
     }
 
     /// <summary>
-    /// Create a new intent
+    /// Create a new intent by generating BIP322 signatures
     /// </summary>
     public async Task<string> CreateIntentAsync(
         string walletId,
@@ -148,13 +148,13 @@ public class ArkIntentService : IHostedService, IDisposable
        } 
        
 
-        // Create intent transactions
+        // Generate intent transactions with BIP322 signatures
         var effectiveValidFrom = validFrom ?? DateTimeOffset.UtcNow;
         var effectiveValidUntil = validUntil ?? DateTimeOffset.UtcNow.Add(DefaultIntentExpiry);
         
         var cosigners = new[] { await signer.GetXOnlyPublicKey(cancellationToken) };
         
-        var (registerTx, deleteTx, registerMessage, deleteMessage) = await IntentUtils.CreateIntent(
+        var (registerTx, deleteTx, registerMsg, deleteMsg) = await IntentUtils.CreateIntent(
             _network,
             cosigners,
             effectiveValidFrom,
@@ -187,15 +187,131 @@ public class ArkIntentService : IHostedService, IDisposable
             UpdatedAt = DateTimeOffset.UtcNow,
             LockedVtxos = vtxoEntities,
             RegisterProof = registerTx.ToBase64(),
-            RegisterProofMessage = JsonSerializer.Serialize(registerMessage),
+            RegisterProofMessage = JsonSerializer.Serialize(registerMsg),
             DeleteProof = deleteTx.ToBase64(),
-            DeleteProofMessage = JsonSerializer.Serialize(deleteMessage)
+            DeleteProofMessage = JsonSerializer.Serialize(deleteMsg)
         };
 
         await dbContext.Intents.AddAsync(intent, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         
         _logger.LogInformation("Created intent {IntentId} for wallet {WalletId}", intent.Id, walletId);
+        
+        // Trigger immediate submission check if intent is already valid
+        if (effectiveValidFrom <= DateTimeOffset.UtcNow)
+        {
+            TriggerSubmissionCheck();
+        }
+        
+        return intent.Id;
+    }
+
+    /// <summary>
+    /// Create a new intent from pre-signed BIP322 proofs (delegation scenario)
+    /// </summary>
+    public async Task<string> CreateDelegatedIntentAsync(
+        string walletId,
+        SpendableArkCoinWithSigner[] coins,
+        string registerProof,
+        string registerMessage,
+        string? deleteProof = null,
+        string? deleteMessage = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        
+        // Check if any VTXOs are already locked
+        var coinOutpoints = coins.Select(c => new { TransactionId = c.Outpoint.Hash.ToString(), TransactionOutputIndex = (int)c.Outpoint.N }).ToList();
+        var lockedVtxos = await dbContext.Intents
+            .Where(i => i.State == ArkIntentState.WaitingToSubmit || i.State == ArkIntentState.WaitingForBatch)
+            .SelectMany(i => i.LockedVtxos)
+            .Where(v => coinOutpoints.Contains(new { v.TransactionId, v.TransactionOutputIndex }))
+            .ToListAsync(cancellationToken);
+        
+        if (lockedVtxos.Any())
+        {
+            throw new InvalidOperationException(
+                $"One or more VTXOs are already locked by another intent: {string.Join(", ", lockedVtxos.Select(v => $"{v.TransactionId}:{v.TransactionOutputIndex}"))}");
+        }
+
+        // Validate wallet ownership
+        var vtxoScripts = coins.Select(c => c.Contract.GetArkAddress().ScriptPubKey.ToHex()).ToList();
+        var contracts = await dbContext.WalletContracts.Where(wc => wc.WalletId == walletId && vtxoScripts.Contains(wc.Script))
+            .ToDictionaryAsync(contract => contract.Script, cancellationToken);
+        if (contracts.Count != vtxoScripts.Count)
+        {
+            throw new InvalidOperationException($"One or more VTXOs are not owned by wallet {walletId}");
+        }
+
+        // Parse provided proofs
+        var registerTx = PSBT.Parse(registerProof, _network);
+        var registerMsg = JsonSerializer.Deserialize<RegisterIntentMessage>(registerMessage) 
+            ?? throw new InvalidOperationException("Invalid register message");
+        
+        var effectiveValidFrom = DateTimeOffset.FromUnixTimeSeconds(registerMsg.ValidAt);
+        var effectiveValidUntil = DateTimeOffset.FromUnixTimeSeconds(registerMsg.ExpireAt);
+        
+        // Handle delete proof
+        PSBT deleteTx;
+        DeleteIntentMessage deleteMsg;
+        
+        if (deleteProof != null && deleteMessage != null)
+        {
+            deleteTx = PSBT.Parse(deleteProof, _network);
+            deleteMsg = JsonSerializer.Deserialize<DeleteIntentMessage>(deleteMessage)
+                ?? throw new InvalidOperationException("Invalid delete message");
+        }
+        else
+        {
+            // Generate delete proof using wallet signer
+            var signer = await _signerProvider.GetSigner(walletId, cancellationToken);
+            if (signer == null)
+            {
+                throw new InvalidOperationException($"Signer not available for wallet {walletId}");
+            }
+            
+            var deleteIntentMsg = new DeleteIntentMessage
+            {
+                Type = "delete",
+                ExpireAt = effectiveValidUntil.ToUnixTimeSeconds()
+            };
+            var deleteMessageJson = JsonSerializer.Serialize(deleteIntentMsg);
+            deleteTx = await IntentUtils.CreateIntent(deleteMessageJson, _network, coins, null, signer, cancellationToken);
+            deleteMsg = deleteIntentMsg;
+        }
+
+        // Convert coins to VTXO entities for database storage
+        var vtxoEntities = coins.Select(coin => new VTXO
+        {
+            TransactionId = coin.Outpoint.Hash.ToString(),
+            TransactionOutputIndex = (int)coin.Outpoint.N,
+            Amount = coin.TxOut.Value.Satoshi,
+            Script = coin.TxOut.ScriptPubKey.ToHex(),
+            SeenAt = DateTimeOffset.UtcNow,
+            Recoverable = false
+        }).ToList();
+
+        // Create intent entity
+        var intent = new ArkIntent
+        {
+            Id = Guid.NewGuid().ToString(),
+            WalletId = walletId,
+            State = ArkIntentState.WaitingToSubmit,
+            ValidFrom = effectiveValidFrom,
+            ValidUntil = effectiveValidUntil,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+            LockedVtxos = vtxoEntities,
+            RegisterProof = registerTx.ToBase64(),
+            RegisterProofMessage = JsonSerializer.Serialize(registerMsg),
+            DeleteProof = deleteTx.ToBase64(),
+            DeleteProofMessage = JsonSerializer.Serialize(deleteMsg)
+        };
+
+        await dbContext.Intents.AddAsync(intent, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        
+        _logger.LogInformation("Created delegated intent {IntentId} for wallet {WalletId}", intent.Id, walletId);
         
         // Trigger immediate submission check if intent is already valid
         if (effectiveValidFrom <= DateTimeOffset.UtcNow)

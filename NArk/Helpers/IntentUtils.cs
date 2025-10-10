@@ -11,71 +11,56 @@ public class IntentUtils
 {
 
     public static async Task<PSBT> CreateIntent(string message, Network network,  SpendableArkCoinWithSigner[] inputs,
-        TxOut[] outputs, IArkadeWalletSigner? messageSigner = null, CancellationToken cancellationToken = default)
+        TxOut[]? outputs, IArkadeWalletSigner? messageSigner = null, CancellationToken cancellationToken = default)
     {
         
         messageSigner ??= inputs.FirstOrDefault()?.Signer ?? new MemoryWalletSigner(ECPrivKey.Create(RandomUtils.GetBytes(32)));
-        var signerKey = await messageSigner.GetXOnlyPublicKey(cancellationToken);
-        var addr = new TaprootAddress(new TaprootPubKey(signerKey.ToBytes()), network);
+        var signerKey = await messageSigner.GetPublicKey(cancellationToken);
+        var fullPubkey = TaprootFullPubKey.Create(new TaprootInternalPubKey(signerKey.ToBytes()), null);
+        var addr = new TaprootAddress(fullPubkey, network);
         var highestLockTime = inputs.MaxBy(i => i.SpendingLockTime?.Value??LockTime.Zero)!.SpendingLockTime ?? LockTime.Zero;
         var toSignTx = addr.CreateBIP322PSBT(message, 0U,highestLockTime, 0U, inputs);
-        foreach (var inCoin in inputs)
-        {
-            var psbtInput = toSignTx.Inputs.FindIndexedInput(inCoin.Outpoint);
-            psbtInput!.Sequence = inCoin.SpendingSequence ?? Sequence.Final;
-        }
-        
-        var tx =toSignTx.GetGlobalTransaction();
-        
-        
+
         if (outputs is not null && outputs.Length != 0)
         {
+            
+            var tx =toSignTx.GetGlobalTransaction();
             //BIP322 dictates to have only one output which is an op_return
-            //however, we have a decviation from this rule in order to be able to use the intent as an output declration
+            //however, we have a deviation from this rule in order to be able to use the intent as an output declration
             tx.Outputs.RemoveAt(0);
             tx.Outputs.AddRange(outputs);
             toSignTx = PSBT.FromTransaction(tx, network).UpdateFrom(toSignTx);
         }
-        
-        
-        //now we sign
-        var toSpendInput = toSignTx.Inputs.ElementAt(0);
-        var toSpendTxOut = new TxOut(Money.Zero, addr.ScriptPubKey);
-        var toSpendCoin = new Coin(toSpendInput.PrevOut, toSpendTxOut);
 
-        Coin[] coins = [toSpendCoin, ..inputs];
-        var toSignPrecompute = 
-            tx.PrecomputeTransactionData(coins);
-
-        foreach (var input in tx.Inputs.AsIndexedInputs())
+        var toSignGTx = toSignTx.GetGlobalTransaction();
+        var precomputedTransactionData = toSignGTx.PrecomputeTransactionData(inputs.Select(i => i.TxOut).ToArray());
+        
+        foreach (var inCoin in inputs)
         {
+            var psbtInput = toSignTx.Inputs.FindIndexedInput(inCoin.Outpoint);
+
+            await inCoin.SignAndFillPSBT(toSignTx, precomputedTransactionData, cancellationToken);
             
-            var coin = coins.Single(coin1 => coin1.Outpoint == input.PrevOut);
-            var spendableCoin = coin as SpendableArkCoinWithSigner;
-            var script = spendableCoin?.SpendingScriptBuilder.Build();
-            var leaf =script?.LeafHash;
-            var coinSigner = spendableCoin?.Signer ?? messageSigner;
-            var hash = tx.GetSignatureHashTaproot(
-                toSignPrecompute,
-                new TaprootExecutionData((int)input.Index, leaf));
-            var sig = await coinSigner.Sign(hash, cancellationToken);
-            var witness = new List<Op>
+            psbtInput!.Sequence = inCoin.SpendingSequence ?? Sequence.Final;
+            psbtInput.SetArkFieldTapTree(inCoin.Contract.GetTapScriptList());
+            psbtInput.SetTaprootLeafScript(inCoin.Contract.GetTaprootSpendInfo(), inCoin.SpendingScript);
+            if (inCoin.SpendingConditionWitness is not null)
             {
-                Op.GetPushOp(sig.Item1.ToBytes())
-            };
-            if (spendableCoin?.SpendingConditionWitness is not null)
-            {
-                witness.AddRange(spendableCoin.SpendingConditionWitness.ToScript().ToOps());
+                psbtInput.SetArkFieldConditionWitness(inCoin.SpendingConditionWitness);
             }
-            if (spendableCoin?.SpendingScriptBuilder is not null)
-            {
-                var controlBlock = spendableCoin.Contract.GetTaprootSpendInfo().GetControlBlock(script);
-                witness.AddRange([Op.GetPushOp(script.Script.ToBytes()), Op.GetPushOp(controlBlock.ToBytes())]);
-            }
-            toSignTx.Inputs.FindIndexedInput(input.PrevOut)!.FinalScriptWitness = new WitScript(witness.ToArray());
         }
+
+        //now we finalize and sign the first input
+        var hash = toSignGTx.GetSignatureHashTaproot(precomputedTransactionData,
+            new TaprootExecutionData(0));
         
-        return toSignTx.Finalize();
+        var (sig, ourKey) = await messageSigner.Sign(hash, cancellationToken);
+        // var pubKey = await messageSigner.GetPublicKey(cancellationToken);
+        toSignTx.Inputs[0].TaprootKeySignature = TaprootSignature.Parse(sig.ToBytes());
+        toSignTx.Inputs[0].ClearForFinalize();
+        toSignTx.Inputs[0].FinalizeInput();
+
+        return toSignTx;
     }
     
     
@@ -106,4 +91,33 @@ public class IntentUtils
             msg,
             deleteMsg);
     }
+
+    public static async Task VerifyIntent(PSBT psbt, string message)
+    {
+        // if(!psbt.IsAllFinalized())
+        //     throw new InvalidOperationException("PSBT is not finalized");
+        //
+        //
+        //
+        // var tx = psbt.GetGlobalTransaction();
+        //
+        // foreach (PSBTInput psbtInput in psbt.Inputs.Skip(1))
+        // {
+        //     var coin = psbtInput.GetTxOut();
+        //     if (coin is null)
+        //         throw new InvalidOperationException("PSBT input is not finalized");
+        //     
+        //     
+        //     
+        // }
+        //
+        // var toSignTx = tx;
+        // var toSignPrecompute = tx.Pre
+        // var toSignTxOut = new TxOut(Money.Zero, new TaprootAddress(new TaprootPubKey(toSignInput.WitScript.GetTaprootPubKey()), tx.Network));
+        // var toSignCoin = new Coin(toSignInput.PrevOut, toSignTxOut);
+        // var toSignPrecompute = tx.PrecomputeTransactionData(coins);
+    }
+    
+    
+    
 }
