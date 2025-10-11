@@ -108,8 +108,7 @@ public class ArkDelegationService : DelegationService.DelegationServiceBase
             //any of them recoverable dont need a forfeit
             // those that are still ok, check that theere is a forfeit for it + the chosen tapleaf requires the delegate signature
             //check there is signature + condition if needed.
-            
-            _intentService.CreateDelegatedIntentAsync()
+            throw new NotImplementedException();
             
             
             return new DelegateResponse

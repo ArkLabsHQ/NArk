@@ -1,27 +1,5 @@
 name: nigiri
 services:
-  nbxplorer:
-    image: nicolasdorier/nbxplorer:2.5.30-1
-    restart: unless-stopped
-    ports:
-      - "32838:32838"
-    expose:
-      - "32838"
-    environment:
-      NBXPLORER_NETWORK: regtest
-      NBXPLORER_CHAINS: "btc"
-      NBXPLORER_BTCRPCURL: http://bitcoin:18443/
-      NBXPLORER_BTCNODEENDPOINT: bitcoin:18444
-      NBXPLORER_BTCRPCUSER: admin1
-      NBXPLORER_BTCRPCPASSWORD: 123
-      NBXPLORER_BIND: 0.0.0.0:32838
-      NBXPLORER_MINGAPSIZE: 5
-      NBXPLORER_MAXGAPSIZE: 10
-      NBXPLORER_VERBOSE: 1
-      NBXPLORER_POSTGRES: User ID=postgres;Include Error Detail=true;Host=postgres;Port=5432;Database=nbxplorer
-      NBXPLORER_EXPOSERPC: 1
-      NBXPLORER_NOAUTH: 1
-  
   # Lightning swap services
   boltz-lnd:
     image: btcpayserver/lnd:v0.19.3-beta
@@ -60,7 +38,6 @@ services:
         tlsextradomain=boltz-lnd
         debuglevel=debug
         restcors=*
-        
     volumes:
       - boltz_lnd_datadir:/root/.lnd
     ports:
@@ -110,7 +87,7 @@ services:
       - '10009:10009'
 
   boltz-fulmine:
-    image: ghcr.io/arklabshq/fulmine:v0.2.0-rc.3
+    image: kukks/fulmine:v8-preview
     container_name: boltz-fulmine
     environment:
       - FULMINE_ARK_SERVER=http://ark:7070
@@ -128,24 +105,8 @@ services:
       - boltz_fulmine_datadir:/app/data
     restart: unless-stopped
 
-  postgres:
-    image: postgres:15.4
-    container_name: boltz-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: boltz
-      POSTGRES_HOST_AUTH_METHOD: trust
-    expose:
-      - '5432'
-    ports:
-      - "39372:5432"
-    volumes:
-      - postgres_datadir:/var/lib/postgresql/data
-
   boltz:
-    image: boltz/boltz:ark@sha256:aff267f48080535fa1b8b510eb4531866aafdb5c3acf4c038e8d6046c49e9880
+    image: boltz/boltz:ark-v8@sha256:dfb23888998d5fd74f56f9943fde82dd6d04bbbec1b009058b4be43a48ef4eaa
     container_name: boltz
     restart: unless-stopped
     ports:
@@ -237,10 +198,25 @@ services:
     volumes:
       - boltz_datadir:/home/boltz/.boltz
       - boltz_lnd_datadir:/home/boltz/.lnd
-    entrypoint: sh -c 'echo "$$BOLTZ_CONFIG" > /home/boltz/.boltz/boltz.config && boltzd --datadir /home/boltz/.boltz --configpath /home/boltz/.boltz/boltz.config'
+    entrypoint:
+      - sh
+      - -c
+      - |
+        # Wait for postgres to be ready
+        until PGPASSWORD=postgres psql -h postgres -U postgres -c '\q' 2>/dev/null; do
+          echo "Waiting for postgres..."
+          sleep 1
+        done
+        
+        # Create database if it doesn't exist
+        PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'boltz'" | grep -q 1 || \
+        PGPASSWORD=$$POSTGRES_PASSWORD psql -h postgres -U postgres -c "CREATE DATABASE boltz"
+        
+        # Start boltzd
+        echo "$$BOLTZ_CONFIG" > /home/boltz/.boltz/boltz.config
+        boltzd --datadir /home/boltz/.boltz --configpath /home/boltz/.boltz/boltz.config
     
 volumes:
-  postgres_datadir:
   boltz_datadir:
   boltz_lnd_datadir:
   boltz_fulmine_datadir:
