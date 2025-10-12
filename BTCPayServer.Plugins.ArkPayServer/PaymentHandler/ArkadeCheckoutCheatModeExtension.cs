@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using BTCPayServer.Payments;
 using BTCPayServer.Services;
 using NBitcoin;
@@ -8,19 +9,21 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler
 {
     public class ArkadeCheckoutCheatModeExtension(Cheater cheater) : ICheckoutCheatModeExtension
     {
+        private static bool IsWindows => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+        
         public bool Handle(PaymentMethodId paymentMethodId) => paymentMethodId == ArkadePlugin.ArkadePaymentMethodId;
 
         public async Task<ICheckoutCheatModeExtension.MineBlockResult> MineBlock(
             ICheckoutCheatModeExtension.MineBlockContext mineBlockContext)
         {
-            // call nigiri rpc --generate  {mineBlockContext.BlockCount}
+            var (fileName, arguments) = GetProcessInfo($"rpc --generate {mineBlockContext.BlockCount}");
             
             var process = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "nigiri",
-                    Arguments = $"rpc --generate {mineBlockContext.BlockCount}",
+                    FileName = fileName,
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -46,15 +49,15 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler
             var destination = payInvoiceContext.PaymentPrompt.Destination;
             var amt = Money.Coins(payInvoiceContext.Amount).Satoshi;
 
-            var args = $"ark send --to {destination} --amount {amt} --password secret";
+            var nigiriArgs = $"ark send --to {destination} --amount {amt} --password secret";
+            var (fileName, arguments) = GetProcessInfo(nigiriArgs);
             
-            // Create a process to execute the docker command
             var process = new System.Diagnostics.Process
             {
                 StartInfo = new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "nigiri",
-                    Arguments = args,
+                    FileName = fileName,
+                    Arguments = arguments,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     UseShellExecute = false,
@@ -76,7 +79,23 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler
                     return new ICheckoutCheatModeExtension.PayInvoiceResult(txId);
             }
 
-            throw new ExternalProcessFailedException($"docker {args}", error);
+            throw new ExternalProcessFailedException($"nigiri {nigiriArgs}", error);
+        }
+
+        /// <summary>
+        /// Returns the appropriate process info for executing nigiri commands.
+        /// On Windows, uses WSL to execute nigiri. On Linux/macOS, executes directly.
+        /// </summary>
+        private static (string FileName, string Arguments) GetProcessInfo(string nigiriArgs)
+        {
+            if (IsWindows)
+            {
+                // On Windows, use WSL to execute nigiri
+                return ("wsl", $"nigiri {nigiriArgs}");
+            }
+            
+            // On Linux/macOS, execute nigiri directly
+            return ("nigiri", nigiriArgs);
         }
     }
 }
