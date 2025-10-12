@@ -16,10 +16,11 @@ public class VTXO
     public bool Recoverable { get; set; }
 
     public DateTimeOffset ExpiresAt { get; set; }
+    
+    public List<ArkIntentVtxo> IntentVtxos { get; set; } = new List<ArkIntentVtxo>();
 
     public ICoinable ToCoin()
     { 
-        
         var outpoint = new OutPoint(new uint256(TransactionId), (uint) TransactionOutputIndex);
         var txout = new TxOut(Money.Satoshis(Amount), NBitcoin.Script.FromHex(Script));
         return new Coin(outpoint, txout);

@@ -84,13 +84,12 @@ public class ArkadeSpender(
     public async Task<Dictionary<string, List<SpendableArkCoinWithSigner>>> GetSpendableCoins(string[]? walletIds, bool includeRecoverable,
         CancellationToken cancellationToken)
     {
-        return await GetSpendableCoins(walletIds, includeRecoverable, cancellationToken);
+        return await GetSpendableCoins(walletIds, null, includeRecoverable, cancellationToken);
     }
 
     /// <summary>
     /// Get spendable coins for specified wallets, optionally filtered by specific VTXO outpoints
     /// </summary>
-    /// <param name="walletIds">Wallet IDs to get coins for</param>
     /// <param name="vtxoOutpoints">Optional set of VTXO outpoints to filter by. If null, returns all spendable coins.</param>
     /// <param name="cancellationToken">Cancellation token</param>
     public async Task<Dictionary<string, List<SpendableArkCoinWithSigner>>> GetSpendableCoins(

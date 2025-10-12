@@ -53,7 +53,7 @@ public class BatchSession
         _ins = ins;
         _batchStartedEvent = batchStartedEvent;
         _logger = logger;
-        _intentId = arkIntent.Id;
+        _intentId = arkIntent.IntentId!;
         _batchId = batchStartedEvent.Id;
 
         IntentParameters =  JsonSerializer.Deserialize<RegisterIntentMessage>(arkIntent.RegisterProofMessage);

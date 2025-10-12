@@ -10,6 +10,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
     public DbSet<VTXO> Vtxos { get; set; }
     public DbSet<ArkSwap> Swaps { get; set; }
     public DbSet<ArkIntent> Intents { get; set; }
+    public DbSet<ArkIntentVtxo> IntentVtxos { get; set; }
     // public DbSet<BoardingAddress> BoardingAddresses { get; set; }
     // public DbSet<ArkStoredTransaction> Transactions { get; set; }
     
@@ -28,6 +29,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
         ArkWalletContract.OnModelCreating(modelBuilder);
         ArkSwap.OnModelCreating(modelBuilder);
         ArkIntent.OnModelCreating(modelBuilder);
+        ArkIntentVtxo.OnModelCreating(modelBuilder);
         // BoardingAddress.OnModelCreating(modelBuilder);
     }
 }
@@ -35,7 +37,8 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
 
 public class ArkIntent
 {
-    public string Id { get; set; }
+    public int InternalId { get; set; }
+    public string? IntentId { get; set; }
     public string WalletId { get; set; }
     public ArkIntentState State { get; set; }
     
@@ -44,7 +47,7 @@ public class ArkIntent
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 
-    public List<VTXO> LockedVtxos { get; set; }
+    public List<ArkIntentVtxo> IntentVtxos { get; set; }
 
     public string RegisterProof { get; set; }
     public string RegisterProofMessage { get; set; }
@@ -60,14 +63,16 @@ public class ArkIntent
     internal static void OnModelCreating(ModelBuilder builder)
     {
         var entity = builder.Entity<ArkIntent>();
-        entity.HasKey(e => e.Id);
+        entity.HasKey(e => e.InternalId);
+        entity.Property(e => e.InternalId).ValueGeneratedOnAdd();
+        entity.HasIndex(e => e.IntentId).IsUnique().HasFilter("\"IntentId\" IS NOT NULL");
         entity.Property(e => e.BatchId).HasDefaultValue(null);
         entity.Property(e => e.CommitmentTransactionId).HasDefaultValue(null);
         entity.Property(e => e.CancellationReason).HasDefaultValue(null);
-        entity.HasMany(e => e.LockedVtxos)
-            .WithOne()
-            .HasForeignKey("ArkIntentId")
-            .IsRequired(false);
+        entity.HasMany(e => e.IntentVtxos)
+            .WithOne(e => e.Intent)
+            .HasForeignKey(e => e.InternalId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }
 
@@ -78,4 +83,30 @@ public enum ArkIntentState
     BatchFailed,
     BatchSucceeded,
     Cancelled
+}
+
+public class ArkIntentVtxo
+{
+    public int InternalId { get; set; }
+    public ArkIntent Intent { get; set; }
+    
+    public string VtxoTransactionId { get; set; }
+    public int VtxoTransactionOutputIndex { get; set; }
+    public VTXO Vtxo { get; set; }
+    
+    public DateTimeOffset LinkedAt { get; set; }
+    
+    internal static void OnModelCreating(ModelBuilder builder)
+    {
+        var entity = builder.Entity<ArkIntentVtxo>();
+        entity.HasKey(e => new { e.InternalId, e.VtxoTransactionId, e.VtxoTransactionOutputIndex });
+        
+        entity.HasOne(e => e.Vtxo)
+            .WithMany(v => v.IntentVtxos)
+            .HasForeignKey(e => new { e.VtxoTransactionId, e.VtxoTransactionOutputIndex })
+            .OnDelete(DeleteBehavior.Cascade);
+        
+        // Index for querying VTXOs by their outpoint (useful for checking if VTXO is locked)
+        entity.HasIndex(e => new { e.VtxoTransactionId, e.VtxoTransactionOutputIndex });
+    }
 }
