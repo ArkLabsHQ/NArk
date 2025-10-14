@@ -215,6 +215,7 @@ public class ArkController(
         return View(model);
     }
 
+    [HttpGet("stores/{storeId}/enable-ln")]
     [HttpPost("stores/{storeId}/enable-ln")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
     public async Task<IActionResult> EnableLightning(string storeId)
