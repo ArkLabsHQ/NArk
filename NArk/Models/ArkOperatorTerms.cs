@@ -1,3 +1,4 @@
+using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
@@ -12,4 +13,4 @@ public record ArkOperatorTerms(
     Sequence BoardingExit,
     BitcoinAddress ForfeitAddress,
     ECXOnlyPubKey ForfeitPubKey,
-    TapScript CheckpointTapscript);
+    UnilateralPathArkTapScript CheckpointTapscript);

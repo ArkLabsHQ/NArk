@@ -1,5 +1,6 @@
 using Ark.V1;
 using NArk.Models;
+using NArk.Scripts;
 using NBitcoin;
 using NBitcoin.Secp256k1;
 
@@ -30,7 +31,16 @@ public static class ArkExtensions
             BoardingExit: new Sequence((uint) response.BoardingExitDelay),
             ForfeitAddress: BitcoinAddress.Create(response.ForfeitAddress, network),
             ForfeitPubKey: response.ForfeitPubkey.ToECXOnlyPubKey(),
-            CheckpointTapscript: new TapScript(Script.FromHex(response.CheckpointTapscript), TapLeafVersion.C0));
+            CheckpointTapscript: new CheckpointTapscript(Script.FromHex(response.CheckpointTapscript)));
 
+    }
+
+    class CheckpointTapscript( Script serverProvidedScript)
+        : UnilateralPathArkTapScript(Sequence.Final, new NofNMultisigTapScript([]))
+    {
+        public override IEnumerable<Op> BuildScript()
+        {
+            return serverProvidedScript.ToOps();
+        }
     }
 }
