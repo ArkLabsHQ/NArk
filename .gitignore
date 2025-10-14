@@ -1,6 +1,7 @@
-﻿.idea
+.idea
 **/obj
 **/bin
 .cache
 volumes
 *.user
+nigiri/

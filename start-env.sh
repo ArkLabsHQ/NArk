@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
+# Navigate to repository root first
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Define nigiri paths (local to this repo)
+NIGIRI_REPO="${SCRIPT_DIR}/nigiri"
+NIGIRI="${NIGIRI_REPO}/build/nigiri-linux-amd64"
+
 log() {
   local msg="$1"
   local green="\033[0;32m"
@@ -19,7 +26,7 @@ setup_lnd_wallet() {
   log "LND address: $ln_address"
 
   log "Funding LND wallet..."
-  nigiri faucet "$ln_address" 2
+  $NIGIRI faucet "$ln_address" 2
 
   # Wait for confirmation
   log "Waiting for LND funding confirmation..."
@@ -41,7 +48,7 @@ setup_lnd_wallet() {
 
   # Fund LND again to trigger mining of the channel
   log "Mining ten blocks to confirm channel..."
-  nigiri rpc --generate 10
+  $NIGIRI rpc --generate 10
 
   # Wait for channel to be active
   log "Waiting for channel to become active..."
@@ -125,7 +132,7 @@ setup_fulmine_wallet() {
 
   # Fund fulmine
   log "Funding Fulmine wallet..."
-  nigiri faucet "$fulmine_address" 0.01
+  $NIGIRI faucet "$fulmine_address" 0.01
   
   # Wait for transaction to be processed
   sleep 5
@@ -157,18 +164,50 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Navigate to repository root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # 1. Ensure nigiri is installed
-if ! command -v nigiri >/dev/null 2>&1; then
-  log "Nigiri not found. Installing..."
-  curl https://getnigiri.vulpem.com | bash
+if [ ! -f "$NIGIRI" ]; then
+  log "Nigiri binary not found at $NIGIRI"
+  log "Building nigiri from source..."
+  
+  # Clone or update the repo
+  if [ ! -d "$NIGIRI_REPO" ]; then
+    log "Cloning nigiri repository..."
+    git clone https://github.com/Kukks/nigiri.git -b b8 "$NIGIRI_REPO"
+  else
+    log "Nigiri repo exists, pulling latest changes..."
+    cd "$NIGIRI_REPO"
+    git fetch origin
+    git checkout b8
+    git pull origin b8
+    cd "$SCRIPT_DIR"
+  fi
+  
+  # Build nigiri
+  log "Installing and building nigiri..."
+  cd "$NIGIRI_REPO"
+  make install
+  make build
+  cd "$SCRIPT_DIR"
+  
+  if [ ! -f "$NIGIRI" ]; then
+    log "ERROR: Failed to build nigiri binary"
+    exit 1
+  fi
+  
+  log "✓ Nigiri built successfully"
 elif [ "$CLEAN" = true ]; then
-  log "Nigiri found but clean flag set. Reinstalling..."
+  log "Nigiri found but clean flag set. Rebuilding..."
+  cd "$NIGIRI_REPO"
+  git fetch origin
+  git checkout b8
+  git pull origin b8
+  make install
+  make build
+  cd "$SCRIPT_DIR"
 else
-  log "Nigiri found: $(nigiri --version)"
+  log "Nigiri found: $($NIGIRI --version)"
 fi
 
 # Clean volumes if requested
@@ -177,15 +216,13 @@ if [ "$CLEAN" = true ]; then
   # 2. Stop any running nigiri instances
   log "Stopping existing Nigiri containers..."
   docker compose -f docker-compose.ark.yml down --volumes --remove-orphans
-  nigiri stop --delete
+  $NIGIRI stop --delete
 
-  #stop btcpayserver
-  log "Stopping existing BTCPayServer containers..."
-  docker compose -f submodules/btcpayserver/BTCPayServer.Tests/docker-compose.yml down --volumes || true
-fi
+ fi
 log "Starting Nigiri with Ark support..."
 # Start nigiri, but don't fail if it's already running
-nigiri start --ark || {
+
+$NIGIRI start --ark || {
   if [[ $? -eq 1 ]]; then
     log "Nigiri may already be running, continuing..."
   else
@@ -222,9 +259,9 @@ if [ $attempt -gt $max_attempts ]; then
 fi
 
 # this is technically already handled in nigiri start
-nigiri ark init  --password secret --server-url localhost:7070 --explorer http://chopsticks:3000
-nigiri faucet $(nigiri ark receive | jq -r ".onchain_address") 2
-nigiri ark redeem-notes -n $(nigiri arkd note --amount 100000000) --password secret
+$NIGIRI ark init  --password secret --server-url localhost:7070 --explorer http://chopsticks:3000
+$NIGIRI faucet $($NIGIRI ark receive | jq -r ".onchain_address") 2
+$NIGIRI ark redeem-notes -n $($NIGIRI arkd note --amount 100000000) --password secret
 
 # 7. Setup Fulmine wallet
 setup_fulmine_wallet
