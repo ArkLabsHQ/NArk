@@ -200,6 +200,7 @@ public class ArkController(
         int skip = 0,
         int count = 50,
         bool loadVtxos = false,
+        bool includeSpent = false,
         bool includeRecoverable = false)
     {
         var store = HttpContext.GetStoreData();
@@ -232,7 +233,7 @@ public class ArkController(
             searchText ?? "", 
             activeFilter,
             loadVtxos,
-            allowSpent: false,
+            allowSpent: includeSpent,
             allowNote: includeRecoverable,
             HttpContext.RequestAborted);
 
@@ -245,6 +246,7 @@ public class ArkController(
             SearchText = searchText,
             Search = new SearchString(searchTerm),
             LoadVtxos = loadVtxos,
+            IncludeSpent = includeSpent,
             IncludeRecoverable = includeRecoverable,
             ContractVtxos = contractVtxos
         };

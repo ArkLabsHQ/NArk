@@ -110,6 +110,12 @@
     @if (Model.LoadVtxos)
     {
         <div class="form-check">
+            <input class="form-check-input" type="checkbox" asp-for="IncludeSpent" id="includeSpentCheckbox" onchange="this.form.submit()" />
+            <label class="form-check-label" for="includeSpentCheckbox" text-translate="true">
+                Include Spent
+            </label>
+        </div>
+        <div class="form-check">
             <input class="form-check-input" type="checkbox" asp-for="IncludeRecoverable" id="includeRecoverableCheckbox" onchange="this.form.submit()" />
             <label class="form-check-label" for="includeRecoverableCheckbox" text-translate="true">
                 Include Recoverable
