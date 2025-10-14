@@ -414,7 +414,7 @@ public class ArkWalletService(
     {
         await using var dbContext = dbContextFactory.CreateContext();
         
-        var wallet = await dbContext.Wallets.FindAsync(new object[] { walletId }, cancellationToken);
+        var wallet = await dbContext.Wallets.FindAsync([walletId], cancellationToken);
         if (wallet == null)
         {
             logger.LogWarning("Wallet {WalletId} not found, cannot update intent scheduling policy", walletId);
