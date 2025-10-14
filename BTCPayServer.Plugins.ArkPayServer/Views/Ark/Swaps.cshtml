@@ -1,0 +1,227 @@
+@using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Data.Entities
+@using NArk.Services.Abstractions
+@using NBitcoin
+@using NArk.Contracts
+@model BTCPayServer.Plugins.ArkPayServer.Models.StoreSwapsViewModel
+@inject IScopeProvider ScopeProvider
+@inject IOperatorTermsService Terms
+@inject ArkConfiguration ArkConfiguration
+
+@{
+    ViewData.SetActivePage(category: "Ark", activePage: "Swaps", title: "Ark - Swaps");
+    var storeId = ScopeProvider.GetCurrentStoreId();
+    var mainnet = true;
+    try
+    {
+        var terms = await Terms.GetOperatorTerms();
+        mainnet = terms.Network.ChainName == ChainName.Mainnet;
+    }
+    catch (Exception ex)
+    {
+    }
+    
+    var statusFilterCount = Model.Search.ContainsFilter("status") ? Model.Search.GetFilterArray("status").Length : 0;
+    var typeFilterCount = Model.Search.ContainsFilter("type") ? Model.Search.GetFilterArray("type").Length : 0;
+}
+
+@functions
+{
+    private bool HasArrayFilter(string type, string key = null) =>
+        Model.Search.ContainsFilter(type) && (key is null || Model.Search.GetFilterArray(type).Contains(key));
+}
+
+@section PageHeadContent
+{
+    <style>
+        .dropdown > .btn {
+            min-width: 7rem;
+            padding-left: 1rem;
+            text-align: left;
+        }
+        #SearchText {
+            flex-shrink: 0;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        @@media (max-width: 568px) {
+            #SearchText {
+                width: 100%;
+            }
+        }
+    </style>
+}
+
+<div class="sticky-header">
+    <h2>
+        <span>@ViewData["Title"]</span>
+        <a href="#descriptor" data-bs-toggle="collapse">
+            <vc:icon symbol="info" />
+        </a>
+    </h2>
+</div>
+
+<div id="descriptor" class="collapse">
+    <div class="d-flex px-4 py-4 mb-4 bg-tile rounded">
+        <div class="flex-fill">
+            <p text-translate="true" class="mb-2">Swaps are Lightning-to-Ark exchanges facilitated by Boltz.</p>
+            <p text-translate="true" class="mb-3">Track your swap history and status here.</p>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-toggle="collapse" data-bs-target="#descriptor" aria-expanded="false" aria-label="Close">
+            <vc:icon symbol="close" />
+        </button>
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+<form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Swaps" asp-route-storeId="@Model.StoreId" method="get">
+    <input asp-for="Count" type="hidden" />
+    <input asp-for="SearchTerm" type="hidden" value="@Model.Search.WithoutSearchText()"/>
+    <input asp-for="SearchText" class="form-control" placeholder="Search…" />
+    
+    <div class="dropdown">
+        <button id="StatusOptionsToggle" class="btn btn-secondary dropdown-toggle dropdown-toggle-custom-caret" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            @if (statusFilterCount > 0)
+            {
+                <span>@statusFilterCount Status</span>
+            }
+            else
+            {
+                <span text-translate="true">All Status</span>
+            }
+        </button>
+        <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "pending")" class="dropdown-item @(HasArrayFilter("status", "pending") ? "custom-active" : "")" text-translate="true">Pending</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "settled")" class="dropdown-item @(HasArrayFilter("status", "settled") ? "custom-active" : "")" text-translate="true">Settled</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "failed")" class="dropdown-item @(HasArrayFilter("status", "failed") ? "custom-active" : "")" text-translate="true">Failed</a>
+        </div>
+    </div>
+    
+    <div class="dropdown">
+        <button id="TypeOptionsToggle" class="btn btn-secondary dropdown-toggle dropdown-toggle-custom-caret" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            @if (typeFilterCount > 0)
+            {
+                <span>@typeFilterCount Type</span>
+            }
+            else
+            {
+                <span text-translate="true">All Types</span>
+            }
+        </button>
+        <div class="dropdown-menu" aria-labelledby="TypeOptionsToggle">
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("type", "reverse")" class="dropdown-item @(HasArrayFilter("type", "reverse") ? "custom-active" : "")" text-translate="true">Reverse Submarine</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("type", "submarine")" class="dropdown-item @(HasArrayFilter("type", "submarine") ? "custom-active" : "")" text-translate="true">Submarine</a>
+        </div>
+    </div>
+    
+    @if (statusFilterCount > 0 || typeFilterCount > 0 || !string.IsNullOrEmpty(Model.SearchText))
+    {
+        <button id="clearAllFiltersBtn" type="button" class="btn btn-secondary" style="min-width: 7rem;" title="Clear all filters">
+            <span class="align-middle" text-translate="true">Clear All</span>
+        </button>
+    }
+</form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const clearBtn = document.getElementById('clearAllFiltersBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                const form = clearBtn.closest('form');
+                if (!form) return;
+                const searchText = form.querySelector('[name="SearchText"]');
+                if (searchText) searchText.value = '';
+                const searchTerm = form.querySelector('[name="SearchTerm"]');
+                if (searchTerm) searchTerm.value = '';
+                form.submit();
+            });
+        }
+    });
+</script>
+
+@if (Model.Swaps.Any())
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th class="date-col">
+                        <div class="d-flex align-items-center gap-1">
+                            <span text-translate="true">Created</span>
+                            <button type="button" class="btn btn-link p-0 switch-time-format only-for-js" title="Switch date format">
+                                <vc:icon symbol="time" />
+                            </button>
+                        </div>
+                    </th>
+                    <th text-translate="true" class="text-nowrap">Swap ID</th>
+                    <th text-translate="true" class="text-nowrap">Type</th>
+                    <th text-translate="true" class="text-nowrap">Amount</th>
+                    <th text-translate="true">Status</th>
+                    <th text-translate="true">Invoice</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var swap in Model.Swaps)
+                {
+                    var arkContract = swap.Contract != null ? ArkContract.Parse(swap.Contract.Type, swap.Contract.ContractData) : null;
+                    var link = arkContract != null ? $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}" : "#";
+
+                    <tr id="swap_@swap.SwapId.GetHashCode()">
+                        <td class="align-middle date-col">@swap.CreatedAt.ToBrowserDate()</td>
+                        <td class="align-middle">
+                            <vc:truncate-center text="@swap.SwapId" classes="truncate-center-id"/>
+                        </td>
+                        <td class="align-middle">
+                            @if (swap.SwapType == ArkSwapType.ReverseSubmarine)
+                            {
+                                <span class="badge text-bg-primary">Reverse</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-info">Submarine</span>
+                            }
+                        </td>
+                        <td class="align-middle">
+                            @Money.Satoshis(swap.ExpectedAmount).ToDecimal(MoneyUnit.BTC) BTC
+                        </td>
+                        <td class="align-middle">
+                            @switch (swap.Status)
+                            {
+                                case ArkSwapStatus.Pending:
+                                    <span class="badge text-bg-warning">Pending</span>
+                                    break;
+                                case ArkSwapStatus.Settled:
+                                    <span class="badge text-bg-success">Settled</span>
+                                    break;
+                                case ArkSwapStatus.Failed:
+                                    <span class="badge text-bg-danger">Failed</span>
+                                    break;
+                            }
+                        </td>
+                        <td class="align-middle">
+                            @if (!string.IsNullOrEmpty(swap.Invoice))
+                            {
+                                <vc:truncate-center text="@swap.Invoice" classes="truncate-center-id"/>
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <vc:pager view-model="Model" />
+}
+else
+{
+    <p class="text-secondary mt-3" text-translate="true">
+        There are no swaps matching your criteria.
+    </p>
+}

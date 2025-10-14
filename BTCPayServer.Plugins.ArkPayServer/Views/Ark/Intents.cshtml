@@ -1,0 +1,296 @@
+@using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Data
+@using BTCPayServer.Plugins.ArkPayServer.Data.Entities
+@using NArk.Services.Abstractions
+@using NBitcoin
+@model BTCPayServer.Plugins.ArkPayServer.Models.StoreIntentsViewModel
+@inject IScopeProvider ScopeProvider
+@inject IOperatorTermsService Terms
+@inject ArkConfiguration ArkConfiguration
+
+@{
+    ViewData.SetActivePage(category: "Ark", activePage: "Intents", title: "Ark - Intents");
+    var storeId = ScopeProvider.GetCurrentStoreId();
+    
+    var stateFilterCount = Model.Search.ContainsFilter("state") ? Model.Search.GetFilterArray("state").Length : 0;
+}
+
+@functions
+{
+    private bool HasArrayFilter(string type, string key = null) =>
+        Model.Search.ContainsFilter(type) && (key is null || Model.Search.GetFilterArray(type).Contains(key));
+}
+
+@section PageHeadContent
+{
+    <style>
+        .intent-details-row > td {
+            padding: 1.5rem 1rem 0 2.65rem;
+        }
+        .dropdown > .btn {
+            min-width: 7rem;
+            padding-left: 1rem;
+            text-align: left;
+        }
+        #SearchText {
+            flex-shrink: 0;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        @@media (max-width: 568px) {
+            #SearchText {
+                width: 100%;
+            }
+        }
+    </style>
+}
+
+<div class="sticky-header">
+    <h2>
+        <span>@ViewData["Title"]</span>
+        <a href="#descriptor" data-bs-toggle="collapse">
+            <vc:icon symbol="info" />
+        </a>
+    </h2>
+</div>
+
+<div id="descriptor" class="collapse">
+    <div class="d-flex px-4 py-4 mb-4 bg-tile rounded">
+        <div class="flex-fill">
+            <p text-translate="true" class="mb-2">Intents represent pending VTXO spending operations waiting to be batched by the Ark operator.</p>
+            <p text-translate="true" class="mb-3">Track your payment intents and their batch status here.</p>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-toggle="collapse" data-bs-target="#descriptor" aria-expanded="false" aria-label="Close">
+            <vc:icon symbol="close" />
+        </button>
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+<form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Intents" asp-route-storeId="@Model.StoreId" method="get">
+    <input asp-for="Count" type="hidden" />
+    <input asp-for="SearchTerm" type="hidden" value="@Model.Search.WithoutSearchText()"/>
+    <input asp-for="SearchText" class="form-control" placeholder="Search Intent ID, Batch ID…" />
+    
+    <div class="dropdown">
+        <button id="StateOptionsToggle" class="btn btn-secondary dropdown-toggle dropdown-toggle-custom-caret" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            @if (stateFilterCount > 0)
+            {
+                <span>@stateFilterCount State</span>
+            }
+            else
+            {
+                <span text-translate="true">All States</span>
+            }
+        </button>
+        <div class="dropdown-menu" aria-labelledby="StateOptionsToggle">
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "waiting-submit")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("state", "waiting-submit") ? "custom-active" : "")" text-translate="true">Waiting to Submit</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "waiting-batch")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("state", "waiting-batch") ? "custom-active" : "")" text-translate="true">Waiting for Batch</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-succeeded")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("state", "batch-succeeded") ? "custom-active" : "")" text-translate="true">Batch Succeeded</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-failed")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("state", "batch-failed") ? "custom-active" : "")" text-translate="true">Batch Failed</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "cancelled")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("state", "cancelled") ? "custom-active" : "")" text-translate="true">Cancelled</a>
+        </div>
+    </div>
+    
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" asp-for="LoadVtxos" id="loadVtxosCheckbox" onchange="this.form.submit()" />
+        <label class="form-check-label" for="loadVtxosCheckbox" text-translate="true">
+            Load VTXOs
+        </label>
+    </div>
+    
+    @if (stateFilterCount > 0 || !string.IsNullOrEmpty(Model.SearchText))
+    {
+        <button id="clearAllFiltersBtn" type="button" class="btn btn-secondary" style="min-width: 7rem;" title="Clear all filters">
+            <span class="align-middle" text-translate="true">Clear All</span>
+        </button>
+    }
+</form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const clearBtn = document.getElementById('clearAllFiltersBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                const form = clearBtn.closest('form');
+                if (!form) return;
+                const searchText = form.querySelector('[name="SearchText"]');
+                if (searchText) searchText.value = '';
+                const searchTerm = form.querySelector('[name="SearchTerm"]');
+                if (searchTerm) searchTerm.value = '';
+                form.submit();
+            });
+        }
+    });
+</script>
+
+@if (Model.Intents.Any())
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th class="date-col">
+                        <div class="d-flex align-items-center gap-1">
+                            <span text-translate="true">Created</span>
+                            <button type="button" class="btn btn-link p-0 switch-time-format only-for-js" title="Switch date format">
+                                <vc:icon symbol="time" />
+                            </button>
+                        </div>
+                    </th>
+                    <th text-translate="true" class="text-nowrap">Intent ID</th>
+                    <th text-translate="true" class="text-nowrap">State</th>
+                    <th text-translate="true" class="text-nowrap">Valid Until</th>
+                    <th text-translate="true">Batch ID</th>
+                    @if (Model.LoadVtxos)
+                    {
+                        <th text-translate="true">VTXOs</th>
+                    }
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var intent in Model.Intents)
+                {
+                    var detailsId = $"intent_details_{intent.InternalId}";
+                    
+                    ArkIntentVtxo[]? vtxos = [];
+                    var hasVtxos = Model.LoadVtxos && Model.IntentVtxos.TryGetValue(intent.InternalId, out vtxos) && vtxos.Any();
+
+                    <tr id="intent_@intent.InternalId">
+                        <td class="align-middle date-col">@intent.CreatedAt.ToBrowserDate()</td>
+                        <td class="align-middle">
+                            @if (!string.IsNullOrEmpty(intent.IntentId))
+                            {
+                                <vc:truncate-center text="@intent.IntentId" classes="truncate-center-id"/>
+                            }
+                            else
+                            {
+                                <span class="text-muted">Pending</span>
+                            }
+                        </td>
+                        <td class="align-middle">
+                            @switch (intent.State)
+                            {
+                                case ArkIntentState.WaitingToSubmit:
+                                    <span class="badge text-bg-secondary">Waiting to Submit</span>
+                                    break;
+                                case ArkIntentState.WaitingForBatch:
+                                    <span class="badge text-bg-warning">Waiting for Batch</span>
+                                    break;
+                                case ArkIntentState.BatchSucceeded:
+                                    <span class="badge text-bg-success">Batch Succeeded</span>
+                                    break;
+                                case ArkIntentState.BatchFailed:
+                                    <span class="badge text-bg-danger">Batch Failed</span>
+                                    break;
+                                case ArkIntentState.Cancelled:
+                                    <span class="badge text-bg-dark">Cancelled</span>
+                                    break;
+                            }
+                        </td>
+                        <td class="align-middle">@intent.ValidUntil.ToTimeAgo()</td>
+                        <td class="align-middle">
+                            @if (!string.IsNullOrEmpty(intent.BatchId))
+                            {
+                                <vc:truncate-center text="@intent.BatchId" classes="truncate-center-id"/>
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                        </td>
+                        @if (Model.LoadVtxos)
+                        {
+                            <td class="align-middle">
+                                @if (hasVtxos)
+                                {
+                                    <span class="badge text-bg-info">@vtxos.Length</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                        }
+                        <td class="align-middle text-end">
+                            @if (Model.LoadVtxos && hasVtxos)
+                            {
+                                <div class="d-inline-flex align-items-center gap-2">
+                                    <button class="accordion-button collapsed only-for-js ms-0 d-inline-block" type="button" data-bs-toggle="collapse" data-bs-target="#@detailsId" aria-expanded="false" aria-controls="@detailsId">
+                                        <vc:icon symbol="caret-down" />
+                                    </button>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                    
+                    @if (Model.LoadVtxos && hasVtxos)
+                    {
+                        var colspanCount = 5 + (Model.LoadVtxos ? 1 : 0) + 1;
+                        <tr id="@detailsId" class="intent-details-row collapse">
+                            <td colspan="@colspanCount" class="border-top-0">
+                                <h6 class="mb-3">VTXOs</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th text-translate="true">TXID</th>
+                                                <th text-translate="true">Output</th>
+                                                <th text-translate="true">Amount</th>
+                                                <th text-translate="true">Linked</th>
+                                                <th text-translate="true">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var intentVtxo in vtxos)
+                                            {
+                                                var vtxo = intentVtxo.Vtxo;
+                                                var outpoint = $"{vtxo.TransactionId}:{vtxo.TransactionOutputIndex}";
+                                                var link = $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?outpoints={outpoint}";
+                                                
+                                                <tr>
+                                                    <td>
+                                                        <vc:truncate-center link="@link" text="@vtxo.TransactionId" classes="truncate-center-id"/>
+                                                    </td>
+                                                    <td>@vtxo.TransactionOutputIndex</td>
+                                                    <td>@Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC) BTC</td>
+                                                    <td>@intentVtxo.LinkedAt.ToTimeAgo()</td>
+                                                    <td>
+                                                        @if (vtxo.SpentByTransactionId != null)
+                                                        {
+                                                            <span class="badge text-bg-secondary">Spent</span>
+                                                        }
+                                                        else if (vtxo.Recoverable)
+                                                        {
+                                                            <span class="badge text-bg-warning">Recoverable</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge text-bg-success">Unspent</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <vc:pager view-model="Model" />
+}
+else
+{
+    <p class="text-secondary mt-3" text-translate="true">
+        There are no intents matching your criteria.
+    </p>
+}

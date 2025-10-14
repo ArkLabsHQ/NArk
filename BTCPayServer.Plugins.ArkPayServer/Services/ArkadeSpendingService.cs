@@ -19,6 +19,7 @@ public class ArkadeSpendingService(ArkWalletService arkWalletService, ArkadeSpen
 {
     public async Task<string?> Spend(StoreData store, string destination, CancellationToken cancellationToken)
     {
+        destination = destination.Trim();
         ArgumentNullException.ThrowIfNull(store);
         
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);

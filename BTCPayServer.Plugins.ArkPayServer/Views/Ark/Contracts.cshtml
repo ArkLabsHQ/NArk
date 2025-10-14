@@ -1,6 +1,7 @@
 @using BTCPayServer.Abstractions.Contracts
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Data.Entities
 @using NArk.Services.Abstractions
 @using NBitcoin
 @using NArk.Contracts
@@ -123,6 +124,13 @@
         </div>
     }
     
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" asp-for="LoadSwaps" id="loadSwapsCheckbox" onchange="this.form.submit()" />
+        <label class="form-check-label" for="loadSwapsCheckbox" text-translate="true">
+            Load Swaps
+        </label>
+    </div>
+    
     @if (statusFilterCount > 0 || !string.IsNullOrEmpty(Model.SearchText))
     {
         <button id="clearAllFiltersBtn" type="button" class="btn btn-secondary" style="min-width: 7rem;" title="Clear all filters">
@@ -169,6 +177,10 @@
                     {
                         <th text-translate="true">VTXOs</th>
                     }
+                    @if (Model.LoadSwaps)
+                    {
+                        <th text-translate="true">Swaps</th>
+                    }
                     <th></th>
                 </tr>
             </thead>
@@ -182,6 +194,9 @@
 
                     BTCPayServer.Plugins.ArkPayServer.Data.Entities.VTXO[]? vtxos = [];
                     var hasVtxos = Model.LoadVtxos && Model.ContractVtxos.TryGetValue(contract.Script, out vtxos) && vtxos.Any();
+                    
+                    ArkSwap[]? swaps = [];
+                    var hasSwaps = Model.LoadSwaps && Model.ContractSwaps.TryGetValue(contract.Script, out swaps) && swaps.Any();
 
                     <tr id="contract_@contract.Script.GetHashCode()">
                         <td class="align-middle date-col">@contract.CreatedAt.ToBrowserDate()</td>
@@ -214,8 +229,21 @@
                                 }
                             </td>
                         }
+                        @if (Model.LoadSwaps)
+                        {
+                            <td class="align-middle">
+                                @if (hasSwaps)
+                                {
+                                    <span class="badge text-bg-warning">@swaps.Length</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                        }
                         <td class="align-middle text-end">
-                            @if (Model.LoadVtxos && hasVtxos)
+                            @if ((Model.LoadVtxos && hasVtxos) || (Model.LoadSwaps && hasSwaps))
                             {
                                 <div class="d-inline-flex align-items-center gap-2">
                                     <button class="accordion-button collapsed only-for-js ms-0 d-inline-block" type="button" data-bs-toggle="collapse" data-bs-target="#@detailsId" aria-expanded="false" aria-controls="@detailsId">
@@ -226,50 +254,109 @@
                         </td>
                     </tr>
                     
-                    @if (Model.LoadVtxos && hasVtxos)
+                    @if ((Model.LoadVtxos && hasVtxos) || (Model.LoadSwaps && hasSwaps))
                     {
+                        var colspanCount = 4 + (Model.LoadVtxos ? 1 : 0) + (Model.LoadSwaps ? 1 : 0) + 1;
                         <tr id="@detailsId" class="contract-details-row collapse">
-                            <td colspan="6" class="border-top-0">
-                                <div class="table-responsive">
-                                    <table class="table table-sm mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th text-translate="true">TXID</th>
-                                                <th text-translate="true">Output</th>
-                                                <th text-translate="true">Amount</th>
-                                                <th text-translate="true">Seen</th>
-                                                <th text-translate="true">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var vtxo in vtxos)
-                                            {
+                            <td colspan="@colspanCount" class="border-top-0">
+                                @if (Model.LoadVtxos && hasVtxos)
+                                {
+                                    <h6 class="mb-3">VTXOs</h6>
+                                    <div class="table-responsive mb-4">
+                                        <table class="table table-sm mb-0">
+                                            <thead>
                                                 <tr>
-                                                    <td>
-                                                        <vc:truncate-center text="@vtxo.TransactionId" classes="truncate-center-id"/>
-                                                    </td>
-                                                    <td>@vtxo.TransactionOutputIndex</td>
-                                                    <td>@Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC) BTC</td>
-                                                    <td>@vtxo.SeenAt.ToTimeAgo()</td>
-                                                    <td>
-                                                        @if (vtxo.SpentByTransactionId != null)
-                                                        {
-                                                            <span class="badge text-bg-secondary">Spent</span>
-                                                        }
-                                                        else if (vtxo.Recoverable)
-                                                        {
-                                                            <span class="badge text-bg-warning">Recoverable</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="badge text-bg-success">Unspent</span>
-                                                        }
-                                                    </td>
+                                                    <th text-translate="true">TXID</th>
+                                                    <th text-translate="true">Output</th>
+                                                    <th text-translate="true">Amount</th>
+                                                    <th text-translate="true">Seen</th>
+                                                    <th text-translate="true">Status</th>
                                                 </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var vtxo in vtxos)
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            <vc:truncate-center text="@vtxo.TransactionId" classes="truncate-center-id"/>
+                                                        </td>
+                                                        <td>@vtxo.TransactionOutputIndex</td>
+                                                        <td>@Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC) BTC</td>
+                                                        <td>@vtxo.SeenAt.ToTimeAgo()</td>
+                                                        <td>
+                                                            @if (vtxo.SpentByTransactionId != null)
+                                                            {
+                                                                <span class="badge text-bg-secondary">Spent</span>
+                                                            }
+                                                            else if (vtxo.Recoverable)
+                                                            {
+                                                                <span class="badge text-bg-warning">Recoverable</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="badge text-bg-success">Unspent</span>
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
+                                
+                                @if (Model.LoadSwaps && hasSwaps)
+                                {
+                                    <h6 class="mb-3">Swaps</h6>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th text-translate="true">Swap ID</th>
+                                                    <th text-translate="true">Type</th>
+                                                    <th text-translate="true">Amount</th>
+                                                    <th text-translate="true">Created</th>
+                                                    <th text-translate="true">Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var swap in swaps)
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            <vc:truncate-center text="@swap.SwapId" classes="truncate-center-id"/>
+                                                        </td>
+                                                        <td>
+                                                            @if (swap.SwapType == ArkSwapType.ReverseSubmarine)
+                                                            {
+                                                                <span class="badge text-bg-primary">Reverse</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span class="badge text-bg-info">Submarine</span>
+                                                            }
+                                                        </td>
+                                                        <td>@Money.Satoshis(swap.ExpectedAmount).ToDecimal(MoneyUnit.BTC) BTC</td>
+                                                        <td>@swap.CreatedAt.ToTimeAgo()</td>
+                                                        <td>
+                                                            @switch (swap.Status)
+                                                            {
+                                                                case ArkSwapStatus.Pending:
+                                                                    <span class="badge text-bg-warning">Pending</span>
+                                                                    break;
+                                                                case ArkSwapStatus.Settled:
+                                                                    <span class="badge text-bg-success">Settled</span>
+                                                                    break;
+                                                                case ArkSwapStatus.Failed:
+                                                                    <span class="badge text-bg-danger">Failed</span>
+                                                                    break;
+                                                            }
+                                                        </td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                }
                             </td>
                         </tr>
                     }

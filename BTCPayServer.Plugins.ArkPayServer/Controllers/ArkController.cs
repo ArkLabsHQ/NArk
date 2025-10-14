@@ -12,6 +12,7 @@ using BTCPayServer.Payments.Lightning;
 using BTCPayServer.PayoutProcessors;
 using BTCPayServer.PayoutProcessors.Lightning;
 using BTCPayServer.Payouts;
+using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Exceptions;
 using BTCPayServer.Plugins.ArkPayServer.Models;
@@ -22,6 +23,7 @@ using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using NArk;
 using NArk.Models;
 using NArk.Services.Abstractions;
@@ -34,6 +36,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 [Route("plugins/ark")]
 [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ArkController(
+    ArkPluginDbContextFactory dbContextFactory,
     StoreRepository storeRepository,
     ArkWalletService arkWalletService,
     PaymentMethodHandlerDictionary paymentMethodHandlerDictionary,
@@ -200,6 +203,7 @@ public class ArkController(
         int skip = 0,
         int count = 50,
         bool loadVtxos = false,
+        bool loadSwaps = false,
         bool includeSpent = false,
         bool includeRecoverable = false)
     {
@@ -237,6 +241,23 @@ public class ArkController(
             allowNote: includeRecoverable,
             HttpContext.RequestAborted);
 
+        // Load swaps if requested
+        var contractSwaps = new Dictionary<string, ArkSwap[]>();
+        if (loadSwaps && contracts.Any())
+        {
+            await using var dbContext = dbContextFactory.CreateContext();
+            var contractScripts = contracts.Select(c => c.Script).ToHashSet();
+            
+            var swaps = await dbContext.Swaps
+                .Where(s => s.WalletId == config.WalletId && contractScripts.Contains(s.ContractScript))
+                .OrderByDescending(s => s.CreatedAt)
+                .ToArrayAsync(HttpContext.RequestAborted);
+            
+            contractSwaps = swaps
+                .GroupBy(s => s.ContractScript)
+                .ToDictionary(g => g.Key, g => g.ToArray());
+        }
+
         var model = new StoreContractsViewModel
         {
             StoreId = storeId,
@@ -246,9 +267,214 @@ public class ArkController(
             SearchText = searchText,
             Search = new SearchString(searchTerm),
             LoadVtxos = loadVtxos,
+            LoadSwaps = loadSwaps,
             IncludeSpent = includeSpent,
             IncludeRecoverable = includeRecoverable,
-            ContractVtxos = contractVtxos
+            ContractVtxos = contractVtxos,
+            ContractSwaps = contractSwaps
+        };
+
+        return View(model);
+    }
+
+    [HttpGet("stores/{storeId}/swaps")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> Swaps(
+        string storeId,
+        string? searchTerm = null,
+        string? searchText = null,
+        int skip = 0,
+        int count = 50)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        if (!config.GeneratedByStore)
+            return View(new StoreSwapsViewModel { StoreId = storeId });
+
+        // Get status filter
+        ArkSwapStatus? statusFilter = null;
+        if (new SearchString(searchTerm).ContainsFilter("status"))
+        {
+            var statusFilters = new SearchString(searchTerm).GetFilterArray("status");
+            if (statusFilters.Length == 1)
+            {
+                statusFilter = statusFilters[0] switch
+                {
+                    "pending" => ArkSwapStatus.Pending,
+                    "settled" => ArkSwapStatus.Settled,
+                    "failed" => ArkSwapStatus.Failed,
+                    _ => null
+                };
+            }
+        }
+
+        // Get type filter
+        ArkSwapType? typeFilter = null;
+        if (new SearchString(searchTerm).ContainsFilter("type"))
+        {
+            var typeFilters = new SearchString(searchTerm).GetFilterArray("type");
+            if (typeFilters.Length == 1)
+            {
+                typeFilter = typeFilters[0] switch
+                {
+                    "reverse" => ArkSwapType.ReverseSubmarine,
+                    "submarine" => ArkSwapType.Submarine,
+                    _ => null
+                };
+            }
+        }
+
+        var swaps = await arkWalletService.GetArkWalletSwapsAsync(
+            config.WalletId,
+            skip,
+            count,
+            searchText ?? "",
+            statusFilter,
+            typeFilter,
+            HttpContext.RequestAborted);
+
+        var model = new StoreSwapsViewModel
+        {
+            StoreId = storeId,
+            Swaps = swaps,
+            Skip = skip,
+            Count = count,
+            SearchText = searchText,
+            Search = new SearchString(searchTerm)
+        };
+
+        return View(model);
+    }
+
+    [HttpGet("stores/{storeId}/vtxos")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> Vtxos(
+        string storeId,
+        string? searchText = null,
+        int skip = 0,
+        int count = 50,
+        bool includeSpent = false,
+        bool includeRecoverable = false)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        if (!config.GeneratedByStore)
+            return View(new StoreVtxosViewModel { StoreId = storeId });
+
+        var vtxos = await arkWalletService.GetArkWalletVtxosAsync(
+            config.WalletId,
+            skip,
+            count,
+            searchText ?? "",
+            includeSpent,
+            includeRecoverable,
+            HttpContext.RequestAborted);
+
+        var model = new StoreVtxosViewModel
+        {
+            StoreId = storeId,
+            Vtxos = vtxos,
+            Skip = skip,
+            Count = count,
+            SearchText = searchText,
+            Search = new SearchString(""),
+            IncludeSpent = includeSpent,
+            IncludeRecoverable = includeRecoverable
+        };
+
+        return View(model);
+    }
+
+    [HttpGet("stores/{storeId}/intents")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> Intents(
+        string storeId,
+        string? searchTerm = null,
+        string? searchText = null,
+        int skip = 0,
+        int count = 50,
+        bool loadVtxos = false)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        if (!config.GeneratedByStore)
+            return View(new StoreIntentsViewModel { StoreId = storeId });
+
+        // Get state filter
+        ArkIntentState? stateFilter = null;
+        if (new SearchString(searchTerm).ContainsFilter("state"))
+        {
+            var stateFilters = new SearchString(searchTerm).GetFilterArray("state");
+            if (stateFilters.Length == 1)
+            {
+                stateFilter = stateFilters[0] switch
+                {
+                    "waiting-submit" => ArkIntentState.WaitingToSubmit,
+                    "waiting-batch" => ArkIntentState.WaitingForBatch,
+                    "batch-succeeded" => ArkIntentState.BatchSucceeded,
+                    "batch-failed" => ArkIntentState.BatchFailed,
+                    "cancelled" => ArkIntentState.Cancelled,
+                    _ => null
+                };
+            }
+        }
+
+        var intents = await arkWalletService.GetArkWalletIntentsAsync(
+            config.WalletId,
+            skip,
+            count,
+            searchText ?? "",
+            stateFilter,
+            HttpContext.RequestAborted);
+
+        // Load VTXOs if requested
+        var intentVtxos = new Dictionary<int, ArkIntentVtxo[]>();
+        if (loadVtxos && intents.Any())
+        {
+            await using var dbContext = dbContextFactory.CreateContext();
+            var intentIds = intents.Select(i => i.InternalId).ToHashSet();
+            
+            var vtxos = await dbContext.IntentVtxos
+                .Include(iv => iv.Vtxo)
+                .Where(iv => intentIds.Contains(iv.InternalId))
+                .ToArrayAsync(HttpContext.RequestAborted);
+            
+            intentVtxos = vtxos
+                .GroupBy(iv => iv.InternalId)
+                .ToDictionary(g => g.Key, g => g.ToArray());
+        }
+
+        var model = new StoreIntentsViewModel
+        {
+            StoreId = storeId,
+            Intents = intents,
+            Skip = skip,
+            Count = count,
+            SearchText = searchText,
+            Search = new SearchString(searchTerm),
+            LoadVtxos = loadVtxos,
+            IntentVtxos = intentVtxos
         };
 
         return View(model);

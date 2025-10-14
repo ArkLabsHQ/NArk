@@ -1,4 +1,4 @@
-﻿
+
 @using BTCPayServer
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Data
@@ -52,11 +52,35 @@
             </li>
             <li class="nav-item nav-item-sub">
                 <a id="StoreNav-Contracts"
-                class="nav-link @ViewData.ActivePageClass("Contracts", "Ark")"
-                asp-controller="Ark"
-                asp-action="Contracts"
-                asp-route-storeId="@Model.Store.Id"
-                ext-translate="true">Contracts</a>
+                   class="nav-link @ViewData.ActivePageClass("Contracts", "Ark")"
+                   asp-controller="Ark"
+                   asp-action="Contracts"
+                   asp-route-storeId="@Model.Store.Id"
+                   ext-translate="true">Contracts</a>
+            </li>
+            <li class="nav-item nav-item-sub">
+                <a id="StoreNav-Swaps"
+                   class="nav-link @ViewData.ActivePageClass("Swaps", "Ark")"
+                   asp-controller="Ark"
+                   asp-action="Swaps"
+                   asp-route-storeId="@Model.Store.Id"
+                   ext-translate="true">Swaps</a>
+            </li>
+            <li class="nav-item nav-item-sub">
+                <a id="StoreNav-Vtxos"
+                   class="nav-link @ViewData.ActivePageClass("VTXOs", "Ark")"
+                   asp-controller="Ark"
+                   asp-action="Vtxos"
+                   asp-route-storeId="@Model.Store.Id"
+                   ext-translate="true">VTXOs</a>
+            </li>
+            <li class="nav-item nav-item-sub">
+                <a id="StoreNav-Intents"
+                   class="nav-link @ViewData.ActivePageClass("Intents", "Ark")"
+                   asp-controller="Ark"
+                   asp-action="Intents"
+                   asp-route-storeId="@Model.Store.Id"
+                   ext-translate="true">Intents</a>
             </li>
             @if (config?.GeneratedByStore is true){
                  <li class="nav-item nav-item-sub">

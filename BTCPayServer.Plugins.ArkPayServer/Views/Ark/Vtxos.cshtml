@@ -1,0 +1,161 @@
+@using BTCPayServer.Abstractions.Contracts
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Data
+@using BTCPayServer.Plugins.ArkPayServer.Data.Entities
+@using NArk.Services.Abstractions
+@using NBitcoin
+@model BTCPayServer.Plugins.ArkPayServer.Models.StoreVtxosViewModel
+@inject IScopeProvider ScopeProvider
+@inject IOperatorTermsService Terms
+@inject ArkConfiguration ArkConfiguration
+
+@{
+    ViewData.SetActivePage(category: "Ark", activePage: "VTXOs", title: "Ark - VTXOs");
+    var storeId = ScopeProvider.GetCurrentStoreId();
+}
+
+@section PageHeadContent
+{
+    <style>
+        .vtxo-details-row > td {
+            padding: 1.5rem 1rem 0 2.65rem;
+        }
+        #SearchText {
+            flex-shrink: 0;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        @@media (max-width: 568px) {
+            #SearchText {
+                width: 100%;
+            }
+        }
+    </style>
+}
+
+<div class="sticky-header">
+    <h2>
+        <span>@ViewData["Title"]</span>
+        <a href="#descriptor" data-bs-toggle="collapse">
+            <vc:icon symbol="info" />
+        </a>
+    </h2>
+</div>
+
+<div id="descriptor" class="collapse">
+    <div class="d-flex px-4 py-4 mb-4 bg-tile rounded">
+        <div class="flex-fill">
+            <p text-translate="true" class="mb-2">VTXOs are Virtual Transaction Outputs - offchain Bitcoin outputs secured by Ark.</p>
+            <p text-translate="true" class="mb-3">Each VTXO represents spendable Bitcoin that can be used instantly or settled onchain.</p>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-toggle="collapse" data-bs-target="#descriptor" aria-expanded="false" aria-label="Close">
+            <vc:icon symbol="close" />
+        </button>
+    </div>
+</div>
+
+<partial name="_StatusMessage" />
+
+<form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Vtxos" asp-route-storeId="@Model.StoreId" method="get">
+    <input asp-for="Count" type="hidden" />
+    <input asp-for="SearchText" class="form-control" placeholder="Search TXID or Script…" />
+    
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" asp-for="IncludeSpent" id="includeSpentCheckbox" onchange="this.form.submit()" />
+        <label class="form-check-label" for="includeSpentCheckbox" text-translate="true">
+            Include Spent
+        </label>
+    </div>
+    
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" asp-for="IncludeRecoverable" id="includeRecoverableCheckbox" onchange="this.form.submit()" />
+        <label class="form-check-label" for="includeRecoverableCheckbox" text-translate="true">
+            Include Recoverable
+        </label>
+    </div>
+    
+    @if (!string.IsNullOrEmpty(Model.SearchText))
+    {
+        <button id="clearSearchBtn" type="button" class="btn btn-secondary" style="min-width: 7rem;" title="Clear search">
+            <span class="align-middle" text-translate="true">Clear</span>
+        </button>
+    }
+</form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const clearBtn = document.getElementById('clearSearchBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                const form = clearBtn.closest('form');
+                if (!form) return;
+                const searchText = form.querySelector('[name="SearchText"]');
+                if (searchText) searchText.value = '';
+                form.submit();
+            });
+        }
+    });
+</script>
+
+@if (Model.Vtxos.Any())
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
+                <tr>
+                    <th class="date-col">
+                        <div class="d-flex align-items-center gap-1">
+                            <span text-translate="true">Seen</span>
+                            <button type="button" class="btn btn-link p-0 switch-time-format only-for-js" title="Switch date format">
+                                <vc:icon symbol="time" />
+                            </button>
+                        </div>
+                    </th>
+                    <th text-translate="true" class="text-nowrap">TXID</th>
+                    <th text-translate="true" class="text-nowrap">Output</th>
+                    <th text-translate="true" class="text-nowrap">Amount</th>
+                    <th text-translate="true">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var vtxo in Model.Vtxos)
+                {
+                    var outpoint = $"{vtxo.TransactionId}:{vtxo.TransactionOutputIndex}";
+                    var link = $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?outpoints={outpoint}";
+
+                    <tr id="vtxo_@outpoint.GetHashCode()">
+                        <td class="align-middle date-col">@vtxo.SeenAt.ToBrowserDate()</td>
+                        <td class="align-middle">
+                            <vc:truncate-center link="@link" text="@vtxo.TransactionId" classes="truncate-center-id"/>
+                        </td>
+                        <td class="align-middle">@vtxo.TransactionOutputIndex</td>
+                        <td class="align-middle">@Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC) BTC</td>
+                        <td class="align-middle">
+                            @if (vtxo.SpentByTransactionId != null)
+                            {
+                                <span class="badge text-bg-secondary">Spent</span>
+                            }
+                            else if (vtxo.Recoverable)
+                            {
+                                <span class="badge text-bg-warning">Recoverable</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-success">Unspent</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <vc:pager view-model="Model" />
+}
+else
+{
+    <p class="text-secondary mt-3" text-translate="true">
+        There are no VTXOs matching your criteria.
+    </p>
+}

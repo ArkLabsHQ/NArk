@@ -347,6 +347,94 @@ public class ArkWalletService(
         return (contracts, contractVtxos);
     }
 
+    public async Task<IReadOnlyCollection<ArkSwap>> GetArkWalletSwapsAsync(
+        string walletId,
+        int skip = 0,
+        int count = 10,
+        string searchText = "",
+        ArkSwapStatus? status = null,
+        ArkSwapType? swapType = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+
+        var swaps = await dbContext.Swaps
+            .Include(s => s.Contract)
+            .Where(s => s.WalletId == walletId)
+            .Where(s => string.IsNullOrEmpty(searchText) || 
+                        s.SwapId.Contains(searchText) || 
+                        s.Invoice.Contains(searchText) ||
+                        s.Hash.Contains(searchText))
+            .Where(s => status == null || s.Status == status)
+            .Where(s => swapType == null || s.SwapType == swapType)
+            .OrderByDescending(s => s.CreatedAt)
+            .Skip(skip)
+            .Take(count)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return swaps;
+    }
+
+    public async Task<IReadOnlyCollection<VTXO>> GetArkWalletVtxosAsync(
+        string walletId,
+        int skip = 0,
+        int count = 10,
+        string searchText = "",
+        bool includeSpent = false,
+        bool includeRecoverable = false,
+        CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+
+        // Get contract scripts for this wallet
+        var contractScripts = await dbContext.WalletContracts
+            .Where(c => c.WalletId == walletId)
+            .Select(c => c.Script)
+            .ToListAsync(cancellationToken);
+
+        var vtxos = await dbContext.Vtxos
+            .Where(v => contractScripts.Contains(v.Script))
+            .Where(v => string.IsNullOrEmpty(searchText) || 
+                        v.TransactionId.Contains(searchText) ||
+                        v.Script.Contains(searchText))
+            .Where(v => includeSpent || v.SpentByTransactionId == null)
+            .Where(v => includeRecoverable || !v.Recoverable)
+            .OrderByDescending(v => v.SeenAt)
+            .Skip(skip)
+            .Take(count)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return vtxos;
+    }
+
+    public async Task<IReadOnlyCollection<ArkIntent>> GetArkWalletIntentsAsync(
+        string walletId,
+        int skip = 0,
+        int count = 10,
+        string searchText = "",
+        ArkIntentState? state = null,
+        CancellationToken cancellationToken = default)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+
+        var intents = await dbContext.Intents
+            .Where(i => i.WalletId == walletId)
+            .Where(i => string.IsNullOrEmpty(searchText) || 
+                        (i.IntentId != null && i.IntentId.Contains(searchText)) ||
+                        (i.BatchId != null && i.BatchId.Contains(searchText)) ||
+                        (i.CommitmentTransactionId != null && i.CommitmentTransactionId.Contains(searchText)))
+            .Where(i => state == null || i.State == state)
+            .OrderByDescending(i => i.CreatedAt)
+            .Skip(skip)
+            .Take(count)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return intents;
+    }
+
     // public async Task<IReadOnlyCollection<ArkWalletContract>> GetArkWalletContractsAsync(
     //     string[]? walletIds, 
     //     int skip = 0, 
