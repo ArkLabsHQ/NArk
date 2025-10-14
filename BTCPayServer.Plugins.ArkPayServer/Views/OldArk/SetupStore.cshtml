@@ -211,7 +211,7 @@ var mainnet = true;
                                 @foreach (var vtxo in group.Value)
                                 {
                                     var outpoint = vtxo.TransactionId + ":" + vtxo.TransactionOutputIndex;
-                                    var link2 = $"{ArkConfiguration.ArkUri}/v1/vtxos?outpoints={outpoint}";
+                                    var link2 = $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?outpoints={outpoint}";
 
                                     <tr >
                                         <td>

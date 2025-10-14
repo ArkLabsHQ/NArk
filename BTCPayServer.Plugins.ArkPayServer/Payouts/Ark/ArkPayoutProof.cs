@@ -15,6 +15,8 @@ public class ArkPayoutProof: IPayoutProof
     public string Id => TransactionId.ToString();
     
     public string ProofType => Type;
-    
-    public string Link => null!; // FIXME
+    [JsonIgnore]
+    public string? Link { get; set; }
+
+    public bool DetectedInBackground { get; set; } = false;
 }

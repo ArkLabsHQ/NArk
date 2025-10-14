@@ -25,6 +25,7 @@ public class ArkAutomatedPayoutProcessor: BaseAutomatedPayoutProcessor<ArkAutoma
     private readonly ArkadeSpendingService _arkSpendingService;
     private readonly PayoutMethodHandlerDictionary _payoutMethodHandlers;
     private readonly BTCPayNetworkJsonSerializerSettings _jsonSerializerSettings;
+    private readonly IArkadeMultiWalletSigner _arkadeMultiWalletSigner;
 
     public ArkAutomatedPayoutProcessor(
         IOperatorTermsService operatorTermsService,
@@ -37,7 +38,8 @@ public class ArkAutomatedPayoutProcessor: BaseAutomatedPayoutProcessor<ArkAutoma
         EventAggregator eventAggregator,
         ArkadeSpendingService arkSpendingService,
         PayoutMethodHandlerDictionary payoutMethodHandlers,
-        BTCPayNetworkJsonSerializerSettings jsonSerializerSettings
+        BTCPayNetworkJsonSerializerSettings jsonSerializerSettings,
+        IArkadeMultiWalletSigner arkadeMultiWalletSigner
     ) 
         : base(ArkadePlugin.ArkadePaymentMethodId, logger, storeRepository, payoutProcessorSettings, applicationDbContextFactory, paymentHandlers, pluginHookService, eventAggregator)
     {
@@ -45,6 +47,7 @@ public class ArkAutomatedPayoutProcessor: BaseAutomatedPayoutProcessor<ArkAutoma
         _arkSpendingService = arkSpendingService;
         _payoutMethodHandlers = payoutMethodHandlers;
         _jsonSerializerSettings = jsonSerializerSettings;
+        _arkadeMultiWalletSigner = arkadeMultiWalletSigner;
     }
 
     protected override async Task Process(object paymentMethodConfig, List<PayoutData> payouts)
@@ -57,41 +60,56 @@ public class ArkAutomatedPayoutProcessor: BaseAutomatedPayoutProcessor<ArkAutoma
 
         var storeData = await _storeRepository.FindStore(PayoutProcessorSettings.StoreId) ??
             throw new InvalidOperationException("Could not find store by StoreId");
-        
+
+        if (!await _arkadeMultiWalletSigner.CanHandle(arkPaymentMethodConfig.WalletId))
+        {
+            return;
+        }
         
         foreach (var payout in payouts)
         {
-            var amount = new Money(payout.Amount.Value, MoneyUnit.BTC);
-            
-            if (amount < terms.Dust)
-                payout.State = PayoutState.Cancelled;
-
-            if (payout.GetPayoutMethodId() != PayoutMethodId)
-                continue;
-
-            if (payout.Proof is not null)
-                continue;
-            
-            var blob = payout.GetBlob(_jsonSerializerSettings);
-            var claim = await payoutHandler.ParseClaimDestination(blob.Destination, CancellationToken.None);
-            var destinationBip21 = await payoutHandler.TryGenerateBip21(payout, claim);
-
-            if (destinationBip21 is not null)
+            if (payoutHandler.PayoutLocker.LockOrNullAsync(payout.Id, 0) is { } locker && await locker is {} disposable)
             {
-                try
+                using (disposable)
                 {
-                    await _arkSpendingService.Spend(storeData, destinationBip21, CancellationToken.None);
-                    payout.State = PayoutState.InProgress;
-                }
-                catch (Exception e)
-                {
-                    payout.State = PayoutState.Cancelled;
-                }
+                    
+                    var amount = new Money(payout.Amount.Value, MoneyUnit.BTC);
+            
+                    if (amount < terms.Dust)
+                        payout.State = PayoutState.Cancelled;
+
+                    if (payout.GetPayoutMethodId() != PayoutMethodId)
+                        continue;
+
+                    if (payout.Proof is not null)
+                        continue;
+            
+                    var blob = payout.GetBlob(_jsonSerializerSettings);
+                    var claim = await payoutHandler.ParseClaimDestination(blob.Destination, CancellationToken.None);
+                    var destinationBip21 = await payoutHandler.TryGenerateBip21(payout, claim);
+
+                    if (destinationBip21 is not null)
+                    {
+                        try
+                        {
+                            var txId = await _arkSpendingService.Spend(storeData, destinationBip21, CancellationToken.None);
+                    
+                            payoutHandler.SetProofBlob(payout, new ArkPayoutProof { TransactionId = uint256.Parse(txId) });
+                            if(!string.IsNullOrEmpty(txId ))
+                                payout.State = PayoutState.Completed;
+                        }
+                        catch (Exception e)
+                        {
+                        }
                 
+                    }
+                    else
+                        payout.State = PayoutState.Cancelled;
+                }
             }
-            else
-                payout.State = PayoutState.Cancelled;
+            
         }
+        
 
     }
 }
