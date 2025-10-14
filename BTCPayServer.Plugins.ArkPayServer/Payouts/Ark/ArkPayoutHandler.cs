@@ -146,7 +146,14 @@ public class ArkPayoutHandler(
         {
             foreach (var vtxo in vtxoEvent.Vtxos)
             {
-                await ApplyVtxo(vtxo);
+                try
+                {
+                    await ApplyVtxo(vtxo);
+                }
+                catch
+                {
+                    // ignored
+                }
             }
         }
     }

@@ -395,7 +395,7 @@ namespace NArk.Services
             var scriptBuilders = new List<ScriptBuilder>
             {
                 coin.SpendingScriptBuilder,
-                new GenericTapScript(terms.CheckpointTapscript)
+                terms.CheckpointTapscript
             };
 
             return new GenericArkContract(coin.Contract.Server, scriptBuilders);
