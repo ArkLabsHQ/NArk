@@ -2,14 +2,20 @@
 using System.Globalization;
 using System.Threading.Tasks;
 using BTCPayServer.Abstractions.Constants;
+using BTCPayServer.Abstractions.Extensions;
+using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Lightning;
+using BTCPayServer.PayoutProcessors;
+using BTCPayServer.PayoutProcessors.Lightning;
+using BTCPayServer.Payouts;
 using BTCPayServer.Plugins.ArkPayServer.Exceptions;
 using BTCPayServer.Plugins.ArkPayServer.Models;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
+using BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
@@ -31,7 +37,10 @@ public class ArkController(
     ArkWalletService arkWalletService,
     PaymentMethodHandlerDictionary paymentMethodHandlerDictionary,
     IOperatorTermsService operatorTermsService,
-    ArkadeSpendingService arkadeSpendingService) : Controller
+    ArkadeSpendingService arkadeSpendingService,
+    ArkAutomatedPayoutSenderFactory payoutSenderFactory,
+    PayoutProcessorService payoutProcessorService,
+    EventAggregator eventAggregator) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
@@ -293,5 +302,67 @@ public class ArkController(
     }
 
     private record TemporaryWalletSettings(string? Wallet, string? WalletId, string? Destination, bool IsOwnedByStore);
+
+    [HttpGet("~/stores/{storeId}/payout-processors/ark-automated")]
+    [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    [Authorize(Policy = Policies.CanViewStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> ConfigurePayoutProcessor(string storeId)
+    {
+        var activeProcessor =
+            (await payoutProcessorService.GetProcessors(
+                new PayoutProcessorService.PayoutProcessorQuery()
+                {
+                    Stores = new[] { storeId },
+                    Processors = new[] { payoutSenderFactory.Processor },
+                    PayoutMethods = new[]
+                    {
+                        ArkadePlugin.ArkadePayoutMethodId
+                    }
+                }))
+            .FirstOrDefault();
+
+        return View(new ConfigureArkPayoutProcessorViewModel(activeProcessor is null ? new ArkAutomatedPayoutBlob() : ArkAutomatedPayoutProcessor.GetBlob(activeProcessor)));
+    }
+    
+    [HttpPost("~/stores/{storeId}/payout-processors/ark-automated/")]
+    [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> ConfigurePayoutProcessor(string storeId, ConfigureArkPayoutProcessorViewModel automatedTransferBlob)
+    {
+        if (!ModelState.IsValid)
+            return View(automatedTransferBlob);
+        
+        var activeProcessor =
+            (await payoutProcessorService.GetProcessors(
+                new PayoutProcessorService.PayoutProcessorQuery()
+                {
+                    Stores = [storeId],
+                    Processors = [payoutSenderFactory.Processor],
+                    PayoutMethods =
+                    [
+                        ArkadePlugin.ArkadePayoutMethodId
+                    ]
+                }))
+            .FirstOrDefault();
+        activeProcessor ??= new PayoutProcessorData();
+        activeProcessor.HasTypedBlob<ArkAutomatedPayoutBlob>().SetBlob(automatedTransferBlob.ToBlob());
+        activeProcessor.StoreId = storeId;
+        activeProcessor.PayoutMethodId = ArkadePlugin.ArkadePayoutMethodId.ToString();
+        activeProcessor.Processor = payoutSenderFactory.Processor;
+        var tcs = new TaskCompletionSource();
+        eventAggregator.Publish(new PayoutProcessorUpdated()
+        {
+            Data = activeProcessor,
+            Id = activeProcessor.Id,
+            Processed = tcs
+        });
+        TempData.SetStatusMessageModel(new StatusMessageModel
+        {
+            Severity = StatusMessageModel.StatusSeverity.Success,
+            Message = "Processor updated."
+        });
+        await tcs.Task;
+        return RedirectToAction(nameof(ConfigurePayoutProcessor), "Ark", new { storeId });
+    }
 }
 

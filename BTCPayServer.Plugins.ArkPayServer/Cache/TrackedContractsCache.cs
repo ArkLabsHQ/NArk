@@ -40,7 +40,7 @@ public class TrackedContractsCache(ArkPluginDbContextFactory arkPluginDbContextF
                     allContracts.ToHashSet(comparer: new ContractScriptComparer());
 
                 var activePayouts = await dbContext.Payouts
-                    .Where(payout => payout.State == PayoutState.AwaitingPayment)
+                    .Where(payout => payout.State == PayoutState.AwaitingPayment || payout.State == PayoutState.InProgress)
                     .Where(payout => payout.PayoutMethodId == ArkadePlugin.ArkadePayoutMethodId.ToString())
                     .Where(payout => payout.DedupId != null)
                     .ToListAsync(cancellationToken: stoppingToken);

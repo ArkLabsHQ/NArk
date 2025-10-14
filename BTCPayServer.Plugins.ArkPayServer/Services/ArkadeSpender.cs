@@ -135,10 +135,8 @@ public class ArkadeSpender(
             {
                 if (vtxo.SpentByTransactionId is not null)
                     continue;
-                if (!includeRecoverable || vtxo.Recoverable)
-                {
+                if (!includeRecoverable && vtxo.Recoverable)
                     continue;
-                }
 
                 // Filter by specific VTXO outpoints if provided
                 if (vtxoOutpoints != null)

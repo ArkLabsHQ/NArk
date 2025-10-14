@@ -20,6 +20,7 @@ using NArk.Services;
 using NBitcoin;
 using System.Reflection;
 using System.Text.Json;
+using BTCPayServer.PayoutProcessors;
 using Grpc.Net.ClientFactory;
 using NArk.Services.Abstractions;
 using BTCPayServer.Plugins.ArkPayServer.Cache;
@@ -216,6 +217,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
         serviceCollection.AddSingleton<ArkPayoutHandler>();
         serviceCollection.AddSingleton<IPayoutHandler>(provider => provider.GetRequiredService<ArkPayoutHandler>());
+        serviceCollection.AddSingleton<ArkAutomatedPayoutSenderFactory>();
+        serviceCollection.AddSingleton<IPayoutProcessorFactory>(provider => provider.GetRequiredService<ArkAutomatedPayoutSenderFactory>());
         
         serviceCollection.AddDefaultPrettyName(ArkadePaymentMethodId, "Arkade");
     }

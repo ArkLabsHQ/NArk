@@ -179,10 +179,7 @@ public class ArkPayoutHandler(
 
     public Dictionary<PayoutState, List<(string Action, string Text)>> GetPayoutSpecificActions()
     {
-        return new Dictionary<PayoutState, List<(string Action, string Text)>>
-        {
-             {PayoutState.AwaitingPayment, [("reject-payment", "Reject payout transaction")]}
-         };
+        return [];
     }
 
     public Task<StatusMessageModel> DoSpecificAction(string action, string[] payoutIds, string storeId)
@@ -218,27 +215,35 @@ public class ArkPayoutHandler(
             if (payout.GetPayoutMethodId() != PayoutMethodId)
                 continue;
             var claim = await ParseClaimDestination(blob.Destination, CancellationToken.None);
-            switch (claim.destination)
-            {
-                case ArkUriClaimDestination uriClaimDestination:
-                    uriClaimDestination.BitcoinUrl.Amount = new Money(payout.Amount.Value, MoneyUnit.BTC);
-                    var newUri = new UriBuilder(uriClaimDestination.BitcoinUrl.Uri);
-                    BTCPayServerClient.AppendPayloadToQuery(newUri,
-                        new KeyValuePair<string, object>("payout", payout.Id));
-                    bip21s.Add(newUri.Uri.ToString());
-                    break;
-                case ArkAddressClaimDestination addressClaimDestination:
-                    var builder = new PaymentUrlBuilder("bitcoin")
-                    {
-                        Host = addressClaimDestination.Address.ToString(terms.Network.ChainName == ChainName.Mainnet)
-                    };
-                    builder.QueryParams.Add("amount", payout.Amount.Value.ToString());
-                    bip21s.Add(builder.ToString());
-                    break;
-            }
+            var bip21 = await TryGenerateBip21(payout, claim);
+            if (bip21 is not null)
+                bip21s.Add(bip21);
         }
 
         return new RedirectToActionResult("SpendOverview", "Ark", new { storeId = storeId, destinations = bip21s });
+    }
+
+    public async Task<string?> TryGenerateBip21(PayoutData payout, (IClaimDestination destination, string error) claim)
+    {
+        var terms = await operatorTermsService.GetOperatorTerms();
+        switch (claim.destination)
+        {
+            case ArkUriClaimDestination uriClaimDestination:
+                uriClaimDestination.BitcoinUrl.Amount = new Money(payout.Amount.Value, MoneyUnit.BTC);
+                var newUri = new UriBuilder(uriClaimDestination.BitcoinUrl.Uri);
+                BTCPayServerClient.AppendPayloadToQuery(newUri,
+                    new KeyValuePair<string, object>("payout", payout.Id));
+                return newUri.Uri.ToString();
+            case ArkAddressClaimDestination addressClaimDestination:
+                var builder = new PaymentUrlBuilder("bitcoin")
+                {
+                    Host = addressClaimDestination.Address.ToString(terms.Network.ChainName == ChainName.Mainnet)
+                };
+                builder.QueryParams.Add("amount", payout.Amount.Value.ToString());
+                return builder.ToString();
+            default:
+                return null;
+        }
     }
 
     public BTCPayNetwork Network => networkProvider.GetNetwork<BTCPayNetwork>(Currency);

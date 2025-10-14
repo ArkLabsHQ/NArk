@@ -37,10 +37,7 @@ public class SpendableArkCoin : ArkCoin
             throw new InvalidOperationException("Sequence is required");
         }
     }
-
-
-  
-
+    
     public PSBTInput? FillPSBTInput(PSBT psbt)
     {
         var psbtInput = psbt.Inputs.FindIndexedInput(Outpoint);
