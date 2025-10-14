@@ -38,6 +38,7 @@ public class BitcoinTimeChainProvider : EventHostedServiceBase
     {
         return await _cache.GetOrCreateAsync<(long Timestamp, uint Height)>(CacheKey, async entry =>
         {
+            entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
             var client = _explorerClientProvider.GetExplorerClient("BTC");
             var result = await client.RPCClient.SendCommandAsync("getblockchaininfo", cancellationToken)
                 .ConfigureAwait(false);
