@@ -22,7 +22,8 @@ public class ArkadeSpender(
     ArkWalletService arkWalletService,
     ILogger<ArkadeSpender> logger,
     IOperatorTermsService operatorTermsService,
-    ArkVtxoSynchronizationService arkVtxoSynchronizationService)
+    ArkVtxoSynchronizationService arkVtxoSynchronizationService,
+    BitcoinTimeChainProvider bitcoinTimeChainProvider)
 {
     public async Task<uint256> Spend(string walletId, TxOut[] outputs, CancellationToken cancellationToken = default)
     {
@@ -113,7 +114,7 @@ public class ArkadeSpender(
             if (!vtxosAndContracts.TryGetValue(walletId, out var group))
                 continue;
             // No need to filter again - already filtered at DB level
-            var coins = await GetSpendableCoins(group, signer, operatorTerms, false, null);
+            var coins = await GetSpendableCoins(group, signer, operatorTerms, false, null, cancellationToken);
             res.Add(walletId, coins);
         }
         
@@ -122,7 +123,7 @@ public class ArkadeSpender(
 
     private async Task<List<SpendableArkCoinWithSigner>> GetSpendableCoins(
         Dictionary<ArkWalletContract, VTXO[]> group, IArkadeWalletSigner signer,
-        ArkOperatorTerms operatorTerms, bool includeRecoverable, HashSet<OutPoint>? vtxoOutpoints = null)
+        ArkOperatorTerms operatorTerms, bool includeRecoverable, HashSet<OutPoint>? vtxoOutpoints = null, CancellationToken cancellationToken = default)
     {
         var coins = new List<SpendableArkCoinWithSigner>();
 
@@ -153,7 +154,7 @@ public class ArkadeSpender(
                     continue;
                 }
 
-                var res = await GetSpendableCoin(signer, contract, vtxo.ToCoin(), vtxo.Recoverable, vtxo.ExpiresAt);
+                var res = await GetSpendableCoin(signer, contract, vtxo.ToCoin(), vtxo.Recoverable, vtxo.ExpiresAt, cancellationToken);
                 if (res is not null)
                     coins.Add(res);
             }
@@ -162,10 +163,10 @@ public class ArkadeSpender(
         return coins;
     }
 
-    private static async Task<SpendableArkCoinWithSigner?> GetSpendableCoin(IArkadeWalletSigner signer,
-        ArkContract contract, ICoinable vtxo, bool recoverable, DateTimeOffset expiresAt)
+    private async Task<SpendableArkCoinWithSigner?> GetSpendableCoin(IArkadeWalletSigner signer,
+        ArkContract contract, ICoinable vtxo, bool recoverable, DateTimeOffset expiresAt, CancellationToken cancellationToken)
     {
-        ECXOnlyPubKey user = await signer.GetXOnlyPublicKey();
+        var user = await signer.GetXOnlyPublicKey(cancellationToken);
         switch (contract)
         {
             case ArkPaymentContract arkPaymentContract:
@@ -191,15 +192,28 @@ public class ArkadeSpender(
                         htlc.CreateClaimScript(),
                         new WitScript(Op.GetPushOp(htlc.Preimage!)), null, null, recoverable, expiresAt);
                 }
+                
+                var (timestamp, height) = await bitcoinTimeChainProvider.Get(cancellationToken);
 
-                if (htlc.RefundLocktime.IsTimeLock &&
-                    htlc.RefundLocktime.Date < DateTime.UtcNow && htlc.Sender.ToBytes().SequenceEqual(user.ToBytes()))
+                switch (htlc.RefundLocktime.IsTimeLock)
                 {
-                    return ToArkCoin(contract, vtxo, signer,
-                        htlc.CreateRefundWithoutReceiverScript(),
-                        null, htlc.RefundLocktime, null, recoverable, expiresAt);
+                    case true:
+                        if (htlc.RefundLocktime.Date <= Utils.UnixTimeToDateTime(timestamp) && htlc.Sender.ToBytes().SequenceEqual(user.ToBytes()))
+                        {
+                            return ToArkCoin(contract, vtxo, signer,
+                                htlc.CreateRefundWithoutReceiverScript(),
+                                null, htlc.RefundLocktime, null, recoverable, expiresAt);
+                        }
+                        break;
+                    case false:
+                        if (htlc.RefundLocktime.Height <= height && htlc.Sender.ToBytes().SequenceEqual(user.ToBytes()))
+                        {
+                            return ToArkCoin(contract, vtxo, signer,
+                                htlc.CreateRefundWithoutReceiverScript(),
+                                null, htlc.RefundLocktime, null, recoverable, expiresAt);
+                        }
+                        break;
                 }
-
                 break;
         }
 
