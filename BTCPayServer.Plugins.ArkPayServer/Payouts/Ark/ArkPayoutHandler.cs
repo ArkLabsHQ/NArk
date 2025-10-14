@@ -17,6 +17,7 @@ using BTCPayServer.Services;
 using BTCPayServer.Services.Invoices;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NArk;
 using NArk.Services.Abstractions;
 using NBitcoin;
@@ -29,6 +30,7 @@ using StoreData = BTCPayServer.Data.StoreData;
 namespace BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
 
 public class ArkPayoutHandler(
+    ILogger<ArkPayoutHandler> logger,
     IOperatorTermsService operatorTermsService,
     EventAggregator eventAggregator,
     PaymentMethodHandlerDictionary paymentMethodHandlerDictionary,
@@ -150,9 +152,9 @@ public class ArkPayoutHandler(
                 {
                     await ApplyVtxo(vtxo);
                 }
-                catch
+                catch(Exception e)
                 {
-                    // ignored
+                    logger.LogError(e, "Failed to apply vtxo: {script}", vtxo.Script);
                 }
             }
         }
@@ -161,7 +163,7 @@ public class ArkPayoutHandler(
     private async Task ApplyVtxo(VTXO vtxo)
     {
         var terms = await operatorTermsService.GetOperatorTerms();
-        var address = ArkAddress.FromScriptPubKey(new Script(vtxo.Script), terms.SignerKey)
+        var address = ArkAddress.FromScriptPubKey(Script.FromHex(vtxo.Script), terms.SignerKey)
             .ToString(terms.Network.ChainName == ChainName.Mainnet);
         
         await using var ctx = dbContextFactory.CreateContext();
