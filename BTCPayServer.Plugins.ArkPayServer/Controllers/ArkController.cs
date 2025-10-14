@@ -12,6 +12,7 @@ using BTCPayServer.Payments.Lightning;
 using BTCPayServer.PayoutProcessors;
 using BTCPayServer.PayoutProcessors.Lightning;
 using BTCPayServer.Payouts;
+using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Exceptions;
 using BTCPayServer.Plugins.ArkPayServer.Models;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
@@ -192,10 +193,15 @@ public class ArkController(
 
     [HttpGet("stores/{storeId}/contracts")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-    public async Task<IActionResult> Contracts(StoreContractsViewModel? model = null)
+    public async Task<IActionResult> Contracts(
+        string storeId,
+        string? searchTerm = null,
+        string? searchText = null,
+        int skip = 0,
+        int count = 50,
+        bool loadVtxos = false,
+        bool includeRecoverable = false)
     {
-        model ??= new StoreContractsViewModel() { Skip = 0 };
-
         var store = HttpContext.GetStoreData();
         if (store == null)
             return NotFound();
@@ -203,14 +209,45 @@ public class ArkController(
         var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
 
         if (config?.WalletId is null)
-            return RedirectToAction("InitialSetup");
+            return RedirectToAction("InitialSetup", new { storeId });
 
         if (!config.GeneratedByStore)
-            return View(new StoreContractsViewModel());
+            return View(new StoreContractsViewModel { StoreId = storeId });
 
-        var contracts = await arkWalletService.GetArkWalletContractsAsync(config.WalletId, model.Skip, model.Count);
+        // Get status filter
+        bool? activeFilter = null;
+        if (new SearchString(searchTerm).ContainsFilter("status"))
+        {
+            var statusFilters = new SearchString(searchTerm).GetFilterArray("status");
+            if (statusFilters.Length == 1)
+            {
+                activeFilter = statusFilters[0] == "active";
+            }
+        }
 
-        model.Contracts = contracts;
+        var (contracts, contractVtxos) = await arkWalletService.GetArkWalletContractsAsync(
+            config.WalletId, 
+            skip, 
+            count, 
+            searchText ?? "", 
+            activeFilter,
+            loadVtxos,
+            allowSpent: false,
+            allowNote: includeRecoverable,
+            HttpContext.RequestAborted);
+
+        var model = new StoreContractsViewModel
+        {
+            StoreId = storeId,
+            Contracts = contracts,
+            Skip = skip,
+            Count = count,
+            SearchText = searchText,
+            Search = new SearchString(searchTerm),
+            LoadVtxos = loadVtxos,
+            IncludeRecoverable = includeRecoverable,
+            ContractVtxos = contractVtxos
+        };
 
         return View(model);
     }

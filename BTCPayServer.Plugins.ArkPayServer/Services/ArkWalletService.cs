@@ -301,19 +301,73 @@ public class ArkWalletService(
         await arkVtxoSyncronizationService.PollScriptsForVtxos(wallets.ToHashSet(), cancellationToken);
     }
 
-    public async Task<IReadOnlyCollection<ArkWalletContract>> GetArkWalletContractsAsync(string walletId, int skip = 0, int count = 10, CancellationToken cancellationToken = default)
+    public async Task<(IReadOnlyCollection<ArkWalletContract> Contracts, Dictionary<string, VTXO[]> ContractVtxos)> GetArkWalletContractsAsync(
+        string walletId, 
+        int skip = 0, 
+        int count = 10, 
+        string searchText = "", 
+        bool? active = null,
+        bool includeVtxos = false,
+        bool allowSpent = false,
+        bool allowNote = false,
+        CancellationToken cancellationToken = default)
     {
         await using var dbContext = dbContextFactory.CreateContext();
 
-        return await dbContext.WalletContracts
+        var contracts = await dbContext.WalletContracts
             .Include(c => c.Swaps)
-            .Where(c => c.WalletId.Equals(walletId))
+            .Where(c => c.WalletId == walletId)
+            .Where(c => string.IsNullOrEmpty(searchText) || c.Script.Contains(searchText))
+            .Where(c => active == null || c.Active == active)
             .OrderByDescending(c => c.CreatedAt)
             .Skip(skip)
             .Take(count)
             .AsNoTracking()
             .ToListAsync(cancellationToken);
+
+        var contractVtxos = new Dictionary<string, VTXO[]>();
+
+        if (includeVtxos && contracts.Any())
+        {
+            var contractScripts = contracts.Select(c => c.Script).ToHashSet();
+            
+            var vtxos = await dbContext.Vtxos
+                .Where(vtxo =>
+                    (allowSpent || vtxo.SpentByTransactionId == null) &&
+                    (allowNote || !vtxo.Recoverable) &&
+                    contractScripts.Contains(vtxo.Script))
+                .OrderByDescending(vtxo => vtxo.SeenAt)
+                .ToArrayAsync(cancellationToken);
+
+            contractVtxos = vtxos
+                .GroupBy(v => v.Script)
+                .ToDictionary(g => g.Key, g => g.ToArray());
+        }
+
+        return (contracts, contractVtxos);
     }
+
+    // public async Task<IReadOnlyCollection<ArkWalletContract>> GetArkWalletContractsAsync(
+    //     string[]? walletIds, 
+    //     int skip = 0, 
+    //     int count = 10, 
+    //     string searchText = "", 
+    //     bool? active = null, 
+    //     CancellationToken cancellationToken = default)
+    // {
+    //     await using var dbContext = dbContextFactory.CreateContext();
+    //
+    //     return await dbContext.WalletContracts
+    //         .Include(c => c.Swaps)
+    //         .Where(c => walletIds == null || walletIds.Contains(c.WalletId))
+    //         .Where(c => string.IsNullOrEmpty(searchText) || c.Script.Contains(searchText))
+    //         .Where(c => active == null || c.Active == active)
+    //         .OrderByDescending(c => c.CreatedAt)
+    //         .Skip(skip)
+    //         .Take(count)
+    //         .AsNoTracking()
+    //         .ToListAsync(cancellationToken);
+    // }
 
     public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>> GetVTXOsAndContracts(
         string[]? walletIds, 
@@ -321,25 +375,61 @@ public class ArkWalletService(
         bool allowNote, 
         CancellationToken cancellationToken)
     {
-        return await GetVTXOsAndContracts(walletIds, allowSpent, allowNote, null, cancellationToken);
+        return await GetVTXOsAndContracts(walletIds, allowSpent, allowNote, null, null, null, cancellationToken);
     }
 
     /// <summary>
-    /// Get VTXOs and contracts for specified wallets, optionally filtered by specific VTXO outpoints
+    /// Get VTXOs and contracts for specified wallets, optionally filtered by specific VTXO outpoints, search text, and active status
     /// </summary>
     public async Task<Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>> GetVTXOsAndContracts(
         string[]? walletIds, 
         bool allowSpent, 
         bool allowNote, 
         HashSet<OutPoint>? vtxoOutpoints,
-        CancellationToken cancellationToken)
+        string? searchText = null,
+        bool? active = null,
+        CancellationToken cancellationToken = default)
     {
+        // Optimize for single wallet case - use the new efficient method
+        if (walletIds?.Length == 1 && vtxoOutpoints == null)
+        {
+            var walletId = walletIds[0];
+            var (contractsx, contractVtxos) = await GetArkWalletContractsAsync(
+                walletId,
+                skip: 0,
+                count: int.MaxValue, // Get all contracts for this use case
+                searchText ?? "",
+                active,
+                includeVtxos: true,
+                allowSpent,
+                allowNote,
+                cancellationToken);
+
+            // Convert to the expected return format
+            var result = new Dictionary<string, Dictionary<ArkWalletContract, VTXO[]>>();
+            if (contractsx.Any())
+            {
+                var contractDict = new Dictionary<ArkWalletContract, VTXO[]>();
+                foreach (var contract in contractsx)
+                {
+                    contractDict[contract] = contractVtxos.TryGetValue(contract.Script, out var vtxosx) 
+                        ? vtxosx
+                        : [];
+                }
+                result[walletId] = contractDict;
+            }
+            return result;
+        }
+
+        // Multi-wallet or outpoint filtering - use original implementation
         await using var dbContext = dbContextFactory.CreateContext();
 
         // Get contracts first (no duplication)
         var contractsQuery = dbContext.WalletContracts
             .Include(c => c.Swaps)
             .Where(c => walletIds == null || walletIds.Contains(c.WalletId))
+            .Where(c => string.IsNullOrEmpty(searchText) || c.Script.Contains(searchText))
+            .Where(c => active == null || c.Active == active)
             .OrderByDescending(c => c.CreatedAt);
 
         var contracts = await contractsQuery.ToArrayAsync(cancellationToken);

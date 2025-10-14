@@ -1,17 +1,13 @@
-@using BTCPayServer
 @using BTCPayServer.Abstractions.Contracts
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.ArkPayServer
-@using BTCPayServer.Plugins.ArkPayServer.Services
 @using NArk.Services.Abstractions
 @using NBitcoin
 @using NArk.Contracts
-@using NArk.Services
 @model BTCPayServer.Plugins.ArkPayServer.Models.StoreContractsViewModel
 @inject IScopeProvider ScopeProvider
 @inject IOperatorTermsService Terms
 @inject ArkConfiguration ArkConfiguration
-
 
 @{
     ViewData.SetActivePage(category: "Ark", activePage: "Contracts", title: "Ark - Contracts");
@@ -20,63 +16,267 @@
     try
     {
         var terms = await Terms.GetOperatorTerms();
-        mainnet =  terms.Network.ChainName == ChainName.Mainnet;
+        mainnet = terms.Network.ChainName == ChainName.Mainnet;
     }
     catch (Exception ex)
     {
     }
-
-
+    
+    var statusFilterCount = Model.Search.ContainsFilter("status") ? Model.Search.GetFilterArray("status").Length : 0;
 }
+
+@functions
+{
+    private bool HasArrayFilter(string type, string key = null) =>
+        Model.Search.ContainsFilter(type) && (key is null || Model.Search.GetFilterArray(type).Contains(key));
+}
+
+@section PageHeadContent
+{
+    <style>
+        .contract-details-row > td {
+            padding: 1.5rem 1rem 0 2.65rem;
+        }
+        .dropdown > .btn {
+            min-width: 7rem;
+            padding-left: 1rem;
+            text-align: left;
+        }
+        #SearchText {
+            flex-shrink: 0;
+            min-width: 200px;
+            max-width: 300px;
+        }
+        @@media (max-width: 568px) {
+            #SearchText {
+                width: 100%;
+            }
+        }
+    </style>
+}
+
+<div class="sticky-header">
+    <h2>
+        <span>@ViewData["Title"]</span>
+        <a href="#descriptor" data-bs-toggle="collapse">
+            <vc:icon symbol="info" />
+        </a>
+    </h2>
+</div>
+
+<div id="descriptor" class="collapse">
+    <div class="d-flex px-4 py-4 mb-4 bg-tile rounded">
+        <div class="flex-fill">
+            <p text-translate="true" class="mb-2">Contracts are Ark payment addresses that can receive VTXOs.</p>
+            <p text-translate="true" class="mb-3">Each contract represents a unique payment destination secured by your wallet.</p>
+        </div>
+        <button type="button" class="btn-close ms-auto" data-bs-toggle="collapse" data-bs-target="#descriptor" aria-expanded="false" aria-label="Close">
+            <vc:icon symbol="close" />
+        </button>
+    </div>
+</div>
 
 <partial name="_StatusMessage" />
 
-<div class="widget">
-    <header>
-        <h5 class="mb-4 text-muted" text-translate="true">Lorem Ipsum, //TODO: what is a conract</h5>
-    </header>
-    <div class="table-responsive mt-3 mb-0">
-       <form asp-route-storeId="@storeId" asp-action="Contracts" method="get">
-            <table class="table table-hover mb-0 text-center">
-                <thead>
+<form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Contracts" asp-route-storeId="@Model.StoreId" method="get">
+    <input asp-for="Count" type="hidden" />
+    <input asp-for="SearchTerm" type="hidden" value="@Model.Search.WithoutSearchText()"/>
+    <input asp-for="SearchText" class="form-control" placeholder="Search…" />
+    
+    <div class="dropdown">
+        <button id="StatusOptionsToggle" class="btn btn-secondary dropdown-toggle dropdown-toggle-custom-caret" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+            @if (statusFilterCount > 0)
+            {
+                <span>@statusFilterCount Status</span>
+            }
+            else
+            {
+                <span text-translate="true">All Status</span>
+            }
+        </button>
+        <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
+            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "active")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("status", "active") ? "custom-active" : "")" text-translate="true">Active</a>
+            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "inactive")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("status", "inactive") ? "custom-active" : "")" text-translate="true">Inactive</a>
+        </div>
+    </div>
+    
+    <div class="form-check">
+        <input class="form-check-input" type="checkbox" asp-for="LoadVtxos" id="loadVtxosCheckbox" onchange="this.form.submit()" />
+        <label class="form-check-label" for="loadVtxosCheckbox" text-translate="true">
+            Load VTXOs
+        </label>
+    </div>
+    
+    @if (Model.LoadVtxos)
+    {
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" asp-for="IncludeRecoverable" id="includeRecoverableCheckbox" onchange="this.form.submit()" />
+            <label class="form-check-label" for="includeRecoverableCheckbox" text-translate="true">
+                Include Recoverable
+            </label>
+        </div>
+    }
+    
+    @if (statusFilterCount > 0 || !string.IsNullOrEmpty(Model.SearchText))
+    {
+        <button id="clearAllFiltersBtn" type="button" class="btn btn-secondary" style="min-width: 7rem;" title="Clear all filters">
+            <span class="align-middle" text-translate="true">Clear All</span>
+        </button>
+    }
+</form>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const clearBtn = document.getElementById('clearAllFiltersBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', function () {
+                const form = clearBtn.closest('form');
+                if (!form) return;
+                const searchText = form.querySelector('[name="SearchText"]');
+                if (searchText) searchText.value = '';
+                const searchTerm = form.querySelector('[name="SearchTerm"]');
+                if (searchTerm) searchTerm.value = '';
+                form.submit();
+            });
+        }
+    });
+</script>
+
+@if (Model.Contracts.Any())
+{
+    <div class="table-responsive">
+        <table class="table table-hover">
+            <thead>
                 <tr>
-                    <th class="w-15px" text-translate="true">Created</th>
-                    <th class="text-nowrap" text-translate="true">Address</th>
-                    <th class="text-nowrap" text-translate="true">Contract</th>
+                    <th class="date-col">
+                        <div class="d-flex align-items-center gap-1">
+                            <span text-translate="true">Created</span>
+                            <button type="button" class="btn btn-link p-0 switch-time-format only-for-js" title="Switch date format">
+                                <vc:icon symbol="time" />
+                            </button>
+                        </div>
+                    </th>
+                    <th text-translate="true" class="text-nowrap">Address</th>
+                    <th text-translate="true" class="text-nowrap">Contract Type</th>
                     <th text-translate="true">Status</th>
+                    @if (Model.LoadVtxos)
+                    {
+                        <th text-translate="true">VTXOs</th>
+                    }
+                    <th></th>
                 </tr>
-                </thead>
-                <tbody>
+            </thead>
+            <tbody>
                 @foreach (var contract in Model.Contracts)
                 {
                     var arkContract = ArkContract.Parse(contract.Type, contract.ContractData);
                     if (arkContract is null) continue;
                     var link = $"{ArkConfiguration.ArkUri}/v1/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}";
+                    var detailsId = $"contract_details_{contract.Script.GetHashCode()}";
 
-                    <tr>
-                        <td>@contract.CreatedAt.ToTimeAgo()</td>
-                        <td>
+                    BTCPayServer.Plugins.ArkPayServer.Data.Entities.VTXO[]? vtxos = [];
+                    var hasVtxos = Model.LoadVtxos && Model.ContractVtxos.TryGetValue(contract.Script, out vtxos) && vtxos.Any();
+
+                    <tr id="contract_@contract.Script.GetHashCode()">
+                        <td class="align-middle date-col">@contract.CreatedAt.ToBrowserDate()</td>
+                        <td class="align-middle">
                             <vc:truncate-center link="@link" text="@arkContract.GetArkAddress().ToString(mainnet)" classes="truncate-center-id"/>
                         </td>
-                        <td>
-                            <vc:truncate-center text="@arkContract.ToString()" classes="truncate-center-id"/>
+                        <td class="align-middle">
+                            <vc:truncate-center text="@contract.Type" classes="truncate-center-id"/>
                         </td>
-                        <td>
+                        <td class="align-middle">
                             @if (contract.Active)
                             {
-                                <div class="badge text-bg-success">Active</div>
+                                <span class="badge text-bg-success">Active</span>
                             }
-                            else 
+                            else
                             {
-                                <div class="badge text-bg-danger">Inactive</div>
-                            }   
-                                
+                                <span class="badge text-bg-danger">Inactive</span>
+                            }
+                        </td>
+                        @if (Model.LoadVtxos)
+                        {
+                            <td class="align-middle">
+                                @if (hasVtxos)
+                                {
+                                    <span class="badge text-bg-info">@vtxos.Length</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">0</span>
+                                }
+                            </td>
+                        }
+                        <td class="align-middle text-end">
+                            @if (Model.LoadVtxos && hasVtxos)
+                            {
+                                <div class="d-inline-flex align-items-center gap-2">
+                                    <button class="accordion-button collapsed only-for-js ms-0 d-inline-block" type="button" data-bs-toggle="collapse" data-bs-target="#@detailsId" aria-expanded="false" aria-controls="@detailsId">
+                                        <vc:icon symbol="caret-down" />
+                                    </button>
+                                </div>
+                            }
                         </td>
                     </tr>
+                    
+                    @if (Model.LoadVtxos && hasVtxos)
+                    {
+                        <tr id="@detailsId" class="contract-details-row collapse">
+                            <td colspan="6" class="border-top-0">
+                                <div class="table-responsive">
+                                    <table class="table table-sm mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th text-translate="true">TXID</th>
+                                                <th text-translate="true">Output</th>
+                                                <th text-translate="true">Amount</th>
+                                                <th text-translate="true">Seen</th>
+                                                <th text-translate="true">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var vtxo in vtxos)
+                                            {
+                                                <tr>
+                                                    <td>
+                                                        <vc:truncate-center text="@vtxo.TransactionId" classes="truncate-center-id"/>
+                                                    </td>
+                                                    <td>@vtxo.TransactionOutputIndex</td>
+                                                    <td>@Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC) BTC</td>
+                                                    <td>@vtxo.SeenAt.ToTimeAgo()</td>
+                                                    <td>
+                                                        @if (vtxo.SpentByTransactionId != null)
+                                                        {
+                                                            <span class="badge text-bg-secondary">Spent</span>
+                                                        }
+                                                        else if (vtxo.Recoverable)
+                                                        {
+                                                            <span class="badge text-bg-warning">Recoverable</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span class="badge text-bg-success">Unspent</span>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                    }
                 }
-                </tbody>
-            </table>
-            <vc:pager view-model="Model" />
-        </form>
+            </tbody>
+        </table>
     </div>
-</div>
+
+    <vc:pager view-model="Model" />
+}
+else
+{
+    <p class="text-secondary mt-3" text-translate="true">
+        There are no contracts matching your criteria.
+    </p>
+}

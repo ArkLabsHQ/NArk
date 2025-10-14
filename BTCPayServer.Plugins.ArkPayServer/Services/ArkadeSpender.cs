@@ -100,7 +100,7 @@ public class ArkadeSpender(
         CancellationToken cancellationToken)
     {
         // Filter VTXOs at database level for efficiency
-        var vtxosAndContracts = await arkWalletService.GetVTXOsAndContracts(walletIds, false, includeRecoverable, vtxoOutpoints, cancellationToken);
+        var vtxosAndContracts = await arkWalletService.GetVTXOsAndContracts(walletIds, false, includeRecoverable, vtxoOutpoints,null,null, cancellationToken);
 
         walletIds = vtxosAndContracts.Select(grouping => grouping.Key).ToArray();
         var signers = await arkadeWalletSignerProvider.GetSigners(walletIds, cancellationToken);
