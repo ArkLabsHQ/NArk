@@ -176,7 +176,6 @@ if [ "$CLEAN" = true ]; then
 
   # 2. Stop any running nigiri instances
   log "Stopping existing Nigiri containers..."
-  docker compose -f docker-compose.bps.deps.yml down --volumes --remove-orphans
   docker compose -f docker-compose.ark.yml down --volumes --remove-orphans
   nigiri stop --delete
 
