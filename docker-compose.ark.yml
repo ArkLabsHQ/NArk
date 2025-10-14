@@ -190,8 +190,8 @@ services:
         port = 18443
         user = "admin1"
         password = "123"
-        zmqpubrawtx = "tcp://bitcoind:28333"
-        zmqpubrawblock = "tcp://bitcoind:28332"
+        zmqpubrawtx = "tcp://bitcoin:28333"
+        zmqpubrawblock = "tcp://bitcoin:28332"
 
         [currencies.lnd]
         host = "boltz-lnd"
