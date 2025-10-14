@@ -68,19 +68,22 @@ public class BoltzService(
 
     private async Task<object> ListenForSwapUpdates(CancellationToken cancellationToken)
     {
+        var error = "";
         while (!cancellationToken.IsCancellationRequested)
         {
             Uri? wsUrl = null;
             try
             {
                 await PollActiveManually(null, cancellationToken);
-
-                logger.LogInformation("Start listening for swap updates.");
+                if(error == "")
+                    logger.LogInformation("Start listening for swap updates.");
                 wsUrl = boltzClient.DeriveWebSocketUri();
                 _wsClient = await BoltzWebsocketClient.CreateAndConnectAsync(wsUrl, cancellationToken);
-                
+                error = "";
+                logger.LogInformation("Listening for swap updates at {wsUrl}", wsUrl);
                 _wsClient.OnAnyEventReceived += OnWebSocketEvent;
                 await _wsClient.SubscribeAsync(_activeSwaps.Keys.ToArray(), cancellationToken);
+                
                 await _wsClient.WaitUntilDisconnected(cancellationToken);
             }
             catch (OperationCanceledException)
@@ -89,7 +92,12 @@ public class BoltzService(
             }
             catch (Exception e)
             {
-                logger.LogError(e, "Error  listening for swap updates at {wsUrl}", wsUrl);
+                var newError = $"Error  listening for swap updates at {wsUrl}";
+                if (error != newError)
+                {
+                    error = newError;
+                    logger.LogError(e, error); ;
+                }
                 await Task.Delay(5000, cancellationToken);
             }
         }
