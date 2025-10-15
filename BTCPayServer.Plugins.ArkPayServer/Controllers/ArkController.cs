@@ -21,6 +21,7 @@ using BTCPayServer.Plugins.ArkPayServer.Models;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
 using BTCPayServer.Plugins.ArkPayServer.Services;
+using BTCPayServer.Security;
 using BTCPayServer.Services.Invoices;
 using BTCPayServer.Services.Stores;
 using Microsoft.AspNetCore.Authorization;
@@ -38,6 +39,8 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 [Route("plugins/ark")]
 [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ArkController(
+    
+IAuthorizationService authorizationService,
     ArkPayoutHandler arkPayoutHandler,
     ArkPluginDbContextFactory dbContextFactory,
     StoreRepository storeRepository,
@@ -137,8 +140,10 @@ public class ArkController(
         var destination = await arkWalletService.GetWalletDestination(config.WalletId, cancellationToken);
         var balances = await GetArkBalances(config.WalletId, cancellationToken);
         var signerAvailable = await walletSignerProvider.GetSigner(config.WalletId, cancellationToken) is not null;
-        
-        var walletInfo = await arkWalletService.GetWalletInfo(config.WalletId, config.GeneratedByStore);
+        var includeData = config.GeneratedByStore ||
+                          (await authorizationService.AuthorizeAsync(User, null,
+                              new PolicyRequirement(Policies.CanModifyServerSettings))).Succeeded;
+        var walletInfo = await arkWalletService.GetWalletInfo(config.WalletId, includeData);
         
         // Get the default/active contract address
         string? defaultAddress = null;
@@ -765,6 +770,68 @@ public class ArkController(
         }
 
         return RedirectToAction(nameof(Intents), new { storeId });
+    }
+
+    [HttpPost("stores/{storeId}/sync-wallet")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> SyncWallet(string storeId, CancellationToken cancellationToken)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        try
+        {
+            await arkWalletService.UpdateBalances(config.WalletId, false, cancellationToken);
+            TempData[WellKnownTempData.SuccessMessage] = "Wallet synchronized successfully. All contracts and VTXOs have been updated.";
+        }
+        catch (Exception ex)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Failed to sync wallet: {ex.Message}";
+        }
+
+        return RedirectToAction(nameof(StoreOverview), new { storeId });
+    }
+
+    [HttpPost("stores/{storeId}/sync-contract")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> SyncContract(string storeId, string script, CancellationToken cancellationToken)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        try
+        {
+            await using var dbContext = dbContextFactory.CreateContext();
+            var contract = await dbContext.WalletContracts
+                .FirstOrDefaultAsync(c => c.WalletId == config.WalletId && c.Script == script, cancellationToken);
+
+            if (contract == null)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Contract not found.";
+                return RedirectToAction(nameof(Contracts), new { storeId });
+            }
+
+            await arkWalletService.UpdateBalances(config.WalletId, false, cancellationToken);
+            TempData[WellKnownTempData.SuccessMessage] = "Contract VTXOs updated successfully.";
+        }
+        catch (Exception ex)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Failed to sync contract: {ex.Message}";
+        }
+
+        return RedirectToAction(nameof(Contracts), new { storeId });
     }
 
     private bool IsArkadeLightningEnabled()

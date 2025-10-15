@@ -33,16 +33,16 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     internal const string PluginNavKey = nameof(ArkadePlugin) + "Nav";
     internal const string ArkadeDisplayName = "Arkade";
 
-    internal static PaymentMethodId ArkadePaymentMethodId = new PaymentMethodId("ARKADE");
+    internal static readonly PaymentMethodId ArkadePaymentMethodId = new PaymentMethodId("ARKADE");
     
-    internal static PayoutMethodId ArkadePayoutMethodId = Create();
+    internal static readonly PayoutMethodId ArkadePayoutMethodId = Create();
 
 
     private static PayoutMethodId Create()
     {
         //use reflection to access ctor of PayoutMethodId and create it
         var constructor = typeof(PayoutMethodId).GetConstructor(BindingFlags.NonPublic | BindingFlags.Instance, new[] { typeof(string) })!;
-        return (PayoutMethodId) constructor.Invoke(new object[] { "ARKADE" })!;
+        return (PayoutMethodId) constructor.Invoke(["ARKADE"])!;
     }
     
     public override IBTCPayServerPlugin.PluginDependency[] Dependencies { get; } =

@@ -202,14 +202,19 @@
                             }
                         </td>
                         <td class="align-middle text-end">
-                            @if (hasVtxos || hasSwaps)
-                            {
-                                <div class="d-inline-flex align-items-center gap-2">
+                            <div class="d-inline-flex align-items-center gap-2">
+                                <form asp-action="SyncContract" method="post" asp-route-storeId="@storeId" asp-route-script="@contract.Script" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary" title="Sync Contract VTXOs">
+                                        <vc:icon symbol="refresh" />
+                                    </button>
+                                </form>
+                                @if (hasVtxos || hasSwaps)
+                                {
                                     <button class="accordion-button collapsed only-for-js ms-0 d-inline-block" type="button" data-bs-toggle="collapse" data-bs-target="#@detailsId" aria-expanded="false" aria-controls="@detailsId">
                                         <vc:icon symbol="caret-down" />
                                     </button>
-                                </div>
-                            }
+                                }
+                            </div>
                         </td>
                     </tr>
                     
