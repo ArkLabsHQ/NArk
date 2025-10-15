@@ -10,7 +10,6 @@ public class StoreIntentsViewModel : BasePagingViewModel
     public Dictionary<int, ArkIntentVtxo[]> IntentVtxos { get; set; } = new();
     public SearchString Search { get; set; }
     public string? SearchText { get; set; }
-    public bool LoadVtxos { get; set; }
     public string StoreId { get; set; }
 
     public override int CurrentPageCount => Intents.Count;

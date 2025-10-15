@@ -406,11 +406,10 @@ public class ArkController(
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
     public async Task<IActionResult> Vtxos(
         string storeId,
+        string? searchTerm = null,
         string? searchText = null,
         int skip = 0,
-        int count = 50,
-        bool includeSpent = false,
-        bool includeRecoverable = false)
+        int count = 50)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -423,6 +422,32 @@ public class ArkController(
 
         if (!config.GeneratedByStore)
             return View(new StoreVtxosViewModel { StoreId = storeId });
+
+        // Parse status filters - default to unspent and recoverable if no filter is set
+        var search = new SearchString(searchTerm);
+        bool includeSpent = false;
+        bool includeRecoverable = false;
+        
+        if (search.ContainsFilter("status"))
+        {
+            var statusFilters = search.GetFilterArray("status");
+            includeSpent = statusFilters.Contains("spent");
+            includeRecoverable = statusFilters.Contains("recoverable");
+            
+            // If only "unspent" is selected, don't include spent or recoverable
+            if (statusFilters.Contains("unspent") && !includeSpent && !includeRecoverable)
+            {
+                includeSpent = false;
+                includeRecoverable = false;
+            }
+        }
+        else
+        {
+            // Default: show unspent and recoverable, exclude spent
+            includeRecoverable = true;
+            searchTerm = "status:unspent,status:recoverable";
+            search = new SearchString(searchTerm);
+        }
 
         var vtxos = await arkWalletService.GetArkWalletVtxosAsync(
             config.WalletId,
@@ -440,9 +465,8 @@ public class ArkController(
             Skip = skip,
             Count = count,
             SearchText = searchText,
-            Search = new SearchString(""),
-            IncludeSpent = includeSpent,
-            IncludeRecoverable = includeRecoverable
+            SearchTerm = searchTerm,
+            Search = search
         };
 
         return View(model);
@@ -455,8 +479,7 @@ public class ArkController(
         string? searchTerm = null,
         string? searchText = null,
         int skip = 0,
-        int count = 50,
-        bool loadVtxos = false)
+        int count = 50)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -497,9 +520,9 @@ public class ArkController(
             stateFilter,
             HttpContext.RequestAborted);
 
-        // Load VTXOs if requested
+        // Always load VTXOs
         var intentVtxos = new Dictionary<int, ArkIntentVtxo[]>();
-        if (loadVtxos && intents.Any())
+        if (intents.Any())
         {
             await using var dbContext = dbContextFactory.CreateContext();
             var intentIds = intents.Select(i => i.InternalId).ToHashSet();
@@ -522,7 +545,6 @@ public class ArkController(
             Count = count,
             SearchText = searchText,
             Search = new SearchString(searchTerm),
-            LoadVtxos = loadVtxos,
             IntentVtxos = intentVtxos
         };
 

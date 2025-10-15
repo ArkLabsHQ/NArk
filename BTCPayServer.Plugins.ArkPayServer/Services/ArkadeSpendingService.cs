@@ -1,5 +1,4 @@
 using System.Globalization;
-using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Data;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
@@ -7,9 +6,7 @@ using BTCPayServer.Payments.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Exceptions;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
-using Microsoft.AspNetCore.Http;
 using NArk;
-using NArk.Models;
 using NArk.Services.Abstractions;
 using NBitcoin;
 

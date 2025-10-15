@@ -10,8 +10,7 @@ public class StoreVtxosViewModel : BasePagingViewModel
     public IReadOnlyCollection<VTXO> Vtxos { get; set; } = [];
     public SearchString Search { get; set; }
     public string? SearchText { get; set; }
-    public bool IncludeSpent { get; set; }
-    public bool IncludeRecoverable { get; set; }
+    public string? SearchTerm { get; set; }
     public string StoreId { get; set; }
 
     public override int CurrentPageCount => Vtxos.Count;
