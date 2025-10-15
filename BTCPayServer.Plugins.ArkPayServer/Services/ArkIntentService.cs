@@ -115,14 +115,20 @@ public class ArkIntentService : IHostedService, IDisposable
         await using var dbContext = _dbContextFactory.CreateContext();
         
         // Check if any VTXOs are already locked
-        var coinOutpoints = coins.Select(c => new { TransactionId = c.Outpoint.Hash.ToString(), TransactionOutputIndex = (int)c.Outpoint.N }).ToList();
-        var lockedVtxos = await dbContext.IntentVtxos
+        var coinTxIds = coins.Select(c => c.Outpoint.Hash.ToString()).ToHashSet();
+        var coinOutputIndices = coins.Select(c => (int)c.Outpoint.N).ToHashSet();
+        
+        var potentiallyLockedVtxos = await dbContext.IntentVtxos
             .Include(iv => iv.Intent)
             .Include(iv => iv.Vtxo)
             .Where(iv => (iv.Intent.State == ArkIntentState.WaitingToSubmit || iv.Intent.State == ArkIntentState.WaitingForBatch) &&
-                         coinOutpoints.Contains(new { TransactionId = iv.VtxoTransactionId, TransactionOutputIndex = iv.VtxoTransactionOutputIndex }))
+                         coinTxIds.Contains(iv.VtxoTransactionId))
             .Select(iv => iv.Vtxo)
             .ToListAsync(cancellationToken);
+        
+        // Filter in memory to check exact outpoint matches
+        var coinOutpointSet = coins.Select(c => $"{c.Outpoint.Hash}:{c.Outpoint.N}").ToHashSet();
+        var lockedVtxos = potentiallyLockedVtxos.Where(v => coinOutpointSet.Contains($"{v.TransactionId}:{v.TransactionOutputIndex}")).ToList();
         
         if (lockedVtxos.Any())
         {
@@ -355,8 +361,11 @@ public class ArkIntentService : IHostedService, IDisposable
         switch (intent.State)
         {
             case ArkIntentState.BatchSucceeded or ArkIntentState.BatchFailed or ArkIntentState.Cancelled:
-                _logger.LogWarning("Intent {IntentId} is already in terminal state {State}", intentId, intent.State);
+                _logger.LogWarning("Intent {IntentId} is already in final state {State}", intentId, intent.State);
                 return;
+            case ArkIntentState.BatchInProgress:
+                _logger.LogWarning("Intent {IntentId} cannot be cancelled - batch is in progress", intentId);
+                throw new InvalidOperationException("Cannot cancel intent while batch is in progress");
             // Submit delete proof if intent was submitted
             case ArkIntentState.WaitingForBatch:
                 try
@@ -816,10 +825,11 @@ public class ArkIntentService : IHostedService, IDisposable
                     cancellationToken: cancellationToken);
 
                 intent.BatchId = batchEvent.Id;
+                intent.State = ArkIntentState.BatchInProgress;
                 intent.UpdatedAt = DateTimeOffset.UtcNow;
                 await dbContext.SaveChangesAsync(cancellationToken);
 
-                _logger.LogInformation("Intent {IntentId} confirmed for batch {BatchId}", intentId, batchEvent.Id);
+                _logger.LogInformation("Intent {IntentId} confirmed for batch {BatchId} and marked as in progress", intentId, batchEvent.Id);
 
                 // Create and initialize batch session
                 var session = new BatchSession(

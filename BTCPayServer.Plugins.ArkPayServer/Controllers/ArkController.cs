@@ -49,7 +49,9 @@ public class ArkController(
     PayoutProcessorService payoutProcessorService,
     PullPaymentHostedService pullPaymentHostedService,
     EventAggregator eventAggregator,
-    ArkadeWalletSignerProvider walletSignerProvider) : Controller
+    ArkadeWalletSignerProvider walletSignerProvider,
+    ArkIntentService arkIntentService,
+    ArkadeSpender arkadeSpender) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
@@ -690,6 +692,79 @@ public class ArkController(
         await storeRepository.UpdateStore(store);
         TempData[WellKnownTempData.SuccessMessage] = "Ark wallet configuration cleared.";
         return RedirectToAction("InitialSetup", new { storeId });
+    }
+
+    [HttpPost("stores/{storeId}/force-refresh")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> ForceRefresh(string storeId, CancellationToken cancellationToken)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        try
+        {
+            // Get all spendable coins including recoverable ones
+            var coinSets = await arkadeSpender.GetSpendableCoins([config.WalletId], true, cancellationToken);
+            
+            if (!coinSets.TryGetValue(config.WalletId, out var coins) || coins.Count == 0)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "No VTXOs available to refresh.";
+                return RedirectToAction(nameof(StoreOverview), new { storeId });
+            }
+
+            // Create intent with all VTXOs (no outputs = refresh intent)
+            var intentId = await arkIntentService.CreateIntentAsync(
+                config.WalletId,
+                coins.ToArray(),
+                [],
+                null,
+                null,
+                cancellationToken);
+
+            TempData[WellKnownTempData.SuccessMessage] = $"Refresh intent created with {coins.Count} VTXOs. Intent will be submitted automatically.";
+        }
+        catch (Exception ex)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Failed to create refresh intent: {ex.Message}";
+        }
+
+        return RedirectToAction(nameof(StoreOverview), new { storeId });
+    }
+
+    [HttpPost("stores/{storeId}/cancel-intent")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> CancelIntent(string storeId, string intentId, CancellationToken cancellationToken)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        try
+        {
+            await arkIntentService.CancelIntentAsync(intentId, "User requested cancellation", cancellationToken);
+            TempData[WellKnownTempData.SuccessMessage] = "Intent cancelled successfully.";
+        }
+        catch (InvalidOperationException ex)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Failed to cancel intent: {ex.Message}";
+        }
+
+        return RedirectToAction(nameof(Intents), new { storeId });
     }
 
     private bool IsArkadeLightningEnabled()

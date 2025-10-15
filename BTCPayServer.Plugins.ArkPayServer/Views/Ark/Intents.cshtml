@@ -89,6 +89,7 @@
         <div class="dropdown-menu" aria-labelledby="StateOptionsToggle">
             <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "waiting-submit")" class="dropdown-item @(HasArrayFilter("state", "waiting-submit") ? "custom-active" : "")" text-translate="true">Waiting to Submit</a>
             <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "waiting-batch")" class="dropdown-item @(HasArrayFilter("state", "waiting-batch") ? "custom-active" : "")" text-translate="true">Waiting for Batch</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-in-progress")" class="dropdown-item @(HasArrayFilter("state", "batch-in-progress") ? "custom-active" : "")" text-translate="true">Batch In Progress</a>
             <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-succeeded")" class="dropdown-item @(HasArrayFilter("state", "batch-succeeded") ? "custom-active" : "")" text-translate="true">Batch Succeeded</a>
             <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-failed")" class="dropdown-item @(HasArrayFilter("state", "batch-failed") ? "custom-active" : "")" text-translate="true">Batch Failed</a>
             <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "cancelled")" class="dropdown-item @(HasArrayFilter("state", "cancelled") ? "custom-active" : "")" text-translate="true">Cancelled</a>
@@ -171,6 +172,9 @@
                                 case ArkIntentState.WaitingForBatch:
                                     <span class="badge text-bg-warning">Waiting for Batch</span>
                                     break;
+                                case ArkIntentState.BatchInProgress:
+                                    <span class="badge text-bg-primary">Batch In Progress</span>
+                                    break;
                                 case ArkIntentState.BatchSucceeded:
                                     <span class="badge text-bg-success">Batch Succeeded</span>
                                     break;
@@ -204,14 +208,22 @@
                             }
                         </td>
                         <td class="align-middle text-end">
-                            @if (hasVtxos)
-                            {
-                                <div class="d-inline-flex align-items-center gap-2">
+                            <div class="d-inline-flex align-items-center gap-2">
+                                @if (intent.State == ArkIntentState.WaitingToSubmit || intent.State == ArkIntentState.WaitingForBatch)
+                                {
+                                    <form asp-action="CancelIntent" method="post" asp-route-storeId="@storeId" asp-route-intentId="@intent.IntentId" class="d-inline" onsubmit="return confirm('Are you sure you want to cancel this intent?');">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Cancel Intent">
+                                            <vc:icon symbol="cross" />
+                                        </button>
+                                    </form>
+                                }
+                                @if (hasVtxos)
+                                {
                                     <button class="accordion-button collapsed only-for-js ms-0 d-inline-block" type="button" data-bs-toggle="collapse" data-bs-target="#@detailsId" aria-expanded="false" aria-controls="@detailsId">
                                         <vc:icon symbol="caret-down" />
                                     </button>
-                                </div>
-                            }
+                                }
+                            </div>
                         </td>
                     </tr>
                     

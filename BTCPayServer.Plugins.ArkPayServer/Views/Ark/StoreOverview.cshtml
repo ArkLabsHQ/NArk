@@ -42,6 +42,11 @@
                             View Intents
                         </a>
                     </div>
+                    <div class="col-6">
+                        <button type="button" class="btn btn-outline-secondary w-100 h-100 d-flex align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#forceRefreshModal">
+                            Force Refresh
+                        </button>
+                    </div>
                     @if (Model.SignerAvailable && !string.IsNullOrEmpty(Model.Wallet))
                     {
                         <div class="col-6">
@@ -255,6 +260,39 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button type="submit" class="btn btn-danger">Clear Wallet</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Force Refresh Modal -->
+<div class="modal fade" id="forceRefreshModal" tabindex="-1" aria-labelledby="forceRefreshModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="forceRefreshModalLabel">
+                    <vc:icon symbol="refresh" /> Force Refresh VTXOs
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form asp-action="ForceRefresh" method="post" asp-route-storeId="@storeId">
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <strong>Info:</strong> This will create an intent with all your VTXOs to refresh them.
+                    </div>
+                    <p class="mb-3">This action will:</p>
+                    <ul>
+                        <li>Collect all available VTXOs (including recoverable ones)</li>
+                        <li>Create a refresh intent that will be submitted to the Ark operator</li>
+                        <li>The intent will be processed in the next batch round</li>
+                        <li>Your VTXOs will be refreshed and consolidated</li>
+                    </ul>
+                    <p class="text-muted mb-0">This is useful when you have many small VTXOs or recoverable VTXOs that need to be refreshed.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Force Refresh</button>
                 </div>
             </form>
         </div>
