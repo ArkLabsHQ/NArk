@@ -11,10 +11,6 @@ public class StoreContractsViewModel: BasePagingViewModel
     public Dictionary<string, ArkSwap[]> ContractSwaps { get; set; } = new();
     public SearchString Search { get; set; }
     public string? SearchText { get; set; }
-    public bool LoadVtxos { get; set; }
-    public bool LoadSwaps { get; set; }
-    public bool IncludeSpent { get; set; }
-    public bool IncludeRecoverable { get; set; }
     public string StoreId { get; set; }
 
     public override int CurrentPageCount => Contracts.Count;

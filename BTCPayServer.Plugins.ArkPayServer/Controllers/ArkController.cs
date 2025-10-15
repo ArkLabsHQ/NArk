@@ -250,11 +250,7 @@ public class ArkController(
         string? searchTerm = null,
         string? searchText = null,
         int skip = 0,
-        int count = 50,
-        bool loadVtxos = false,
-        bool loadSwaps = false,
-        bool includeSpent = false,
-        bool includeRecoverable = false)
+        int count = 50)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -279,20 +275,21 @@ public class ArkController(
             }
         }
 
+        // Always load VTXOs and include all (spent and recoverable)
         var (contracts, contractVtxos) = await arkWalletService.GetArkWalletContractsAsync(
             config.WalletId, 
             skip, 
             count, 
             searchText ?? "", 
             activeFilter,
-            loadVtxos,
-            allowSpent: includeSpent,
-            allowNote: includeRecoverable,
+            includeVtxos: true,
+            allowSpent: true,
+            allowNote: true,
             HttpContext.RequestAborted);
 
-        // Load swaps if requested
+        // Always load swaps
         var contractSwaps = new Dictionary<string, ArkSwap[]>();
-        if (loadSwaps && contracts.Any())
+        if (contracts.Any())
         {
             await using var dbContext = dbContextFactory.CreateContext();
             var contractScripts = contracts.Select(c => c.Script).ToHashSet();
@@ -315,10 +312,6 @@ public class ArkController(
             Count = count,
             SearchText = searchText,
             Search = new SearchString(searchTerm),
-            LoadVtxos = loadVtxos,
-            LoadSwaps = loadSwaps,
-            IncludeSpent = includeSpent,
-            IncludeRecoverable = includeRecoverable,
             ContractVtxos = contractVtxos,
             ContractSwaps = contractSwaps
         };
