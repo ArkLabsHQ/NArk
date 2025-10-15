@@ -96,39 +96,9 @@
             }
         </button>
         <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
-            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "active")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("status", "active") ? "custom-active" : "")" text-translate="true">Active</a>
-            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "inactive")" asp-route-loadVtxos="@Model.LoadVtxos" class="dropdown-item @(HasArrayFilter("status", "inactive") ? "custom-active" : "")" text-translate="true">Inactive</a>
+            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "active")" class="dropdown-item @(HasArrayFilter("status", "active") ? "custom-active" : "")" text-translate="true">Active</a>
+            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "inactive")" class="dropdown-item @(HasArrayFilter("status", "inactive") ? "custom-active" : "")" text-translate="true">Inactive</a>
         </div>
-    </div>
-    
-    <div class="form-check">
-        <input class="form-check-input" type="checkbox" asp-for="LoadVtxos" id="loadVtxosCheckbox" onchange="this.form.submit()" />
-        <label class="form-check-label" for="loadVtxosCheckbox" text-translate="true">
-            Load VTXOs
-        </label>
-    </div>
-    
-    @if (Model.LoadVtxos)
-    {
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" asp-for="IncludeSpent" id="includeSpentCheckbox" onchange="this.form.submit()" />
-            <label class="form-check-label" for="includeSpentCheckbox" text-translate="true">
-                Include Spent
-            </label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" asp-for="IncludeRecoverable" id="includeRecoverableCheckbox" onchange="this.form.submit()" />
-            <label class="form-check-label" for="includeRecoverableCheckbox" text-translate="true">
-                Include Recoverable
-            </label>
-        </div>
-    }
-    
-    <div class="form-check">
-        <input class="form-check-input" type="checkbox" asp-for="LoadSwaps" id="loadSwapsCheckbox" onchange="this.form.submit()" />
-        <label class="form-check-label" for="loadSwapsCheckbox" text-translate="true">
-            Load Swaps
-        </label>
     </div>
     
     @if (statusFilterCount > 0 || !string.IsNullOrEmpty(Model.SearchText))
@@ -173,14 +143,8 @@
                     <th text-translate="true" class="text-nowrap">Address</th>
                     <th text-translate="true" class="text-nowrap">Contract Type</th>
                     <th text-translate="true">Status</th>
-                    @if (Model.LoadVtxos)
-                    {
-                        <th text-translate="true">VTXOs</th>
-                    }
-                    @if (Model.LoadSwaps)
-                    {
-                        <th text-translate="true">Swaps</th>
-                    }
+                    <th text-translate="true">VTXOs</th>
+                    <th text-translate="true">Swaps</th>
                     <th></th>
                 </tr>
             </thead>
@@ -193,10 +157,10 @@
                     var detailsId = $"contract_details_{contract.Script.GetHashCode()}";
 
                     BTCPayServer.Plugins.ArkPayServer.Data.Entities.VTXO[]? vtxos = [];
-                    var hasVtxos = Model.LoadVtxos && Model.ContractVtxos.TryGetValue(contract.Script, out vtxos) && vtxos.Any();
+                    var hasVtxos = Model.ContractVtxos.TryGetValue(contract.Script, out vtxos) && vtxos.Any();
                     
                     ArkSwap[]? swaps = [];
-                    var hasSwaps = Model.LoadSwaps && Model.ContractSwaps.TryGetValue(contract.Script, out swaps) && swaps.Any();
+                    var hasSwaps = Model.ContractSwaps.TryGetValue(contract.Script, out swaps) && swaps.Any();
 
                     <tr id="contract_@contract.Script.GetHashCode()">
                         <td class="align-middle date-col">@contract.CreatedAt.ToBrowserDate()</td>
@@ -216,34 +180,28 @@
                                 <span class="badge text-bg-danger">Inactive</span>
                             }
                         </td>
-                        @if (Model.LoadVtxos)
-                        {
-                            <td class="align-middle">
-                                @if (hasVtxos)
-                                {
-                                    <span class="badge text-bg-info">@vtxos.Length</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">0</span>
-                                }
-                            </td>
-                        }
-                        @if (Model.LoadSwaps)
-                        {
-                            <td class="align-middle">
-                                @if (hasSwaps)
-                                {
-                                    <span class="badge text-bg-warning">@swaps.Length</span>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">0</span>
-                                }
-                            </td>
-                        }
+                        <td class="align-middle">
+                            @if (hasVtxos)
+                            {
+                                <span class="badge text-bg-info">@vtxos.Length</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">0</span>
+                            }
+                        </td>
+                        <td class="align-middle">
+                            @if (hasSwaps)
+                            {
+                                <span class="badge text-bg-warning">@swaps.Length</span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">0</span>
+                            }
+                        </td>
                         <td class="align-middle text-end">
-                            @if ((Model.LoadVtxos && hasVtxos) || (Model.LoadSwaps && hasSwaps))
+                            @if (hasVtxos || hasSwaps)
                             {
                                 <div class="d-inline-flex align-items-center gap-2">
                                     <button class="accordion-button collapsed only-for-js ms-0 d-inline-block" type="button" data-bs-toggle="collapse" data-bs-target="#@detailsId" aria-expanded="false" aria-controls="@detailsId">
@@ -254,12 +212,12 @@
                         </td>
                     </tr>
                     
-                    @if ((Model.LoadVtxos && hasVtxos) || (Model.LoadSwaps && hasSwaps))
+                    @if (hasVtxos || hasSwaps)
                     {
-                        var colspanCount = 4 + (Model.LoadVtxos ? 1 : 0) + (Model.LoadSwaps ? 1 : 0) + 1;
+                        var colspanCount = 7;
                         <tr id="@detailsId" class="contract-details-row collapse">
                             <td colspan="@colspanCount" class="border-top-0">
-                                @if (Model.LoadVtxos && hasVtxos)
+                                @if (hasVtxos)
                                 {
                                     <h6 class="mb-3">VTXOs</h6>
                                     <div class="table-responsive mb-4">
@@ -304,7 +262,7 @@
                                     </div>
                                 }
                                 
-                                @if (Model.LoadSwaps && hasSwaps)
+                                @if (hasSwaps)
                                 {
                                     <h6 class="mb-3">Swaps</h6>
                                     <div class="table-responsive">

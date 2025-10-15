@@ -82,16 +82,6 @@
                    asp-route-storeId="@Model.Store.Id"
                    ext-translate="true">Intents</a>
             </li>
-            @if (config?.GeneratedByStore is true){
-                 <li class="nav-item nav-item-sub">
-                    <a id="StoreNav-SpendOverview"
-                    class="nav-link @ViewData.ActivePageClass("SpendOverview", "Ark")"
-                    asp-controller="Ark"
-                    asp-action="SpendOverview"
-                    asp-route-storeId="@Model.Store.Id"
-                    ext-translate="true">Transfer</a>
-                </li>
-            }
         }
     }
 

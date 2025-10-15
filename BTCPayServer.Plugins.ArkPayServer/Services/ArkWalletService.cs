@@ -243,6 +243,32 @@ public class ArkWalletService(
         return wallet?.WalletDestination;
     }
 
+    public async Task SetWalletDestination(string walletId, string? destination, CancellationToken cancellationToken = default)
+    {
+        if (destination is not null)
+        {
+            var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+            var addr = ArkAddress.Parse(destination);
+            if (!terms.SignerKey.ToBytes().SequenceEqual(addr.ServerKey.ToBytes()))
+            {
+                throw new InvalidOperationException("Invalid destination server key.");
+            }
+        }
+
+        await using var dbContext = dbContextFactory.CreateContext();
+        var wallet = await dbContext.Wallets.FindAsync([walletId], cancellationToken);
+        if (wallet is null)
+        {
+            throw new InvalidOperationException($"Wallet {walletId} not found.");
+        }
+
+        wallet.WalletDestination = destination;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        
+        // Update cache
+        memoryCache.Set("ark-wallet-" + walletId, wallet);
+    }
+
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         await using var dbContext = dbContextFactory.CreateContext();

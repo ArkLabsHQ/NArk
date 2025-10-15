@@ -48,7 +48,8 @@ public class ArkController(
     ArkAutomatedPayoutSenderFactory payoutSenderFactory,
     PayoutProcessorService payoutProcessorService,
     PullPaymentHostedService pullPaymentHostedService,
-    EventAggregator eventAggregator) : Controller
+    EventAggregator eventAggregator,
+    ArkadeWalletSignerProvider walletSignerProvider) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
@@ -120,7 +121,7 @@ public class ArkController(
 
     [HttpGet("stores/{storeId}/overview")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-    public IActionResult StoreOverview()
+    public async Task<IActionResult> StoreOverview(CancellationToken cancellationToken)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -131,9 +132,41 @@ public class ArkController(
         if (config?.WalletId is null)
             return RedirectToAction(nameof(InitialSetup), new { storeId = store.Id });
 
-        var destination = arkWalletService.GetWalletDestination(config.WalletId);
-
-        return View(new StoreOverviewViewModel { IsDestinationSweepEnabled = destination is not null, IsLightningEnabled = IsArkadeLightningEnabled() });
+        var destination = await arkWalletService.GetWalletDestination(config.WalletId, cancellationToken);
+        var balances = await GetArkBalances(config.WalletId, cancellationToken);
+        var signerAvailable = await walletSignerProvider.GetSigner(config.WalletId, cancellationToken) is not null;
+        
+        var walletInfo = await arkWalletService.GetWalletInfo(config.WalletId, config.GeneratedByStore);
+        
+        // Get the default/active contract address
+        string? defaultAddress = null;
+        await using (var dbContext = dbContextFactory.CreateContext())
+        {
+            var activeContract = await dbContext.WalletContracts
+                .Where(c => c.WalletId == config.WalletId && c.Active)
+                .OrderBy(c => c.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            
+            if (activeContract != null)
+            {
+                var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+                var script = Script.FromHex(activeContract.Script);
+                var address = ArkAddress.FromScriptPubKey(script, terms.SignerKey);
+                defaultAddress = address.ToString(terms.Network.ChainName == ChainName.Mainnet);
+            }
+        }
+        
+        return View(new StoreOverviewViewModel 
+        { 
+            IsDestinationSweepEnabled = destination is not null, 
+            IsLightningEnabled = IsArkadeLightningEnabled(),
+            Balances = balances,
+            WalletId = config.WalletId,
+            Destination = destination,
+            SignerAvailable = signerAvailable,
+            Wallet = walletInfo?.Wallet,
+            DefaultAddress = defaultAddress
+        });
     }
 
     [HttpGet("stores/{storeId}/spend")]
@@ -152,10 +185,12 @@ public class ArkController(
         if (!config.GeneratedByStore)
             return RedirectToAction(nameof(StoreOverview), new { storeId = store.Id });
 
+        var balances = await GetArkBalances(config.WalletId, token);
+
         return View(new SpendOverviewViewModel
         {
             PrefilledDestination = destinations?.ToList() ?? [],
-            AvailableBalance = await arkWalletService.GetBalanceInSats(config.WalletId, cancellation: token)
+            Balances = balances
         });
     }
 
@@ -242,6 +277,41 @@ public class ArkController(
         }
     }
 
+    [HttpPost("stores/{storeId}/update-wallet-config")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> UpdateWalletConfig(string storeId, StoreOverviewViewModel model, string? command = null, CancellationToken cancellationToken = default)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+        if (config?.WalletId is null)
+            return RedirectToAction(nameof(InitialSetup), new { storeId });
+
+        if (command == "clear-destination")
+        {
+            await arkWalletService.SetWalletDestination(config.WalletId, null, cancellationToken);
+            TempData[WellKnownTempData.SuccessMessage] = "Auto-sweep destination cleared.";
+            return RedirectToAction(nameof(StoreOverview), new { storeId });
+        }
+
+        if (command == "save" && !string.IsNullOrEmpty(model.Destination))
+        {
+            try
+            {
+                await arkWalletService.SetWalletDestination(config.WalletId, model.Destination, cancellationToken);
+                TempData[WellKnownTempData.SuccessMessage] = "Auto-sweep destination updated.";
+            }
+            catch (Exception ex)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = $"Failed to update destination: {ex.Message}";
+            }
+            return RedirectToAction(nameof(StoreOverview), new { storeId });
+        }
+
+        return RedirectToAction(nameof(StoreOverview), new { storeId });
+    }
 
     [HttpGet("stores/{storeId}/contracts")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
@@ -571,6 +641,57 @@ public class ArkController(
         return RedirectToAction("StoreOverview", new { storeId });
     }
 
+    [HttpPost("stores/{storeId}/disable-ln")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> DisableLightning(string storeId)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        // Remove Lightning payment method configuration
+        store.SetPaymentMethodConfig(GetLightningPaymentMethod(), null);
+        await storeRepository.UpdateStore(store);
+        TempData[WellKnownTempData.SuccessMessage] = "Lightning disabled";
+        return RedirectToAction("StoreOverview", new { storeId });
+    }
+
+    [HttpPost("stores/{storeId}/clear-wallet")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> ClearWallet(string storeId)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+
+        if (config?.WalletId is null)
+            return RedirectToAction("InitialSetup", new { storeId });
+
+        // Check if Lightning is enabled via Arkade
+        var lnConfig = store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(GetLightningPaymentMethod(), paymentMethodHandlerDictionary);
+        var lnEnabled = lnConfig?.ConnectionString?.StartsWith("type=arkade", StringComparison.InvariantCultureIgnoreCase) is true;
+
+        // Remove Ark payment method configuration
+        store.SetPaymentMethodConfig(ArkadePlugin.ArkadePaymentMethodId, null);
+        
+        // Remove Lightning if it was enabled via Arkade
+        if (lnEnabled)
+        {
+            store.SetPaymentMethodConfig(GetLightningPaymentMethod(), null);
+        }
+
+        await storeRepository.UpdateStore(store);
+        TempData[WellKnownTempData.SuccessMessage] = "Ark wallet configuration cleared.";
+        return RedirectToAction("InitialSetup", new { storeId });
+    }
+
     private bool IsArkadeLightningEnabled()
     {
         var store = HttpContext.GetStoreData();
@@ -693,6 +814,54 @@ public class ArkController(
         });
         await tcs.Task;
         return RedirectToAction(nameof(ConfigurePayoutProcessor), "Ark", new { storeId });
+    }
+
+    private async Task<ArkBalancesViewModel> GetArkBalances(string walletId, CancellationToken cancellationToken)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+
+        var contracts = await dbContext.WalletContracts
+            .Where(c => c.WalletId == walletId)
+            .Select(c => c.Script)
+            .ToListAsync(cancellationToken);
+
+        var vtxos = await dbContext.Vtxos
+            .Where(vtxo => contracts.Contains(vtxo.Script))
+            .Where(vtxo => (vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == ""))
+            .ToListAsync(cancellationToken);
+
+        // Available: unspent and not recoverable
+        var availableBalance = vtxos
+            .Where(vtxo =>  !vtxo.Recoverable)
+            .Sum(vtxo => vtxo.Amount);
+
+        // Recoverable: not spent but marked as recoverable
+        var recoverableBalance = vtxos
+            .Where(vtxo => vtxo.Recoverable)
+            .Sum(vtxo => vtxo.Amount);
+
+        // Locked: VTXOs that are linked to pending intents
+        var intentVtxoScripts = await dbContext.IntentVtxos
+            .Include(iv => iv.Intent)
+            .Include(iv => iv.Vtxo)
+            .Where(iv => iv.Intent.WalletId == walletId && 
+                        (iv.Intent.State == ArkIntentState.WaitingToSubmit || 
+                         iv.Intent.State == ArkIntentState.WaitingForBatch))
+            .Select(iv => new { iv.Vtxo.TransactionId, iv.Vtxo.TransactionOutputIndex })
+            .ToListAsync(cancellationToken);
+
+        var lockedBalance = vtxos
+            .Where(vtxo => intentVtxoScripts.Any(iv => 
+                iv.TransactionId == vtxo.TransactionId && 
+                iv.TransactionOutputIndex == vtxo.TransactionOutputIndex))
+            .Sum(vtxo => vtxo.Amount);
+
+        return new ArkBalancesViewModel
+        {
+            AvailableBalance = availableBalance,
+            RecoverableBalance = recoverableBalance,
+            LockedBalance = lockedBalance
+        };
     }
 }
 
