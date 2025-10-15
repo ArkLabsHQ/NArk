@@ -74,8 +74,7 @@
 }
 else
 {
-    <form asp-route-storeId="@storeId" asp-action="SpendOverview" id="destinationAcceptFrm" method="post">
-        @Html.HiddenFor(m => m.Destination)
+  
         <table class="table table-hover mb-0 text-center">
             <thead>
             <tr>
@@ -91,19 +90,16 @@ else
                         <vc:truncate-center text="@destination" classes="truncate-center-id"/>
                     </td>
                     <td>
-                        <button type="button" class="btn btn-link" onclick="Accept('@destination')">Accept</button>
+                        <form asp-route-storeId="@storeId" asp-action="SpendOverview"  method="post">
+                        <input type="hidden" name="Destination" value="@destination" />
+                        <button type="submit" class="btn btn-link">Accept</button>
+                        </form>
                     </td>
                 </tr>
             }
             </tbody>
         </table>
-    </form>
-    <script>
-        function Accept(destination) {
-            document.getElementById("Destination").setAttribute("value", destination);
-            document.getElementById("destinationAcceptFrm").submit();
-        }
-    </script>
+
 }
 
 @section PageHeadContent

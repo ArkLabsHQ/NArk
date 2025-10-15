@@ -5,7 +5,9 @@ using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Abstractions.Extensions;
 using BTCPayServer.Abstractions.Models;
 using BTCPayServer.Client;
+using BTCPayServer.Common;
 using BTCPayServer.Data;
+using BTCPayServer.HostedServices;
 using BTCPayServer.Lightning;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Lightning;
@@ -36,6 +38,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 [Route("plugins/ark")]
 [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ArkController(
+    ArkPayoutHandler arkPayoutHandler,
     ArkPluginDbContextFactory dbContextFactory,
     StoreRepository storeRepository,
     ArkWalletService arkWalletService,
@@ -44,6 +47,7 @@ public class ArkController(
     ArkadeSpendingService arkadeSpendingService,
     ArkAutomatedPayoutSenderFactory payoutSenderFactory,
     PayoutProcessorService payoutProcessorService,
+    PullPaymentHostedService pullPaymentHostedService,
     EventAggregator eventAggregator) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
@@ -166,30 +170,75 @@ public class ArkController(
         if (store == null)
             return NotFound();
 
+        var disposableLock = default(IDisposable);
         try
         {
+            var payout = Uri.TryCreate(model.Destination, UriKind.Absolute, out var uriResult)
+                ? uriResult.ParseQueryString().Get("payout")
+                : null;
+            if (!string.IsNullOrEmpty(payout))
+            {
+                disposableLock = await arkPayoutHandler.PayoutLocker.LockOrNullAsync(payout, 0, token);
+                if (disposableLock is null)
+                {
+                    TempData[WellKnownTempData.ErrorMessage] = "Payment failed: the payout is locked";
+                    return RedirectToAction(nameof(SpendOverview),
+                        new {storeId = store.Id, destinations = model.PrefilledDestination});
+
+                }
+            }
+
             var maybeProof = await arkadeSpendingService.Spend(store, model.Destination, token);
-            TempData[WellKnownTempData.SuccessMessage] = $"Payment sent to {model.Destination}";
+            //check if destination is a uri and if it has a payout querystring, extract value
+            if (!string.IsNullOrEmpty(payout))
+            {
+                var proof = new ArkPayoutProof()
+                {
+                    TransactionId = uint256.Parse(maybeProof),
+                    DetectedInBackground = false
+                };
+                var result = await pullPaymentHostedService.MarkPaid(new MarkPayoutRequest()
+                {
+                    PayoutId = payout,
+                    Proof = arkPayoutHandler.SerializeProof(proof)
+                });
+
+                TempData[WellKnownTempData.SuccessMessage] =
+                    $"Payment sent to {model.Destination} with payout {payout} result {result}";
+            }
+            else
+            {
+
+                TempData[WellKnownTempData.SuccessMessage] = $"Payment sent to {model.Destination}";
+            }
+
             model.PrefilledDestination.Remove(model.Destination);
             return RedirectToAction(nameof(SpendOverview),
-                new { storeId = store.Id, destinations = model.PrefilledDestination });
+                new {storeId = store.Id, destinations = model.PrefilledDestination});
         }
         catch (IncompleteArkadeSetupException e)
         {
             TempData[WellKnownTempData.ErrorMessage] = "Payment failed: incomplete arkade setup!";
-            return RedirectToAction(nameof(InitialSetup), new { storeId = store.Id });
+            return RedirectToAction(nameof(InitialSetup), new {storeId = store.Id});
         }
         catch (MalformedPaymentDestination e)
         {
             TempData[WellKnownTempData.ErrorMessage] = "Payment failed: malfomed destination!";
             return RedirectToAction(nameof(SpendOverview),
-                new { storeId = store.Id, destinations = model.PrefilledDestination });
+                new {storeId = store.Id, destinations = model.PrefilledDestination});
         }
         catch (ArkadePaymentFailedException e)
         {
             TempData[WellKnownTempData.ErrorMessage] = $"Payment failed: reason: {e.Message}";
             return RedirectToAction(nameof(SpendOverview),
-                new { storeId = store.Id, destinations = model.PrefilledDestination });
+                new {storeId = store.Id, destinations = model.PrefilledDestination});
+        }
+        finally
+        {
+            if(disposableLock is not null)
+            {
+                disposableLock.Dispose();
+            }
         }
     }
 

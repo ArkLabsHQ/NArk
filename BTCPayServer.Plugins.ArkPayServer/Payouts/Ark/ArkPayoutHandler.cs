@@ -315,11 +315,6 @@ public class ArkPayoutHandler(
 
         foreach (var payout in payouts)
         {
-            if (payout.Proof != null)
-            {
-                continue;
-            }
-
             var blob = payout.GetBlob(jsonSerializerSettings);
             if (payout.GetPayoutMethodId() != PayoutMethodId)
                 continue;
@@ -349,6 +344,7 @@ public class ArkPayoutHandler(
                     Host = addressClaimDestination.Address.ToString(terms.Network.ChainName == ChainName.Mainnet)
                 };
                 builder.QueryParams.Add("amount", payout.Amount.Value.ToString());
+                builder.QueryParams.Add("payout", payout.Id);
                 return builder.ToString();
             default:
                 return null;
@@ -360,5 +356,11 @@ public class ArkPayoutHandler(
     public void SetProofBlob(PayoutData data, ArkPayoutProof blob)
     {
          data.SetProofBlob(blob, jsonSerializerSettings.GetSerializer(data.GetPayoutMethodId()));
+    }
+    
+    public JObject SerializeProof(ArkPayoutProof arkPayoutProof)
+    {
+        var serializer = JsonSerializer.Create(jsonSerializerSettings.GetSerializer(PayoutMethodId));
+        return JObject.FromObject(arkPayoutProof, serializer);
     }
 }
