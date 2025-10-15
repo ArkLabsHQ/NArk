@@ -13,6 +13,11 @@ public static class ArkExtensions
         return response.SignerPubkey.ToECXOnlyPubKey();
     }
 
+    public static Sequence Parse(long val)
+    {
+        return val >= 512 ? new Sequence(TimeSpan.FromSeconds(val)) : new Sequence((int)val);
+    }
+
 
     public static ArkOperatorTerms ArkOperatorTerms(this GetInfoResponse response)
     {
@@ -27,13 +32,15 @@ public static class ArkExtensions
             DeprecatedSigners: response.DeprecatedSigners.ToDictionary(signer => signer.Pubkey.ToECXOnlyPubKey(),
                 signer => signer.CutoffDate),
             Network: network,
-            UnilateralExit: new Sequence((uint) response.UnilateralExitDelay),
-            BoardingExit: new Sequence((uint) response.BoardingExitDelay),
+            UnilateralExit: Parse(response.UnilateralExitDelay),
+            BoardingExit: Parse(response.BoardingExitDelay),
             ForfeitAddress: BitcoinAddress.Create(response.ForfeitAddress, network),
             ForfeitPubKey: response.ForfeitPubkey.ToECXOnlyPubKey(),
             CheckpointTapscript: new CheckpointTapscript(Script.FromHex(response.CheckpointTapscript)));
 
     }
+    
+    
 
     class CheckpointTapscript( Script serverProvidedScript)
         : UnilateralPathArkTapScript(Sequence.Final, new NofNMultisigTapScript([]))
