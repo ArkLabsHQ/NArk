@@ -143,6 +143,9 @@
                     </th>
                     <th text-translate="true" class="text-nowrap">Address</th>
                     <th text-translate="true" class="text-nowrap">Contract Type</th>
+                    <th text-translate="true" class="text-nowrap">Contract Data</th>
+                    
+                    
                     <th text-translate="true">Status</th>
                     <th text-translate="true">VTXOs</th>
                     <th text-translate="true">Swaps</th>
@@ -170,6 +173,9 @@
                         </td>
                         <td class="align-middle">
                             <vc:truncate-center text="@contract.Type" classes="truncate-center-id"/>
+                        </td>
+                        <td class="align-middle">
+                            <vc:truncate-center text="@arkContract.ToString()" classes="truncate-center-id"/>
                         </td>
                         <td class="align-middle">
                             @if (contract.Active)
