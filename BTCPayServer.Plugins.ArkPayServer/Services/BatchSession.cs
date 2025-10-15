@@ -301,8 +301,7 @@ public class BatchSession
         // Get connector leaves for forfeit transactions
         var connectorsLeaves = connectorsGraph?.Leaves().ToList() ?? new List<PSBT>();
         int connectorIndex = 0;
-
-
+        
         var partialForfeits = _arkIntent.PartialForfeits.Select(p => PSBT.Parse(p, _network)).ToDictionary(psbt => psbt.Inputs[0].PrevOut);
 
         foreach (var vtxoCoin in _ins)
@@ -348,18 +347,14 @@ public class BatchSession
 
             if (partialForfeits.TryGetValue(vtxoCoin.Outpoint, out var forfeit))
             {
-
                 var forfeitTx =
                     await _arkTransactionBuilder.CompleteForfeitTx(forfeit, connectorCoin, _signer, cancellationToken);
 
                 signedForfeits.Add(forfeitTx.ToBase64());
                 _logger.LogDebug("Forfeit tx constructed for VTXO {Outpoint}", vtxoCoin.Outpoint);
-
             }
             else
             {
-
-
                 // Construct and sign forfeit transaction
 
                 var forfeitTx = await _arkTransactionBuilder.ConstructForfeitTx(
@@ -371,8 +366,6 @@ public class BatchSession
                 signedForfeits.Add(forfeitTx.ToBase64());
                 _logger.LogDebug("Forfeit tx constructed for VTXO {Outpoint}", vtxoCoin.Outpoint);
             }
-
-
         }
 
         // Submit all signed forfeit transactions

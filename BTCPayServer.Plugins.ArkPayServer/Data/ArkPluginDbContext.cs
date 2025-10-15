@@ -58,7 +58,7 @@ public class ArkIntent
     public string? CommitmentTransactionId { get; set; }
     public string? CancellationReason { get; set; }
 
-    public string[] PartialForfeits{ get; set; }
+    public string[] PartialForfeits { get; set; } = [];
 
     internal static void OnModelCreating(ModelBuilder builder)
     {

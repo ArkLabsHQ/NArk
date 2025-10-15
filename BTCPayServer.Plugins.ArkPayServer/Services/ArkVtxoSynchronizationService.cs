@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Ark.V1;
 using AsyncKeyedLock;
@@ -194,9 +195,10 @@ public class ArkVtxoSynchronizationService(
                 {
                     if (existingVtxos.Find(v =>
                             v.TransactionId == vtxoToProccess.Outpoint.Txid &&
-                            v.TransactionOutputIndex == vtxoToProccess.Outpoint.Vout) is { } existing)
+                            v.TransactionOutputIndex == (int)vtxoToProccess.Outpoint.Vout) is { } existing)
                     {
                         Map(vtxoToProccess, existing);
+                        Debug.Assert(dbContext.Entry(existing).State != EntityState.Added);
                         if (dbContext.Entry(existing).State == EntityState.Modified)
                         {
                             vtxosUpdated.Add(existing);

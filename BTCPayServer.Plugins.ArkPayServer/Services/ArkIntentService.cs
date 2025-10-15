@@ -141,16 +141,18 @@ public class ArkIntentService : IHostedService, IDisposable
         if (signer == null)
         {
             throw new InvalidOperationException($"Signer not available for wallet {walletId}");
-        }
-        
+        } 
         var vtxoScripts = coins.Select(c => c.Contract.GetArkAddress().ScriptPubKey.ToHex()).ToList();
         // ensure the wallet has the contract of the vtxos in question
-       var contracts = await dbContext.WalletContracts.Where(wc => wc.WalletId == walletId && vtxoScripts.Contains(wc.Script))
+       
+        var contracts = await dbContext.WalletContracts.Where(wc => wc.WalletId == walletId && vtxoScripts.Contains(wc.Script))
            .ToDictionaryAsync(contract => contract.Script, cancellationToken);
-       if (contracts.Count != vtxoScripts.Count)
-       {
-           throw new InvalidOperationException($"One or more VTXOs are not owned by wallet {walletId}");
-       } 
+       
+        if (contracts.Count != vtxoScripts.Count)
+       
+        {
+            throw new InvalidOperationException($"One or more VTXOs are not owned by wallet {walletId}");
+        } 
        
 
         // Generate intent transactions with BIP322 signatures
@@ -166,7 +168,6 @@ public class ArkIntentService : IHostedService, IDisposable
             effectiveValidUntil,
             coins,
             outputs,
-            signer,
             cancellationToken);
 
         // Convert coins to VTXO entities for database storage
@@ -179,6 +180,11 @@ public class ArkIntentService : IHostedService, IDisposable
             SeenAt = DateTimeOffset.UtcNow,
             Recoverable = false // Assuming these are regular VTXOs, not notes
         }).ToList();
+        
+        foreach (var entityEntry in vtxoEntities.Select(dbContext.Entry))
+        {
+            entityEntry.State = EntityState.Modified;
+        }
 
         // Create intent entity (IntentId will be set by server on submission)
         var intent = new ArkIntent
@@ -197,9 +203,9 @@ public class ArkIntentService : IHostedService, IDisposable
                 LinkedAt = DateTimeOffset.UtcNow
             }).ToList(),
             RegisterProof = registerTx.ToBase64(),
-            RegisterProofMessage = JsonSerializer.Serialize(registerMsg),
+            RegisterProofMessage = registerMsg,
             DeleteProof = deleteTx.ToBase64(),
-            DeleteProofMessage = JsonSerializer.Serialize(deleteMsg)
+            DeleteProofMessage = deleteMsg
         };
 
         await dbContext.Intents.AddAsync(intent, cancellationToken);
@@ -282,20 +288,14 @@ public class ArkIntentService : IHostedService, IDisposable
         }
         else
         {
-            // Generate delete proof using wallet signer
-            var signer = await _signerProvider.GetSigner(walletId, cancellationToken);
-            if (signer == null)
-            {
-                throw new InvalidOperationException($"Signer not available for wallet {walletId}");
-            }
-            
+            // Generate delete proof
             var deleteIntentMsg = new DeleteIntentMessage
             {
                 Type = "delete",
                 ExpireAt = effectiveValidUntil.ToUnixTimeSeconds()
             };
             var deleteMessageJson = JsonSerializer.Serialize(deleteIntentMsg);
-            deleteTx = await IntentUtils.CreateIntent(deleteMessageJson, terms.Network, coins, null, signer, cancellationToken);
+            deleteTx = await IntentUtils.CreateIntent(deleteMessageJson, terms.Network, coins, null, cancellationToken);
             deleteMsg = deleteIntentMsg;
         }
 
@@ -349,28 +349,28 @@ public class ArkIntentService : IHostedService, IDisposable
     /// <summary>
     /// Cancel an intent by submitting the delete proof
     /// </summary>
-    public async Task CancelIntentAsync(string intentId, string reason, CancellationToken cancellationToken = default)
+    public async Task CancelIntentAsync(string internalId, string reason, CancellationToken cancellationToken = default)
     {
         await using var dbContext = _dbContextFactory.CreateContext();
         
         var intent = await dbContext.Intents
             .Include(i => i.IntentVtxos)
                 .ThenInclude(iv => iv.Vtxo)
-            .FirstOrDefaultAsync(i => i.IntentId == intentId, cancellationToken);
+            .FirstOrDefaultAsync(i => i.InternalId == int.Parse(internalId), cancellationToken);
         
         if (intent == null)
         {
-            _logger.LogWarning("Intent {IntentId} not found for cancellation", intentId);
+            _logger.LogWarning("Intent {IntentId} not found for cancellation", internalId);
             return;
         }
 
         switch (intent.State)
         {
             case ArkIntentState.BatchSucceeded or ArkIntentState.BatchFailed or ArkIntentState.Cancelled:
-                _logger.LogWarning("Intent {IntentId} is already in final state {State}", intentId, intent.State);
+                _logger.LogWarning("Intent {IntentId} is already in final state {State}", internalId, intent.State);
                 return;
             case ArkIntentState.BatchInProgress:
-                _logger.LogWarning("Intent {IntentId} cannot be cancelled - batch is in progress", intentId);
+                _logger.LogWarning("Intent {IntentId} cannot be cancelled - batch is in progress", internalId);
                 throw new InvalidOperationException("Cannot cancel intent while batch is in progress");
             // Submit delete proof if intent was submitted
             case ArkIntentState.WaitingForBatch:
@@ -386,11 +386,11 @@ public class ArkIntentService : IHostedService, IDisposable
                     };
                 
                     await _arkServiceClient.DeleteIntentAsync(deleteRequest, cancellationToken: cancellationToken);
-                    _logger.LogInformation("Submitted delete proof for intent {IntentId}", intentId);
+                    _logger.LogInformation("Submitted delete proof for intent {IntentId}", internalId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to submit delete proof for intent {IntentId}", intentId);
+                    _logger.LogWarning(ex, "Failed to submit delete proof for intent {IntentId}", internalId);
                 }
 
                 break;
@@ -401,12 +401,12 @@ public class ArkIntentService : IHostedService, IDisposable
         await dbContext.SaveChangesAsync(cancellationToken);
         
         // Remove from active intents and trigger stream restart
-        _activeIntents.TryRemove(intentId, out _);
-        _activeBatchSessions.TryRemove(intentId, out _);
+        _ = intent.IntentId is not null && _activeIntents.TryRemove(intent.IntentId, out _);
+        _ = intent.IntentId is not null && _activeBatchSessions.TryRemove(intent.IntentId!, out _);
         SignalIntentsChanged();
         await TriggerStreamRestartAsync();
         
-        _logger.LogInformation("Intent {IntentId} cancelled: {Reason}", intentId, reason);
+        _logger.LogInformation("Intent {IntentId} cancelled: {Reason}", internalId, reason);
     }
 
     /// <summary>
@@ -634,7 +634,7 @@ public class ArkIntentService : IHostedService, IDisposable
                 _eventStreamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _needsStreamRestart = false;
 
-                using var streamCall = _arkServiceClient.GetEventStream(eventStreamRequest, cancellationToken: _eventStreamCts.Token);
+                var streamCall = _arkServiceClient.GetEventStream(eventStreamRequest, cancellationToken: _eventStreamCts.Token);
 
                 await foreach (var eventResponse in streamCall.ResponseStream.ReadAllAsync(_eventStreamCts.Token))
                 {
@@ -854,7 +854,7 @@ public class ArkIntentService : IHostedService, IDisposable
                 // Store the session so events can be passed to it
                 _activeBatchSessions[intent.IntentId!] = session;
             
-                _logger.LogInformation("Batch session initialized for intent {IntentId}", intent.IntentId);
+                _logger.LogInformation("Batch session initialized for intent {IntentId}", intent.InternalId);
             }
             catch (Exception ex)
             {
@@ -917,7 +917,7 @@ public class ArkIntentService : IHostedService, IDisposable
         if (intent.BatchId == batchEvent.Id)
         {
             _logger.LogWarning("Batch {BatchId} failed for intent {IntentId}: {Reason}", 
-                batchEvent.Id, intent.IntentId, batchEvent.Reason);
+                batchEvent.Id, intent.InternalId, batchEvent.Reason);
             
             intent.State = ArkIntentState.BatchFailed;
             intent.CancellationReason = $"Batch failed: {batchEvent.Reason}";
@@ -933,7 +933,7 @@ public class ArkIntentService : IHostedService, IDisposable
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("Batch finalized for intent {IntentId}, txid: {Txid}", 
-            intent.IntentId, finalizedEvent.CommitmentTxid);
+            intent.InternalId, finalizedEvent.CommitmentTxid);
 
         intent.State = ArkIntentState.BatchSucceeded;
         intent.CommitmentTransactionId = finalizedEvent.CommitmentTxid;

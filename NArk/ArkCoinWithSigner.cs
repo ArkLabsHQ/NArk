@@ -75,7 +75,13 @@ public class SpendableArkCoinWithSigner : SpendableArkCoin
     {
         Signer = signer;
     }
-
+    
+    internal SpendableArkCoinWithSigner(SpendableArkCoinWithSigner other) : this(
+        other.Contract, other.ExpiresAt, other.Outpoint.Clone(), other.TxOut.Clone(), other.Signer,
+        other.SpendingScriptBuilder, other.SpendingConditionWitness?.Clone(), other.SpendingLockTime, other.SpendingSequence,
+        other.Recoverable)
+    {
+    }
 
     public async Task SignAndFillPSBT(
         PSBT psbt,

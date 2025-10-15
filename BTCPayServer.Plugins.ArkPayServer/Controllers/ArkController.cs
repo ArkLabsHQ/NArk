@@ -739,7 +739,7 @@ public class ArkController(
 
     [HttpPost("stores/{storeId}/cancel-intent")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
-    public async Task<IActionResult> CancelIntent(string storeId, string intentId, CancellationToken cancellationToken)
+    public async Task<IActionResult> CancelIntent(string storeId, string internalId, CancellationToken cancellationToken)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -752,7 +752,7 @@ public class ArkController(
 
         try
         {
-            await arkIntentService.CancelIntentAsync(intentId, "User requested cancellation", cancellationToken);
+            await arkIntentService.CancelIntentAsync(internalId, "User requested cancellation", cancellationToken);
             TempData[WellKnownTempData.SuccessMessage] = "Intent cancelled successfully.";
         }
         catch (InvalidOperationException ex)

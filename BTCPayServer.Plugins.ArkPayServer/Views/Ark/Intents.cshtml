@@ -211,7 +211,7 @@
                             <div class="d-inline-flex align-items-center gap-2">
                                 @if (intent.State == ArkIntentState.WaitingToSubmit || intent.State == ArkIntentState.WaitingForBatch)
                                 {
-                                    <form asp-action="CancelIntent" method="post" asp-route-storeId="@storeId" asp-route-intentId="@intent.IntentId" class="d-inline" onsubmit="return confirm('Are you sure you want to cancel this intent?');">
+                                    <form asp-action="CancelIntent" method="post" asp-route-storeId="@storeId" asp-route-internalId="@intent.InternalId" class="d-inline" onsubmit="return confirm('Are you sure you want to cancel this intent?');">
                                         <button type="submit" class="btn btn-sm btn-outline-danger" title="Cancel Intent">
                                             <vc:icon symbol="cross" />
                                         </button>

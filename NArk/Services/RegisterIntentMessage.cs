@@ -22,7 +22,6 @@ public class DeleteIntentMessage
 public class RegisterIntentMessage
 {
     // type: "register",
-    // input_tap_trees: inputTapTrees,
     // onchain_output_indexes: onchainOutputsIndexes,
     // valid_at: nowSeconds,
     // expire_at: nowSeconds + 2 * 60, // valid for 2 minutes
@@ -32,23 +31,19 @@ public class RegisterIntentMessage
     [JsonPropertyOrder(0)]
     public string Type { get; set; }
     
-    [JsonPropertyName("input_tap_trees")]
-    [JsonPropertyOrder(1)]
-    public string[] InputTapTrees { get; set; }
-    
     [JsonPropertyName("onchain_output_indexes")]
-    [JsonPropertyOrder(2)]
+    [JsonPropertyOrder(1)]
     public int[] OnchainOutputsIndexes { get; set; }
     
     [JsonPropertyName("valid_at")]
-    [JsonPropertyOrder(3)]
+    [JsonPropertyOrder(2)]
     public long ValidAt { get; set; }
     
     [JsonPropertyName("expire_at")]
-    [JsonPropertyOrder(4)]
+    [JsonPropertyOrder(3)]
     public long ExpireAt { get; set; }
     
     [JsonPropertyName("cosigners_public_keys")]
-    [JsonPropertyOrder(5)]
+    [JsonPropertyOrder(4)]
     public string[] CosignersPublicKeys { get; set; }
 }

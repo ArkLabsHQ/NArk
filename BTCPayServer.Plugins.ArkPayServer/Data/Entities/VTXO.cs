@@ -16,8 +16,8 @@ public class VTXO
     public bool Recoverable { get; set; }
 
     public DateTimeOffset ExpiresAt { get; set; }
-    
-    public List<ArkIntentVtxo> IntentVtxos { get; set; } = new List<ArkIntentVtxo>();
+
+    public virtual ICollection<ArkIntentVtxo> IntentVtxos { get; set; } = null!;
 
     public ICoinable ToCoin()
     { 
