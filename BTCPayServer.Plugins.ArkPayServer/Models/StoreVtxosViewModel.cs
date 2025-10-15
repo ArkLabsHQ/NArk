@@ -8,7 +8,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Models;
 public class StoreVtxosViewModel : BasePagingViewModel
 {
     public IReadOnlyCollection<VTXO> Vtxos { get; set; } = [];
-    public SearchString Search { get; set; }
+    public SearchString Search { get; set; } = new(null);
     public string? SearchText { get; set; }
     public string? SearchTerm { get; set; }
     public string StoreId { get; set; }

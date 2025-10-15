@@ -8,7 +8,7 @@ public class StoreIntentsViewModel : BasePagingViewModel
 {
     public IReadOnlyCollection<ArkIntent> Intents { get; set; } = [];
     public Dictionary<int, ArkIntentVtxo[]> IntentVtxos { get; set; } = new();
-    public SearchString Search { get; set; }
+    public SearchString Search { get; set; } = new(null);
     public string? SearchText { get; set; }
     public string StoreId { get; set; }
 
