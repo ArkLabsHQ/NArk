@@ -87,7 +87,7 @@ services:
       - '10009:10009'
 
   boltz-fulmine:
-    image: ghcr.io/arklabshq/fulmine:v0.3.0-rc.2
+    image: ghcr.io/arklabshq/fulmine:v0.3.0-rc.3
     container_name: boltz-fulmine
     environment:
       - FULMINE_ARK_SERVER=http://ark:7070
