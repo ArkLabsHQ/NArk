@@ -56,7 +56,7 @@ public class ArkadeSpendingService(ArkWalletService arkWalletService, ArkadeSpen
                 return null;
             }
 
-            throw new ArkadePaymentFailedException($"Payment failed: {resp?.Details?.Status}");
+            throw new ArkadePaymentFailedException($"Payment failed: {resp?.ErrorDetail}");
         }
         else if (Uri.TryCreate(destination, UriKind.Absolute, out var uri) && uri.Scheme.Equals("bitcoin", StringComparison.InvariantCultureIgnoreCase))
         {
