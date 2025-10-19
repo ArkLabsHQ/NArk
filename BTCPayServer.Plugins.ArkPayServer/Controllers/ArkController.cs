@@ -977,6 +977,7 @@ IAuthorizationService authorizationService,
     {
         await using var dbContext = dbContextFactory.CreateContext();
 
+        // Get all VTXOs for the wallet
         var contracts = await dbContext.WalletContracts
             .Where(c => c.WalletId == walletId)
             .Select(c => c.Script)
@@ -987,14 +988,29 @@ IAuthorizationService authorizationService,
             .Where(vtxo => (vtxo.SpentByTransactionId == null || vtxo.SpentByTransactionId == ""))
             .ToListAsync(cancellationToken);
 
-        // Available: unspent and not recoverable
+        // Get actually spendable coins using ArkadeSpender logic
+        var spendableCoins = await arkadeSpender.GetSpendableCoins([walletId], false, cancellationToken);
+        var spendableOutpoints = spendableCoins
+            .SelectMany(kvp => kvp.Value)
+            .Select(coin => coin.Outpoint)
+            .ToHashSet();
+
+        // Get spendable coins including recoverable
+        var spendableCoinsWithRecoverable = await arkadeSpender.GetSpendableCoins([walletId], true, cancellationToken);
+        var recoverableOutpoints = spendableCoinsWithRecoverable
+            .SelectMany(kvp => kvp.Value)
+            .Where(coin => coin.Recoverable)
+            .Select(coin => coin.Outpoint)
+            .ToHashSet();
+
+        // Available: actually spendable right now (not recoverable, passes contract conditions)
         var availableBalance = vtxos
-            .Where(vtxo =>  !vtxo.Recoverable)
+            .Where(vtxo => spendableOutpoints.Contains(new OutPoint(uint256.Parse(vtxo.TransactionId), (uint)vtxo.TransactionOutputIndex)))
             .Sum(vtxo => vtxo.Amount);
 
-        // Recoverable: not spent but marked as recoverable
+        // Recoverable: spendable but marked as recoverable
         var recoverableBalance = vtxos
-            .Where(vtxo => vtxo.Recoverable)
+            .Where(vtxo => recoverableOutpoints.Contains(new OutPoint(uint256.Parse(vtxo.TransactionId), (uint)vtxo.TransactionOutputIndex)))
             .Sum(vtxo => vtxo.Amount);
 
         // Locked: VTXOs that are linked to pending intents
