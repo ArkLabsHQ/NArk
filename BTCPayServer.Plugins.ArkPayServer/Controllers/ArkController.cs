@@ -54,7 +54,8 @@ IAuthorizationService authorizationService,
     EventAggregator eventAggregator,
     ArkadeWalletSignerProvider walletSignerProvider,
     ArkIntentService arkIntentService,
-    ArkadeSpender arkadeSpender) : Controller
+    ArkadeSpender arkadeSpender,
+    BitcoinTimeChainProvider bitcoinTimeChainProvider) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
@@ -1018,6 +1019,21 @@ IAuthorizationService authorizationService,
             RecoverableBalance = recoverableBalance,
             LockedBalance = lockedBalance
         };
+    }
+
+    [HttpGet("blockchain-info")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetBlockchainInfo(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var (timestamp, height) = await bitcoinTimeChainProvider.Get(cancellationToken);
+            return Json(new { timestamp, height });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = ex.Message });
+        }
     }
 }
 

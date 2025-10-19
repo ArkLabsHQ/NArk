@@ -51,6 +51,17 @@
                 width: 100%;
             }
         }
+        .htlc-countdown {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+        .htlc-countdown.expired {
+            color: #dc3545;
+            font-weight: 500;
+        }
+        .htlc-countdown.active {
+            color: #0d6efd;
+        }
     </style>
 }
 
@@ -200,6 +211,12 @@
                                     <span class="badge text-bg-danger">Failed</span>
                                     break;
                             }
+                            @if (arkContract is VHTLCContract htlcContract)
+                            {
+                                <div class="htlc-countdown mt-1" data-locktime="@htlcContract.RefundLocktime.Value" data-is-timelock="@htlcContract.RefundLocktime.IsTimeLock.ToString().ToLower()">
+                                    <small>Refund: <span class="countdown-value">calculating...</span></small>
+                                </div>
+                            }
                         </td>
                         <td class="align-middle">
                             @if (!string.IsNullOrEmpty(swap.Invoice))
@@ -225,3 +242,84 @@ else
         There are no swaps matching your criteria.
     </p>
 }
+
+<script>
+(function() {
+    let currentBlockHeight = null;
+    
+    // Fetch current blockchain info
+    async function fetchBlockchainInfo() {
+        try {
+            const response = await fetch('/plugins/ark/blockchain-info');
+            if (response.ok) {
+                const data = await response.json();
+                currentBlockHeight = data.height;
+            }
+        } catch (e) {
+            console.error('Failed to fetch blockchain info:', e);
+        }
+    }
+    
+    function updateCountdowns() {
+        const now = Math.floor(Date.now() / 1000);
+        document.querySelectorAll('.htlc-countdown').forEach(el => {
+            const locktime = parseInt(el.dataset.locktime);
+            const isTimelock = el.dataset.isTimelock === 'true';
+            const valueSpan = el.querySelector('.countdown-value');
+            
+            if (!valueSpan) return;
+            
+            if (isTimelock) {
+                // Absolute timestamp
+                const diff = locktime - now;
+                
+                if (diff <= 0) {
+                    valueSpan.textContent = 'Refund available';
+                    el.classList.add('expired');
+                    el.classList.remove('active');
+                } else {
+                    const days = Math.floor(diff / 86400);
+                    const hours = Math.floor((diff % 86400) / 3600);
+                    const minutes = Math.floor((diff % 3600) / 60);
+                    const seconds = diff % 60;
+                    
+                    let timeStr = '';
+                    if (days > 0) timeStr += days + 'd ';
+                    if (hours > 0 || days > 0) timeStr += hours + 'h ';
+                    if (minutes > 0 || hours > 0 || days > 0) timeStr += minutes + 'm ';
+                    timeStr += seconds + 's';
+                    
+                    valueSpan.textContent = 'in ' + timeStr;
+                    el.classList.add('active');
+                    el.classList.remove('expired');
+                }
+            } else {
+                // Block height
+                if (currentBlockHeight !== null) {
+                    const blocksRemaining = locktime - currentBlockHeight;
+                    if (blocksRemaining <= 0) {
+                        valueSpan.textContent = 'Refund available';
+                        el.classList.add('expired');
+                        el.classList.remove('active');
+                    } else {
+                        valueSpan.textContent = 'in ~' + blocksRemaining + ' blocks (current: ' + currentBlockHeight + ')';
+                        el.classList.add('active');
+                        el.classList.remove('expired');
+                    }
+                } else {
+                    valueSpan.textContent = 'at block ' + locktime;
+                    el.classList.add('active');
+                }
+            }
+        });
+    }
+    
+    // Fetch blockchain info initially and every 30 seconds
+    fetchBlockchainInfo();
+    setInterval(fetchBlockchainInfo, 30000);
+    
+    // Update countdowns immediately and then every second
+    updateCountdowns();
+    setInterval(updateCountdowns, 1000);
+})();
+</script>
