@@ -109,7 +109,7 @@ services:
     restart: unless-stopped
 
   boltz:
-    image: boltz/boltz:ark@sha256:0ea39e72af7b5f4ef3383af93b7ccfccfcc1b90bfd65dfbc3674acc40cf1bc0a
+    image: boltz/boltz:ark
     container_name: boltz
     restart: unless-stopped
     ports:
