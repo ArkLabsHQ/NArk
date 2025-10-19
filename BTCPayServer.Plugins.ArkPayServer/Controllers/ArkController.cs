@@ -123,6 +123,7 @@ IAuthorizationService authorizationService,
                 store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[GetLightningPaymentMethod()], lnConfig);
                 var blob = store.GetStoreBlob();
                 blob.SetExcluded(GetLightningPaymentMethod(), false);
+                blob.OnChainWithLnInvoiceFallback = true;
                 store.SetStoreBlob(blob);
             }
 
@@ -697,6 +698,7 @@ IAuthorizationService authorizationService,
         store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[GetLightningPaymentMethod()], lnConfig);
         var blob = store.GetStoreBlob();
         blob.SetExcluded(GetLightningPaymentMethod(), false);
+        blob.OnChainWithLnInvoiceFallback = true;
         store.SetStoreBlob(blob);
         await storeRepository.UpdateStore(store);
         TempData[WellKnownTempData.SuccessMessage] = "Lightning enabled";
