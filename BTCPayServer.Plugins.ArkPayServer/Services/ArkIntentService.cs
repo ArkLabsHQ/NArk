@@ -52,7 +52,7 @@ public class ArkIntentService(
         _serviceCts = new CancellationTokenSource();
         
         // Start automatic submission task
-        _submissionTriggerTimer = new Timer(_ => TriggerSubmissionCheck(), null, SubmissionPollingInterval,
+        _submissionTriggerTimer = new Timer(_ => TriggerSubmissionCheck(), null, TimeSpan.Zero,
             SubmissionPollingInterval);
         _submissionTask = AutoSubmitIntentsAsync(_serviceCts.Token);
         
@@ -309,7 +309,7 @@ public class ArkIntentService(
         {
             try
             {
-                await eventAggregator.WaitNext<IntentsUpdated>(cancellationToken);
+                await eventAggregator.WaitNext<IntentSubmissionRequired>(cancellationToken);
                 
                 await using var dbContext = dbContextFactory.CreateContext();
                 
