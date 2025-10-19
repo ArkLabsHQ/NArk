@@ -35,8 +35,7 @@ public class ArkIntentService(
     private static readonly TimeSpan SubmissionPollingInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EventStreamRetryDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DefaultIntentExpiry = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan NoIntentsWaitInterval = TimeSpan.FromMinutes(5);
-
+    
     private readonly ConcurrentDictionary<string, ArkIntent> _activeIntents = new();
     private readonly ConcurrentDictionary<string, BatchSession> _activeBatchSessions = new();
     private CancellationTokenSource? _serviceCts;
