@@ -4,6 +4,7 @@ using System.Text.Json;
 using Ark.V1;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
+using BTCPayServer.Plugins.ArkPayServer.Models.Events;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -19,70 +20,65 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 /// <summary>
 /// Service for managing Ark intents with automatic submission, event monitoring, and batch participation
 /// </summary>
-public class ArkIntentService : IHostedService, IDisposable
+public class ArkIntentService(
+    EventAggregator eventAggregator,
+    ArkPluginDbContextFactory dbContextFactory,
+    ArkService.ArkServiceClient arkServiceClient,
+    ArkadeWalletSignerProvider signerProvider,
+    CachedOperatorTermsService operatorTermsService,
+    ArkTransactionBuilder arkTransactionBuilder,
+    ArkadeSpender arkadeSpender,
+    ILogger<ArkIntentService> logger)
+    : IHostedService, IDisposable
 {
     // Polling intervals
     private static readonly TimeSpan SubmissionPollingInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EventStreamRetryDelay = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan NoIntentsWaitInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan DefaultIntentExpiry = TimeSpan.FromMinutes(5);
-    
-    private readonly ArkPluginDbContextFactory _dbContextFactory;
-    private readonly ArkService.ArkServiceClient _arkServiceClient;
-    private readonly ArkadeWalletSignerProvider _signerProvider;
-    private readonly CachedOperatorTermsService _operatorTermsService;
-    private readonly ArkTransactionBuilder _arkTransactionBuilder;
-    private readonly ArkadeSpender _arkadeSpender;
-    private readonly ILogger<ArkIntentService> _logger;
-    
+    private static readonly TimeSpan NoIntentsWaitInterval = TimeSpan.FromMinutes(5);
+
     private readonly ConcurrentDictionary<string, ArkIntent> _activeIntents = new();
     private readonly ConcurrentDictionary<string, BatchSession> _activeBatchSessions = new();
     private CancellationTokenSource? _serviceCts;
     private CancellationTokenSource? _eventStreamCts;
     private Task? _submissionTask;
     private Task? _eventStreamTask;
-    private readonly SemaphoreSlim _streamRestartLock = new(1, 1);
-    private bool _needsStreamRestart;
-    private TaskCompletionSource<bool>? _intentsChangedTcs;
-    private TaskCompletionSource<bool>? _submissionTriggerTcs;
 
-    public ArkIntentService(
-        ArkPluginDbContextFactory dbContextFactory,
-        ArkService.ArkServiceClient arkServiceClient,
-        ArkadeWalletSignerProvider signerProvider,
-        CachedOperatorTermsService operatorTermsService,
-        ArkTransactionBuilder arkTransactionBuilder,
-        ArkadeSpender arkadeSpender,
-        ILogger<ArkIntentService> logger)
-    {
-        _dbContextFactory = dbContextFactory;
-        _arkServiceClient = arkServiceClient;
-        _signerProvider = signerProvider;
-        _operatorTermsService = operatorTermsService;
-        _arkTransactionBuilder = arkTransactionBuilder;
-        _arkadeSpender = arkadeSpender;
-        _logger = logger;
-    }
+    private Timer? _submissionTriggerTimer;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting ArkIntentService");
+        logger.LogInformation("Starting ArkIntentService");
         
         _serviceCts = new CancellationTokenSource();
         
         // Start automatic submission task
+        _submissionTriggerTimer = new Timer(_ => TriggerSubmissionCheck(), null, SubmissionPollingInterval,
+            SubmissionPollingInterval);
         _submissionTask = AutoSubmitIntentsAsync(_serviceCts.Token);
         
         // Load existing WaitingForBatch intents and start shared event stream
         await LoadActiveIntentsAsync(cancellationToken);
-        _eventStreamTask = RunSharedEventStreamAsync(_serviceCts.Token);
+        _ = RunSharedEventStreamController(_serviceCts.Token);
         
-        _logger.LogInformation("ArkIntentService started");
+        logger.LogInformation("ArkIntentService started");
+    }
+
+    private async Task RunSharedEventStreamController(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            if (_eventStreamCts is not null)
+                await _eventStreamCts.CancelAsync();
+            if (_eventStreamTask?.IsCompleted is null or true)
+                _eventStreamTask = RunSharedEventStreamAsync(cancellationToken);
+            await eventAggregator.WaitNext<IntentsUpdated>(cancellationToken);
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Stopping ArkIntentService");
+        logger.LogInformation("Stopping ArkIntentService");
         if(_serviceCts != null)
             await _serviceCts!.CancelAsync();
         
@@ -98,7 +94,7 @@ public class ArkIntentService : IHostedService, IDisposable
         
         _activeIntents.Clear();
         _activeBatchSessions.Clear();
-        _logger.LogInformation("ArkIntentService stopped");
+        logger.LogInformation("ArkIntentService stopped");
     }
 
     /// <summary>
@@ -112,11 +108,10 @@ public class ArkIntentService : IHostedService, IDisposable
         DateTimeOffset? validUntil = null,
         CancellationToken cancellationToken = default)
     {
-        await using var dbContext = _dbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         
         // Check if any VTXOs are already locked
         var coinTxIds = coins.Select(c => c.Outpoint.Hash.ToString()).ToHashSet();
-        var coinOutputIndices = coins.Select(c => (int)c.Outpoint.N).ToHashSet();
         
         var potentiallyLockedVtxos = await dbContext.IntentVtxos
             .Include(iv => iv.Intent)
@@ -137,7 +132,7 @@ public class ArkIntentService : IHostedService, IDisposable
         }
 
         // Get signer
-        var signer = await _signerProvider.GetSigner(walletId, cancellationToken);
+        var signer = await signerProvider.GetSigner(walletId, cancellationToken);
         if (signer == null)
         {
             throw new InvalidOperationException($"Signer not available for wallet {walletId}");
@@ -160,7 +155,7 @@ public class ArkIntentService : IHostedService, IDisposable
         var effectiveValidUntil = validUntil ?? DateTimeOffset.UtcNow.Add(DefaultIntentExpiry);
         
         var cosigners = new[] { await signer.GetXOnlyPublicKey(cancellationToken) };
-        var terms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         var (registerTx, deleteTx, registerMsg, deleteMsg) = await IntentUtils.CreateIntent(
             terms.Network,
             cosigners,
@@ -211,7 +206,7 @@ public class ArkIntentService : IHostedService, IDisposable
         await dbContext.Intents.AddAsync(intent, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         
-        _logger.LogInformation("Created intent {InternalId} for wallet {WalletId}", intent.InternalId, walletId);
+        logger.LogInformation("Created intent {InternalId} for wallet {WalletId}", intent.InternalId, walletId);
         
         // Trigger immediate submission check if intent is already valid
         if (effectiveValidFrom <= DateTimeOffset.UtcNow)
@@ -220,6 +215,16 @@ public class ArkIntentService : IHostedService, IDisposable
         }
         
         return intent.InternalId.ToString();
+    }
+
+    private void TriggerSubmissionCheck()
+    {
+        eventAggregator.Publish(new IntentSubmissionRequired());
+    }
+    
+    private void TriggerStreamUpdate()
+    {
+        eventAggregator.Publish(new IntentsUpdated());
     }
 
     /// <summary>
@@ -234,7 +239,7 @@ public class ArkIntentService : IHostedService, IDisposable
         string? deleteMessage = null,
         CancellationToken cancellationToken = default)
     {
-        await using var dbContext = _dbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         
         // Check if any VTXOs are already locked
         var coinTxIds = coins.Select(c => c.Outpoint.Hash.ToString()).ToHashSet();
@@ -267,7 +272,7 @@ public class ArkIntentService : IHostedService, IDisposable
             throw new InvalidOperationException($"One or more VTXOs are not owned by wallet {walletId}");
         }
 
-        var terms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         // Parse provided proofs
         var registerTx = PSBT.Parse(registerProof, terms.Network);
         var registerMsg = JsonSerializer.Deserialize<RegisterIntentMessage>(registerMessage) 
@@ -335,7 +340,7 @@ public class ArkIntentService : IHostedService, IDisposable
         await dbContext.Intents.AddAsync(intent, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         
-        _logger.LogInformation("Created delegated intent {InternalId} for wallet {WalletId}", intent.InternalId, walletId);
+        logger.LogInformation("Created delegated intent {InternalId} for wallet {WalletId}", intent.InternalId, walletId);
         
         // Trigger immediate submission check if intent is already valid
         if (effectiveValidFrom <= DateTimeOffset.UtcNow)
@@ -351,7 +356,7 @@ public class ArkIntentService : IHostedService, IDisposable
     /// </summary>
     public async Task CancelIntentAsync(string internalId, string reason, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = _dbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         
         var intent = await dbContext.Intents
             .Include(i => i.IntentVtxos)
@@ -360,17 +365,17 @@ public class ArkIntentService : IHostedService, IDisposable
         
         if (intent == null)
         {
-            _logger.LogWarning("Intent {IntentId} not found for cancellation", internalId);
+            logger.LogWarning("Intent {IntentId} not found for cancellation", internalId);
             return;
         }
 
         switch (intent.State)
         {
             case ArkIntentState.BatchSucceeded or ArkIntentState.BatchFailed or ArkIntentState.Cancelled:
-                _logger.LogWarning("Intent {IntentId} is already in final state {State}", internalId, intent.State);
+                logger.LogWarning("Intent {IntentId} is already in final state {State}", internalId, intent.State);
                 return;
             case ArkIntentState.BatchInProgress:
-                _logger.LogWarning("Intent {IntentId} cannot be cancelled - batch is in progress", internalId);
+                logger.LogWarning("Intent {IntentId} cannot be cancelled - batch is in progress", internalId);
                 throw new InvalidOperationException("Cannot cancel intent while batch is in progress");
             // Submit delete proof if intent was submitted
             case ArkIntentState.WaitingForBatch:
@@ -385,12 +390,12 @@ public class ArkIntentService : IHostedService, IDisposable
                         }
                     };
                 
-                    await _arkServiceClient.DeleteIntentAsync(deleteRequest, cancellationToken: cancellationToken);
-                    _logger.LogInformation("Submitted delete proof for intent {IntentId}", internalId);
+                    await arkServiceClient.DeleteIntentAsync(deleteRequest, cancellationToken: cancellationToken);
+                    logger.LogInformation("Submitted delete proof for intent {IntentId}", internalId);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Failed to submit delete proof for intent {IntentId}", internalId);
+                    logger.LogWarning(ex, "Failed to submit delete proof for intent {IntentId}", internalId);
                 }
 
                 break;
@@ -403,10 +408,8 @@ public class ArkIntentService : IHostedService, IDisposable
         // Remove from active intents and trigger stream restart
         _ = intent.IntentId is not null && _activeIntents.TryRemove(intent.IntentId, out _);
         _ = intent.IntentId is not null && _activeBatchSessions.TryRemove(intent.IntentId!, out _);
-        SignalIntentsChanged();
-        await TriggerStreamRestartAsync();
-        
-        _logger.LogInformation("Intent {IntentId} cancelled: {Reason}", internalId, reason);
+        TriggerStreamUpdate();
+        logger.LogInformation("Intent {IntentId} cancelled: {Reason}", internalId, reason);
     }
 
     /// <summary>
@@ -414,7 +417,7 @@ public class ArkIntentService : IHostedService, IDisposable
     /// </summary>
     public async Task<ArkIntent?> GetIntentAsync(string intentId, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = _dbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         return await dbContext.Intents
             .Include(i => i.IntentVtxos)
                 .ThenInclude(iv => iv.Vtxo)
@@ -426,7 +429,7 @@ public class ArkIntentService : IHostedService, IDisposable
     /// </summary>
     public async Task<List<ArkIntent>> GetWalletIntentsAsync(string walletId, CancellationToken cancellationToken = default)
     {
-        await using var dbContext = _dbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         return await dbContext.Intents
             .Include(i => i.IntentVtxos)
                 .ThenInclude(iv => iv.Vtxo)
@@ -451,18 +454,15 @@ public class ArkIntentService : IHostedService, IDisposable
 
     private async Task AutoSubmitIntentsAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting automatic intent submission loop");
+        logger.LogInformation("Starting automatic intent submission loop");
         
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                // Wait for trigger or timeout
-                _submissionTriggerTcs = new TaskCompletionSource<bool>();
-                var delayTask = Task.Delay(SubmissionPollingInterval, cancellationToken);
-                await Task.WhenAny(_submissionTriggerTcs.Task, delayTask);
+                await eventAggregator.WaitNext<IntentsUpdated>(cancellationToken);
                 
-                await using var dbContext = _dbContextFactory.CreateContext();
+                await using var dbContext = dbContextFactory.CreateContext();
                 
                 var now = DateTimeOffset.UtcNow;
                 var intentsToSubmit = await dbContext.Intents
@@ -481,7 +481,7 @@ public class ArkIntentService : IHostedService, IDisposable
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to submit intent {InternalId}", intent.InternalId);
+                        logger.LogError(ex, "Failed to submit intent {InternalId}", intent.InternalId);
                     }
                 }
                 
@@ -501,7 +501,7 @@ public class ArkIntentService : IHostedService, IDisposable
                 if (expiredIntents.Any())
                 {
                     await dbContext.SaveChangesAsync(cancellationToken);
-                    _logger.LogInformation("Cancelled {Count} expired intents", expiredIntents.Count);
+                    logger.LogInformation("Cancelled {Count} expired intents", expiredIntents.Count);
                 }
             }
             catch (OperationCanceledException)
@@ -510,16 +510,16 @@ public class ArkIntentService : IHostedService, IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in automatic intent submission loop");
+                logger.LogError(ex, "Error in automatic intent submission loop");
             }
         }
         
-        _logger.LogInformation("Automatic intent submission loop stopped");
+        logger.LogInformation("Automatic intent submission loop stopped");
     }
 
     private async Task SubmitIntentAsync(ArkIntent intent, ArkPluginDbContext dbContext, CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Submitting intent {InternalId}", intent.InternalId);
+        logger.LogInformation("Submitting intent {InternalId}", intent.InternalId);
         
         // Check if any VTXOs have been spent before submission
         var spentVtxos = intent.IntentVtxos
@@ -530,7 +530,7 @@ public class ArkIntentService : IHostedService, IDisposable
         if (spentVtxos.Any())
         {
             var spentOutpoints = string.Join(", ", spentVtxos.Select(v => $"{v.TransactionId}:{v.TransactionOutputIndex}"));
-            _logger.LogWarning("Intent {InternalId} has spent VTXOs: {SpentVtxos}", intent.InternalId, spentOutpoints);
+            logger.LogWarning("Intent {InternalId} has spent VTXOs: {SpentVtxos}", intent.InternalId, spentOutpoints);
             
             intent.State = ArkIntentState.Cancelled;
             intent.CancellationReason = $"VTXOs spent before submission: {spentOutpoints}";
@@ -548,7 +548,7 @@ public class ArkIntentService : IHostedService, IDisposable
             }
         };
 
-        var response = await _arkServiceClient.RegisterIntentAsync(registerRequest, cancellationToken: cancellationToken);
+        var response = await arkServiceClient.RegisterIntentAsync(registerRequest, cancellationToken: cancellationToken);
         
         // Update with server-assigned ID
         intent.IntentId = response.IntentId;
@@ -556,19 +556,18 @@ public class ArkIntentService : IHostedService, IDisposable
         intent.UpdatedAt = DateTimeOffset.UtcNow;
         await dbContext.SaveChangesAsync(cancellationToken);
         
-        _logger.LogInformation("Intent submitted successfully with ID {IntentId}", intent.IntentId);
+        logger.LogInformation("Intent submitted successfully with ID {IntentId}", intent.IntentId);
         
         // Add to active intents and trigger stream restart
         _activeIntents[intent.IntentId] = intent;
-        SignalIntentsChanged();
-        await TriggerStreamRestartAsync();
+        TriggerStreamUpdate();
     }
 
     private async Task LoadActiveIntentsAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Loading active intents");
+        logger.LogInformation("Loading active intents");
         
-        await using var dbContext = _dbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
         
         var waitingIntents = await dbContext.Intents
             .Include(i => i.IntentVtxos)
@@ -581,81 +580,59 @@ public class ArkIntentService : IHostedService, IDisposable
             _activeIntents[intent.IntentId!] = intent;
         }
         
-        _logger.LogInformation("Loaded {Count} active intents", waitingIntents.Count);
+        logger.LogInformation("Loaded {Count} active intents", waitingIntents.Count);
     }
 
     private async Task RunSharedEventStreamAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Starting shared event stream");
-
         while (!cancellationToken.IsCancellationRequested)
         {
+            logger.LogInformation("Starting shared event stream");
+
             try
             {
                 // Build topics from all active intents (VTXOs + cosigner public keys)
                 var vtxoTopics = _activeIntents.Values
                     .SelectMany(intent => intent.IntentVtxos
                         .Select(iv => $"{iv.VtxoTransactionId}:{iv.VtxoTransactionOutputIndex}"));
-                
+
                 var cosignerTopics = _activeIntents.Values
                     .SelectMany(intent => ExtractCosignerKeys(intent.RegisterProofMessage));
-                
-                var topics = vtxoTopics.Concat(cosignerTopics)
-                    .Distinct()
-                    .ToList();
 
-                if (topics.Count == 0)
-                {
-                    _logger.LogDebug("No active intents, waiting for intents to be added");
-                    
-                    // Wait for intents to be added or timeout
-                    _intentsChangedTcs = new TaskCompletionSource<bool>();
-                    var delayTask = Task.Delay(NoIntentsWaitInterval, cancellationToken);
-                    var completedTask = await Task.WhenAny(_intentsChangedTcs.Task, delayTask);
-                    
-                    if (completedTask == delayTask)
-                    {
-                        _logger.LogDebug("No intents added after {Seconds} seconds, retrying", NoIntentsWaitInterval.TotalSeconds);
-                    }
-                    else
-                    {
-                        _logger.LogDebug("Intents added, restarting stream immediately");
-                    }
-                    
-                    continue;
-                }
+                var topics =
+                    vtxoTopics.Concat(cosignerTopics).ToHashSet();
+
+                // If we have no topic to listen for, jump out.
+                if (topics.Count is 0) return;
 
                 var eventStreamRequest = new GetEventStreamRequest();
                 eventStreamRequest.Topics.AddRange(topics);
 
-                _logger.LogInformation("Opening shared event stream with {TopicCount} topics for {IntentCount} intents",
+                logger.LogInformation("Opening shared event stream with {TopicCount} topics for {IntentCount} intents",
                     topics.Count, _activeIntents.Count);
 
                 _eventStreamCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                _needsStreamRestart = false;
 
-                var streamCall = _arkServiceClient.GetEventStream(eventStreamRequest, cancellationToken: _eventStreamCts.Token);
+                var streamCall =
+                    arkServiceClient.GetEventStream(eventStreamRequest, cancellationToken: cancellationToken);
 
                 await foreach (var eventResponse in streamCall.ResponseStream.ReadAllAsync(_eventStreamCts.Token))
                 {
-                    // Check if we need to restart the stream with updated topics
-                    if (_needsStreamRestart)
-                    {
-                        _logger.LogInformation("Stream restart requested, closing current stream");
-                        break;
-                    }
-
                     await ProcessEventForAllIntentsAsync(eventResponse, cancellationToken);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogInformation("Shared event stream cancelled");
-                break;
+                logger.LogInformation("Shared event stream cancelled");
+                // While will not repeat if this token is cancelled
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogInformation("Switching to new stream...");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in shared event stream, restarting in {Seconds} seconds", EventStreamRetryDelay.TotalSeconds);
+                logger.LogError(ex, "Error in shared event stream, restarting in {Seconds} seconds", EventStreamRetryDelay.TotalSeconds);
                 await Task.Delay(EventStreamRetryDelay, cancellationToken);
             }
             finally
@@ -665,12 +642,12 @@ public class ArkIntentService : IHostedService, IDisposable
             }
         }
 
-        _logger.LogInformation("Shared event stream stopped");
+        logger.LogInformation("Shared event stream stopped");
     }
 
     private async Task ProcessEventForAllIntentsAsync(GetEventStreamResponse eventResponse, CancellationToken cancellationToken)
     {
-        await using var dbContext = _dbContextFactory.CreateContext();
+        await using var dbContext = dbContextFactory.CreateContext();
 
         // Handle BatchStarted event first - check all intents at once
         if (eventResponse.EventCase == GetEventStreamResponse.EventOneofCase.BatchStarted)
@@ -691,8 +668,7 @@ public class ArkIntentService : IHostedService, IDisposable
                     {
                         _activeBatchSessions.TryRemove(intentId, out _);
                         _activeIntents.TryRemove(intentId, out _);
-                        SignalIntentsChanged();
-                        await TriggerStreamRestartAsync();
+                        TriggerStreamUpdate();
                         continue;
                     }
                 }
@@ -706,8 +682,7 @@ public class ArkIntentService : IHostedService, IDisposable
                             await HandleBatchFailedAsync(intent, eventResponse.BatchFailed, dbContext, cancellationToken);
                             _activeBatchSessions.TryRemove(intentId, out _);
                             _activeIntents.TryRemove(intentId, out _);
-                            SignalIntentsChanged();
-                            await TriggerStreamRestartAsync();
+                            TriggerStreamUpdate();
                         }
                         break;
 
@@ -717,15 +692,14 @@ public class ArkIntentService : IHostedService, IDisposable
                             await HandleBatchFinalizedAsync(intent, eventResponse.BatchFinalized, dbContext, cancellationToken);
                             _activeBatchSessions.TryRemove(intentId, out _);
                             _activeIntents.TryRemove(intentId, out _);
-                            SignalIntentsChanged();
-                            await TriggerStreamRestartAsync();
+                            TriggerStreamUpdate();
                         }
                         break;
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing event for intent {IntentId}", intentId);
+                logger.LogError(ex, "Error processing event for intent {IntentId}", intentId);
             }
         }
     }
@@ -760,7 +734,7 @@ public class ArkIntentService : IHostedService, IDisposable
             return; // None of our intents in this batch
         }
 
-        _logger.LogInformation("{Count} of our intents selected for batch {BatchId}: {IntentIds}",
+        logger.LogInformation("{Count} of our intents selected for batch {BatchId}: {IntentIds}",
             selectedIntentIds.Count, batchEvent.Id, string.Join(", ", selectedIntentIds));
 
         // Load all VTXOs and contracts for selected intents in one efficient query
@@ -773,7 +747,7 @@ public class ArkIntentService : IHostedService, IDisposable
         
         if (walletIds.Count == 0)
         {
-            _logger.LogWarning("No valid wallet IDs found for selected intents");
+            logger.LogWarning("No valid wallet IDs found for selected intents");
             return;
         }
         
@@ -785,8 +759,8 @@ public class ArkIntentService : IHostedService, IDisposable
             .ToHashSet();
         
         // Get spendable coins for all wallets, filtered by the specific VTXOs locked in intents
-        var walletCoins = await _arkadeSpender.GetSpendableCoins(walletIds.ToArray(), allVtxoOutpoints, true, cancellationToken);
-        var terms = await _operatorTermsService.GetOperatorTerms(cancellationToken);
+        var walletCoins = await arkadeSpender.GetSpendableCoins(walletIds.ToArray(), allVtxoOutpoints, true, cancellationToken);
+        var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         // Confirm registration and create batch sessions for all selected intents
         foreach (var intentId in selectedIntentIds)
         {
@@ -796,17 +770,17 @@ public class ArkIntentService : IHostedService, IDisposable
             try
             {
                 // Get signer
-                var signer = await _signerProvider.GetSigner(intent.WalletId, cancellationToken);
+                var signer = await signerProvider.GetSigner(intent.WalletId, cancellationToken);
                 if (signer == null)
                 {
-                    _logger.LogError("Signer not available for wallet {WalletId}", intent.WalletId);
+                    logger.LogError("Signer not available for wallet {WalletId}", intent.WalletId);
                     continue;
                 }
                 
                 // Get spendable coins for this wallet from the pre-loaded data
                 if (!walletCoins.TryGetValue(intent.WalletId, out var allWalletCoins))
                 {
-                    _logger.LogError("No coins loaded for wallet {WalletId}", intent.WalletId);
+                    logger.LogError("No coins loaded for wallet {WalletId}", intent.WalletId);
                     continue;
                 }
                 
@@ -821,12 +795,12 @@ public class ArkIntentService : IHostedService, IDisposable
                 
                 if (spendableCoins.Count == 0)
                 {
-                    _logger.LogError("No spendable coins found for intent {IntentId}", intentId);
+                    logger.LogError("No spendable coins found for intent {IntentId}", intentId);
                     continue;
                 }
                 
                 // Confirm registration
-                await _arkServiceClient.ConfirmRegistrationAsync(
+                await arkServiceClient.ConfirmRegistrationAsync(
                     new ConfirmRegistrationRequest { IntentId = intentId },
                     cancellationToken: cancellationToken);
 
@@ -835,46 +809,34 @@ public class ArkIntentService : IHostedService, IDisposable
                 intent.UpdatedAt = DateTimeOffset.UtcNow;
                 await dbContext.SaveChangesAsync(cancellationToken);
 
-                _logger.LogInformation("Intent {IntentId} confirmed for batch {BatchId} and marked as in progress", intentId, batchEvent.Id);
+                logger.LogInformation("Intent {IntentId} confirmed for batch {BatchId} and marked as in progress", intentId, batchEvent.Id);
 
                 // Create and initialize batch session
                 var session = new BatchSession(
-                    _operatorTermsService,
-                    _arkServiceClient,
-                    _arkTransactionBuilder,
+                    operatorTermsService,
+                    arkServiceClient,
+                    arkTransactionBuilder,
                     terms.Network,
                     signer,
                     intent,
                     spendableCoins.ToArray(),
                     batchEvent,
-                    _logger);
+                    logger);
             
                 await session.InitializeAsync(cancellationToken);
             
                 // Store the session so events can be passed to it
                 _activeBatchSessions[intent.IntentId!] = session;
             
-                _logger.LogInformation("Batch session initialized for intent {IntentId}", intent.InternalId);
+                logger.LogInformation("Batch session initialized for intent {IntentId}", intent.InternalId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to confirm or create batch session for intent {IntentId}", intentId);
+                logger.LogError(ex, "Failed to confirm or create batch session for intent {IntentId}", intentId);
             }
         }
     }
-
-    private void SignalIntentsChanged()
-    {
-        // Signal that intents have changed (for when waiting with no active intents)
-        _intentsChangedTcs?.TrySetResult(true);
-    }
-
-    private void TriggerSubmissionCheck()
-    {
-        // Signal that a new intent needs to be checked for submission
-        _submissionTriggerTcs?.TrySetResult(true);
-    }
-
+    
     private static IEnumerable<string> ExtractCosignerKeys(string registerProofMessage)
     {
         try
@@ -889,25 +851,6 @@ public class ArkIntentService : IHostedService, IDisposable
         }
     }
 
-    
-
-    private async Task TriggerStreamRestartAsync()
-    {
-        await _streamRestartLock.WaitAsync();
-        try
-        {
-            _needsStreamRestart = true;
-            if (_eventStreamCts != null)
-            {
-                await _eventStreamCts.CancelAsync();
-            }
-        }
-        finally
-        {
-            _streamRestartLock.Release();
-        }
-    }
-
     private async Task HandleBatchFailedAsync(
         ArkIntent intent, 
         BatchFailedEvent batchEvent, 
@@ -916,7 +859,7 @@ public class ArkIntentService : IHostedService, IDisposable
     {
         if (intent.BatchId == batchEvent.Id)
         {
-            _logger.LogWarning("Batch {BatchId} failed for intent {IntentId}: {Reason}", 
+            logger.LogWarning("Batch {BatchId} failed for intent {IntentId}: {Reason}", 
                 batchEvent.Id, intent.InternalId, batchEvent.Reason);
             
             intent.State = ArkIntentState.BatchFailed;
@@ -932,7 +875,7 @@ public class ArkIntentService : IHostedService, IDisposable
         ArkPluginDbContext dbContext,
         CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Batch finalized for intent {IntentId}, txid: {Txid}", 
+        logger.LogInformation("Batch finalized for intent {IntentId}, txid: {Txid}", 
             intent.InternalId, finalizedEvent.CommitmentTxid);
 
         intent.State = ArkIntentState.BatchSucceeded;
@@ -949,7 +892,7 @@ public class ArkIntentService : IHostedService, IDisposable
         _serviceCts?.Dispose();
         _eventStreamCts?.Cancel();
         _eventStreamCts?.Dispose();
-        _streamRestartLock.Dispose();
+        _submissionTriggerTimer?.Dispose();
         
         _activeIntents.Clear();
         _activeBatchSessions.Clear();

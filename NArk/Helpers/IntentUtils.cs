@@ -111,7 +111,6 @@ public class IntentUtils
             ExpireAt = expireAt.ToUnixTimeSeconds()
         };
         var message = JsonSerializer.Serialize(msg);
-        Console.WriteLine(message);
         var deleteMessage = JsonSerializer.Serialize(deleteMsg);
 
         return (
