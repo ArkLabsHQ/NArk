@@ -1,13 +1,10 @@
 using System.Collections.Concurrent;
-using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Services.Policies;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using NArk;
 using NArk.Services;
 using NArk.Services.Abstractions;
-using NBitcoin;
 
 // Example usage:
 // var policy = new FluentVtxoPolicy(logger)
