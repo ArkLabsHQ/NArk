@@ -199,15 +199,31 @@ public class BoltzService(
 
     private async Task<ArkSwapUpdated?> PollSwapStatus(ArkSwap swap)
     {
-       var response = await  boltzClient.GetSwapStatusAsync(swap.SwapId);
-       var oldStatus = swap.Status;
-       if (Map(response.Status) is var newStatus && newStatus != oldStatus)
-       {
-           swap.UpdatedAt = DateTimeOffset.UtcNow;
-           swap.Status = newStatus;
-           return new ArkSwapUpdated { Swap = swap };
-       }
-       return null;
+        try
+        {
+            var response = await boltzClient.GetSwapStatusAsync(swap.SwapId);
+            var oldStatus = swap.Status;
+            if (Map(response.Status) is var newStatus && newStatus != oldStatus)
+            {
+                swap.UpdatedAt = DateTimeOffset.UtcNow;
+                swap.Status = newStatus;
+                return new ArkSwapUpdated { Swap = swap };
+            }
+            return null;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            // Swap not found on Boltz - mark as unknown
+            logger.LogWarning("Swap {SwapId} not found on Boltz server", swap.SwapId);
+            var oldStatus = swap.Status;
+            if (oldStatus != ArkSwapStatus.Unknown)
+            {
+                swap.UpdatedAt = DateTimeOffset.UtcNow;
+                swap.Status = ArkSwapStatus.Unknown;
+                return new ArkSwapUpdated { Swap = swap };
+            }
+            return null;
+        }
     }
 
     public ArkSwapStatus Map(string status)
@@ -228,7 +244,7 @@ public class BoltzService(
                 return ArkSwapStatus.Settled;
             default:
                 logger.LogInformation("Unknown status {Status}", status);
-                return ArkSwapStatus.Pending;
+                return ArkSwapStatus.Unknown;
         }
     }
 

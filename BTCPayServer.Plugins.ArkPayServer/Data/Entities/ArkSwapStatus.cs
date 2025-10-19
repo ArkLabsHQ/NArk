@@ -4,5 +4,6 @@ public enum ArkSwapStatus
 {
     Pending,
     Settled,
-    Failed
+    Failed,
+    Unknown
 }
