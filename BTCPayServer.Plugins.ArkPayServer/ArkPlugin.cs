@@ -22,9 +22,9 @@ using System.Reflection;
 using System.Text.Json;
 using BTCPayServer.PayoutProcessors;
 using Grpc.Net.ClientFactory;
-using NArk.Services.Abstractions;
 using BTCPayServer.Plugins.ArkPayServer.Cache;
 using BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
+using NArk.Services.Abstractions;
 
 namespace BTCPayServer.Plugins.ArkPayServer;
 
@@ -32,6 +32,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
 {
     internal const string PluginNavKey = nameof(ArkadePlugin) + "Nav";
     internal const string ArkadeDisplayName = "Arkade";
+    internal const string CheckoutBodyComponentName = "arkadeCheckoutBody";
 
     internal static readonly PaymentMethodId ArkadePaymentMethodId = new PaymentMethodId("ARKADE");
     
@@ -105,6 +106,9 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<TrackedContractsCache>();
         serviceCollection.AddHostedService<TrackedContractsCache>(provider => provider.GetRequiredService<TrackedContractsCache>());
 
+        // Register Arkade checkout view
+        serviceCollection.AddUIExtension("checkout-end", "Arkade/ArkadeMethodCheckout");
+        
         serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/OldArk/ArkLNSetupTabhead.cshtml");
         serviceCollection.AddUIExtension("dashboard-setup-guide-payment", "/Views/OldArk/DashboardSetupGuidePayment.cshtml");
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/OldArk/ArkPaymentData.cshtml");

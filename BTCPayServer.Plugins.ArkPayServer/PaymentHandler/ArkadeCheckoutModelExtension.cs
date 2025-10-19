@@ -1,4 +1,4 @@
-﻿using BTCPayServer.Data;
+using BTCPayServer.Data;
 using BTCPayServer.Payments;
 using BTCPayServer.Payments.Bitcoin;
 
@@ -26,7 +26,7 @@ public class ArkadeCheckoutModelExtension: ICheckoutModelExtension
         if (context is not { Handler: ArkadePaymentMethodHandler handler })
             return;
         
-        context.Model.CheckoutBodyComponentName = BitcoinCheckoutModelExtension.CheckoutBodyComponentName;
+        context.Model.CheckoutBodyComponentName = ArkadePlugin.CheckoutBodyComponentName;
         context.Model.ShowRecommendedFee = false;
         var paymentLink =
             _arkadePaymentLinkExtension.GetPaymentLink(context.Prompt, context.UrlHelper)
