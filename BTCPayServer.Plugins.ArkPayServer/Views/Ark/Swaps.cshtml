@@ -23,14 +23,14 @@
     {
     }
     
-    var statusFilterCount = Model.Search.ContainsFilter("status") ? Model.Search.GetFilterArray("status").Length : 0;
-    var typeFilterCount = Model.Search.ContainsFilter("type") ? Model.Search.GetFilterArray("type").Length : 0;
+    var statusFilterCount = Model.Search?.ContainsFilter("status") == true ? Model.Search.GetFilterArray("status").Length : 0;
+    var typeFilterCount = Model.Search?.ContainsFilter("type") == true ? Model.Search.GetFilterArray("type").Length : 0;
 }
 
 @functions
 {
     private bool HasArrayFilter(string type, string key = null) =>
-        Model.Search.ContainsFilter(type) && (key is null || Model.Search.GetFilterArray(type).Contains(key));
+        Model.Search?.ContainsFilter(type) == true && (key is null || Model.Search.GetFilterArray(type).Contains(key));
 }
 
 @section PageHeadContent
@@ -90,7 +90,7 @@
 
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Swaps" asp-route-storeId="@Model.StoreId" method="get">
     <input asp-for="Count" type="hidden" />
-    <input asp-for="SearchTerm" type="hidden" value="@Model.Search.WithoutSearchText()"/>
+    <input asp-for="SearchTerm" type="hidden" value="@(Model.Search?.WithoutSearchText() ?? "")"/>
     <input asp-for="SearchText" class="form-control" placeholder="Search…" />
     
     <div class="dropdown">
@@ -105,9 +105,9 @@
             }
         </button>
         <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
-            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "pending")" class="dropdown-item @(HasArrayFilter("status", "pending") ? "custom-active" : "")" text-translate="true">Pending</a>
-            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "settled")" class="dropdown-item @(HasArrayFilter("status", "settled") ? "custom-active" : "")" text-translate="true">Settled</a>
-            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "failed")" class="dropdown-item @(HasArrayFilter("status", "failed") ? "custom-active" : "")" text-translate="true">Failed</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "pending") ?? "")" class="dropdown-item @(HasArrayFilter("status", "pending") ? "custom-active" : "")" text-translate="true">Pending</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "settled") ?? "")" class="dropdown-item @(HasArrayFilter("status", "settled") ? "custom-active" : "")" text-translate="true">Settled</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "failed") ?? "")" class="dropdown-item @(HasArrayFilter("status", "failed") ? "custom-active" : "")" text-translate="true">Failed</a>
         </div>
     </div>
     
@@ -123,8 +123,8 @@
             }
         </button>
         <div class="dropdown-menu" aria-labelledby="TypeOptionsToggle">
-            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("type", "reverse")" class="dropdown-item @(HasArrayFilter("type", "reverse") ? "custom-active" : "")" text-translate="true">Reverse Submarine</a>
-            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("type", "submarine")" class="dropdown-item @(HasArrayFilter("type", "submarine") ? "custom-active" : "")" text-translate="true">Submarine</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("type", "reverse") ?? "")" class="dropdown-item @(HasArrayFilter("type", "reverse") ? "custom-active" : "")" text-translate="true">Reverse Submarine</a>
+            <a asp-action="Swaps" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("type", "submarine") ?? "")" class="dropdown-item @(HasArrayFilter("type", "submarine") ? "custom-active" : "")" text-translate="true">Submarine</a>
         </div>
     </div>
     

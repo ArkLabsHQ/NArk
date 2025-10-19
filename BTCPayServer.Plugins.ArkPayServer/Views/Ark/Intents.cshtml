@@ -14,13 +14,13 @@
     ViewData.SetActivePage(category: "Ark", activePage: "Intents", title: "Ark - Intents");
     var storeId = ScopeProvider.GetCurrentStoreId();
     
-    var stateFilterCount = Model.Search.ContainsFilter("state") ? Model.Search.GetFilterArray("state").Length : 0;
+    var stateFilterCount = Model.Search?.ContainsFilter("state") == true ? Model.Search.GetFilterArray("state").Length : 0;
 }
 
 @functions
 {
     private bool HasArrayFilter(string type, string key = null) =>
-        Model.Search.ContainsFilter(type) && (key is null || Model.Search.GetFilterArray(type).Contains(key));
+        Model.Search?.ContainsFilter(type) == true && (key is null || Model.Search.GetFilterArray(type).Contains(key));
 }
 
 @section PageHeadContent
@@ -72,7 +72,7 @@
 
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Intents" asp-route-storeId="@Model.StoreId" method="get">
     <input asp-for="Count" type="hidden" />
-    <input asp-for="SearchTerm" type="hidden" value="@Model.Search.WithoutSearchText()"/>
+    <input asp-for="SearchTerm" type="hidden" value="@(Model.Search?.WithoutSearchText() ?? "")"/>
     <input asp-for="SearchText" class="form-control" placeholder="Search Intent ID, Batch ID…" />
     
     <div class="dropdown">
@@ -87,12 +87,12 @@
             }
         </button>
         <div class="dropdown-menu" aria-labelledby="StateOptionsToggle">
-            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "waiting-submit")" class="dropdown-item @(HasArrayFilter("state", "waiting-submit") ? "custom-active" : "")" text-translate="true">Waiting to Submit</a>
-            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "waiting-batch")" class="dropdown-item @(HasArrayFilter("state", "waiting-batch") ? "custom-active" : "")" text-translate="true">Waiting for Batch</a>
-            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-in-progress")" class="dropdown-item @(HasArrayFilter("state", "batch-in-progress") ? "custom-active" : "")" text-translate="true">Batch In Progress</a>
-            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-succeeded")" class="dropdown-item @(HasArrayFilter("state", "batch-succeeded") ? "custom-active" : "")" text-translate="true">Batch Succeeded</a>
-            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "batch-failed")" class="dropdown-item @(HasArrayFilter("state", "batch-failed") ? "custom-active" : "")" text-translate="true">Batch Failed</a>
-            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("state", "cancelled")" class="dropdown-item @(HasArrayFilter("state", "cancelled") ? "custom-active" : "")" text-translate="true">Cancelled</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("state", "waiting-submit") ?? "")" class="dropdown-item @(HasArrayFilter("state", "waiting-submit") ? "custom-active" : "")" text-translate="true">Waiting to Submit</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("state", "waiting-batch") ?? "")" class="dropdown-item @(HasArrayFilter("state", "waiting-batch") ? "custom-active" : "")" text-translate="true">Waiting for Batch</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("state", "batch-in-progress") ?? "")" class="dropdown-item @(HasArrayFilter("state", "batch-in-progress") ? "custom-active" : "")" text-translate="true">Batch In Progress</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("state", "batch-succeeded") ?? "")" class="dropdown-item @(HasArrayFilter("state", "batch-succeeded") ? "custom-active" : "")" text-translate="true">Batch Succeeded</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("state", "batch-failed") ?? "")" class="dropdown-item @(HasArrayFilter("state", "batch-failed") ? "custom-active" : "")" text-translate="true">Batch Failed</a>
+            <a asp-action="Intents" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("state", "cancelled") ?? "")" class="dropdown-item @(HasArrayFilter("state", "cancelled") ? "custom-active" : "")" text-translate="true">Cancelled</a>
         </div>
     </div>
     

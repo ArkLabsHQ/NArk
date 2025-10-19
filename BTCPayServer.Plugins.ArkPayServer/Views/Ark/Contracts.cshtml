@@ -24,13 +24,13 @@
     {
     }
     
-    var statusFilterCount = Model.Search.ContainsFilter("status") ? Model.Search.GetFilterArray("status").Length : 0;
+    var statusFilterCount = Model.Search?.ContainsFilter("status") == true ? Model.Search.GetFilterArray("status").Length : 0;
 }
 
 @functions
 {
     private bool HasArrayFilter(string type, string key = null) =>
-        Model.Search.ContainsFilter(type) && (key is null || Model.Search.GetFilterArray(type).Contains(key));
+        Model.Search?.ContainsFilter(type) == true && (key is null || Model.Search.GetFilterArray(type).Contains(key));
 }
 
 @section PageHeadContent
@@ -93,7 +93,7 @@
 
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Contracts" asp-route-storeId="@Model.StoreId" method="get">
     <input asp-for="Count" type="hidden" />
-    <input asp-for="SearchTerm" type="hidden" value="@Model.Search.WithoutSearchText()"/>
+    <input asp-for="SearchTerm" type="hidden" value="@(Model.Search?.WithoutSearchText() ?? "")"/>
     <input asp-for="SearchText" class="form-control" placeholder="Search…" />
     
     <div class="dropdown">
@@ -108,8 +108,8 @@
             }
         </button>
         <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
-            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "active")" class="dropdown-item @(HasArrayFilter("status", "active") ? "custom-active" : "")" text-translate="true">Active</a>
-            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "inactive")" class="dropdown-item @(HasArrayFilter("status", "inactive") ? "custom-active" : "")" text-translate="true">Inactive</a>
+            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "active") ?? "")" class="dropdown-item @(HasArrayFilter("status", "active") ? "custom-active" : "")" text-translate="true">Active</a>
+            <a asp-action="Contracts" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "inactive") ?? "")" class="dropdown-item @(HasArrayFilter("status", "inactive") ? "custom-active" : "")" text-translate="true">Inactive</a>
         </div>
     </div>
     

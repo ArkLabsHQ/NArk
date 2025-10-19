@@ -45,6 +45,7 @@ public class ArkIntentService(
     private Task? _eventStreamTask;
 
     private Timer? _submissionTriggerTimer;
+    private bool _disposed;
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -807,13 +808,35 @@ public class ArkIntentService(
 
     public void Dispose()
     {
-        _serviceCts?.Cancel();
+        if (_disposed)
+            return;
+
+        try
+        {
+            _serviceCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed, ignore
+        }
+        
         _serviceCts?.Dispose();
-        _eventStreamCts?.Cancel();
+        
+        try
+        {
+            _eventStreamCts?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed, ignore
+        }
+        
         _eventStreamCts?.Dispose();
         _submissionTriggerTimer?.Dispose();
         
         _activeIntents.Clear();
         _activeBatchSessions.Clear();
+        
+        _disposed = true;
     }
 }

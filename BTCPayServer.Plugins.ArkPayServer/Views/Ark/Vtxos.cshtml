@@ -14,13 +14,13 @@
     ViewData.SetActivePage(category: "Ark", activePage: "VTXOs", title: "Ark - VTXOs");
     var storeId = ScopeProvider.GetCurrentStoreId();
     
-    var statusFilterCount = Model.Search.ContainsFilter("status") ? Model.Search.GetFilterArray("status").Length : 0;
+    var statusFilterCount = Model.Search?.ContainsFilter("status") == true ? Model.Search.GetFilterArray("status").Length : 0;
 }
 
 @functions
 {
     private bool HasArrayFilter(string type, string key = null) =>
-        Model.Search.ContainsFilter(type) && (key is null || Model.Search.GetFilterArray(type).Contains(key));
+        Model.Search?.ContainsFilter(type) == true && (key is null || Model.Search.GetFilterArray(type).Contains(key));
 }
 
 @section PageHeadContent
@@ -72,7 +72,7 @@
 
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Vtxos" asp-route-storeId="@Model.StoreId" method="get">
     <input asp-for="Count" type="hidden" />
-    <input asp-for="SearchTerm" type="hidden" value="@Model.Search.WithoutSearchText()"/>
+    <input asp-for="SearchTerm" type="hidden" value="@(Model.Search?.WithoutSearchText() ?? "")"/>
     <input asp-for="SearchText" class="form-control" placeholder="Search TXID or Script…" />
     
     <div class="dropdown">
@@ -87,12 +87,12 @@
             }
         </button>
         <div class="dropdown-menu" aria-labelledby="StatusOptionsToggle">
-            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "unspent")" class="dropdown-item @(HasArrayFilter("status", "unspent") ? "custom-active" : "")" text-translate="true">Unspent</a>
-            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "spent")" class="dropdown-item @(HasArrayFilter("status", "spent") ? "custom-active" : "")" text-translate="true">Spent</a>
-            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "recoverable")" class="dropdown-item @(HasArrayFilter("status", "recoverable") ? "custom-active" : "")" text-translate="true">Recoverable</a>
+            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "unspent") ?? "")" class="dropdown-item @(HasArrayFilter("status", "unspent") ? "custom-active" : "")" text-translate="true">Unspent</a>
+            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "spent") ?? "")" class="dropdown-item @(HasArrayFilter("status", "spent") ? "custom-active" : "")" text-translate="true">Spent</a>
+            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "recoverable") ?? "")" class="dropdown-item @(HasArrayFilter("status", "recoverable") ? "custom-active" : "")" text-translate="true">Recoverable</a>
             <div class="dropdown-divider"></div>
-            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "spendable")" class="dropdown-item @(HasArrayFilter("status", "spendable") ? "custom-active" : "")" text-translate="true">Spendable</a>
-            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "non-spendable")" class="dropdown-item @(HasArrayFilter("status", "non-spendable") ? "custom-active" : "")" text-translate="true">Non-Spendable</a>
+            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "spendable") ?? "")" class="dropdown-item @(HasArrayFilter("status", "spendable") ? "custom-active" : "")" text-translate="true">Spendable</a>
+            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@(Model.Search?.Toggle("status", "non-spendable") ?? "")" class="dropdown-item @(HasArrayFilter("status", "non-spendable") ? "custom-active" : "")" text-translate="true">Non-Spendable</a>
         </div>
     </div>
     
