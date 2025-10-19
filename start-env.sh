@@ -232,6 +232,9 @@ $NIGIRI start --ark || {
 }
 
 # Use docker-compose.ark.yml for custom ark configuration
+log "Pulling latest images..."
+docker compose -f docker-compose.ark.yml pull
+
 log "Starting ark stack with docker-compose.ark.yml..."
 docker compose -f docker-compose.ark.yml up -d
 
