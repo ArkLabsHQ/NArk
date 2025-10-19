@@ -57,7 +57,7 @@ public class BoltzSwapService(
 
     public async Task<ReverseSwapResult> CreateReverseSwap(
         CreateInvoiceParams createInvoiceRequest,
-        ECXOnlyPubKey receiver,
+        ECPubKey receiver,
         CancellationToken cancellationToken = default)
     {
         logger.LogInformation("Creating reverse swap with invoice amount {InvoiceAmount} for receiver {Receiver}",
@@ -77,7 +77,7 @@ public class BoltzSwapService(
             From = "BTC",
             To = "ARK",
             InvoiceAmount = createInvoiceRequest.Amount.MilliSatoshi/1000,
-            ClaimPublicKey = receiver.ToCompressedEvenYHex(), // Receiver will claim the VTXO
+            ClaimPublicKey = receiver.ToHex(), // Receiver will claim the VTXO
             PreimageHash = Encoders.Hex.EncodeData(preimageHash),
             AcceptZeroConf = true,
             DescriptionHash = createInvoiceRequest.DescriptionHash?.ToString(),
@@ -120,12 +120,12 @@ public class BoltzSwapService(
         var vhtlcContract = new VHTLCContract(
             server: operatorTerms.SignerKey,
             sender: sender,
-            receiver: receiver,
+            receiver: receiver.ToXOnlyPubKey(),
             preimage: preimage,
             refundLocktime: new LockTime(response.TimeoutBlockHeights.Refund),
-            unilateralClaimDelay: new Sequence((uint) response.TimeoutBlockHeights.UnilateralClaim),
-            unilateralRefundDelay: new Sequence((uint) response.TimeoutBlockHeights.UnilateralRefund),
-            unilateralRefundWithoutReceiverDelay: new Sequence((uint) response.TimeoutBlockHeights
+            unilateralClaimDelay: ArkExtensions.Parse(response.TimeoutBlockHeights.UnilateralClaim),
+            unilateralRefundDelay:ArkExtensions.Parse( response.TimeoutBlockHeights.UnilateralRefund),
+            unilateralRefundWithoutReceiverDelay: ArkExtensions.Parse( response.TimeoutBlockHeights
                 .UnilateralRefundWithoutReceiver)
         );
 
