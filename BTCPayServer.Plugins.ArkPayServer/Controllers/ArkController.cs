@@ -111,6 +111,20 @@ IAuthorizationService authorizationService,
             var config = new ArkadePaymentMethodConfig(walletSettings.WalletId!, walletSettings.IsOwnedByStore);
             store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], config);
 
+            // Enable Lightning by default if not already configured
+            var existingLnConfig = store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(GetLightningPaymentMethod(), paymentMethodHandlerDictionary);
+            if (existingLnConfig == null)
+            {
+                var lnConfig = new LightningPaymentMethodConfig()
+                {
+                    ConnectionString = $"type=arkade;wallet-id={config.WalletId}",
+                };
+                store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[GetLightningPaymentMethod()], lnConfig);
+                var blob = store.GetStoreBlob();
+                blob.SetExcluded(GetLightningPaymentMethod(), false);
+                store.SetStoreBlob(blob);
+            }
+
             await storeRepository.UpdateStore(store);
 
             TempData[WellKnownTempData.SuccessMessage] = "Ark Payment method updated.";
