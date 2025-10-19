@@ -11,30 +11,84 @@
 @inject IScopeProvider ScopeProvider
 
 @{
-    ViewData.SetActivePage(category: "Ark", activePage: "InitialSetup", title: "Ark - Getting Started");
+    Layout = "_LayoutWizard";
+    ViewData.SetActivePage(category: "Ark", activePage: "initialSetup", title: "Ark - Getting Started");
     var storeId = ScopeProvider.GetCurrentStoreId();
+    var hasValidationError = !ViewData.ModelState.IsValid;
+    var hasWalletValue = !string.IsNullOrEmpty(Model.Wallet);
 }
 
-<partial name="_StatusMessage" />
+<header class="text-center">
+    <h1>Setup Your Ark Wallet</h1>
+    <p class="lead text-secondary mt-3">Choose how you want to configure your Ark wallet</p>
+</header>
 
-<form asp-action="InitialSetup" method="post" asp-route-storeId="@storeId">
-    <div class="form-group mb-3">
-        <label asp-for="Wallet" class="form-label"></label>
-        <div class="d-sm-flex">
-            <input asp-for="Wallet" class="form-control" placeholder="npub.."/>
-        </div>
-
-        <span asp-validation-for="Wallet" class="text-danger"></span>
-        <div class="form-text">
-            Configure your BTCPay Ark wallet in various ways:
-            <ul>
-                <li>Enter an nsec private key to use it as a hot wallet.</li>
-                <li>Enter an Ark address to generate a transitory wallet that automatically sweeps to it.</li>
-                <li>Enter an existing wallet id from this BTCPay instance to use its configuration.</li>
-                <li>Leave blank to generate a new hot wallet.</li>
-            </ul>
-        </div>
-
-        <button name="command" type="submit" value="save" class="btn btn-primary me-2" text-translate="true">Save</button>
+<div class="mt-5">
+    <h3 class="my-4">I have a wallet</h3>
+    <div class="list-group">
+        <a href="#" class="list-group-item list-group-item-action" data-bs-toggle="collapse" data-bs-target="#importExisting">
+            <div class="image">
+                <vc:icon symbol="wallet-existing"/>
+            </div>
+            <div class="content">
+                <h4>Use an existing wallet</h4>
+                <p class="mb-0 text-secondary">Import from private key, Ark address, or existing wallet ID</p>
+            </div>
+            <vc:icon symbol="caret-right" />
+        </a>
     </div>
-</form>
+    
+    <div id="importExisting" class="collapse mt-3 @(hasValidationError && hasWalletValue ? "show" : "")">
+        <div class="card">
+            <div class="card-body">
+                <form asp-action="InitialSetup" method="post" asp-route-storeId="@storeId" id="importExistingForm">
+                    <div class="form-group mb-3">
+                        <label asp-for="Wallet" class="form-label">Wallet Configuration</label>
+                        <input asp-for="Wallet" class="form-control" placeholder="nsec... / npub... / wallet-id" id="existingWalletInput" required/>
+                        <span asp-validation-for="Wallet" class="text-danger"></span>
+                        <div class="form-text mt-2">
+                            <strong>Options:</strong>
+                            <ul class="mb-0">
+                                <li><strong>nsec private key:</strong> Use as a hot wallet</li>
+                                <li><strong>Ark address (npub):</strong> Create a transitory wallet that auto-sweeps</li>
+                                <li><strong>Wallet ID:</strong> Use an existing wallet from this BTCPay instance</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <button name="command" type="submit" value="save" class="btn btn-primary">Continue</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="mt-5">
+    <h3 class="my-4">I don't have a wallet</h3>
+    <div class="list-group">
+        <a href="#" class="list-group-item list-group-item-action" data-bs-toggle="collapse" data-bs-target="#createNew">
+            <div class="image">
+                <vc:icon symbol="wallet-new"/>
+            </div>
+            <div class="content">
+                <h4>Create a new wallet</h4>
+                <p class="mb-0 text-secondary">Generate a brand-new hot wallet</p>
+            </div>
+            <vc:icon symbol="caret-right"/>
+        </a>
+    </div>
+    
+    <div id="createNew" class="collapse mt-3 @(hasValidationError && !hasWalletValue ? "show" : "")">
+        <div class="card">
+            <div class="card-body">
+                <form asp-action="InitialSetup" method="post" asp-route-storeId="@storeId">
+                    <input type="hidden" asp-for="Wallet" value="" />
+                    <div class="alert alert-info">
+                        <strong>Info:</strong> A new hot wallet will be generated automatically for you.
+                    </div>
+                    <p>This will create a new Ark wallet that is stored on your BTCPay Server. Make sure to back up your wallet after creation.</p>
+                    <button name="command" type="submit" value="save" class="btn btn-primary">Create Wallet</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
