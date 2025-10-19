@@ -512,6 +512,7 @@ IAuthorizationService authorizationService,
         var search = new SearchString(searchTerm);
         bool includeSpent = false;
         bool includeRecoverable = false;
+        bool? spendableFilter = null; // null = all, true = spendable only, false = non-spendable only
         
         if (search.ContainsFilter("status"))
         {
@@ -524,6 +525,24 @@ IAuthorizationService authorizationService,
             {
                 includeSpent = false;
                 includeRecoverable = false;
+            }
+            
+            // Check for spendable filter
+            var hasSpendable = statusFilters.Contains("spendable");
+            var hasNonSpendable = statusFilters.Contains("non-spendable");
+            
+            if (hasSpendable && hasNonSpendable)
+            {
+                // Both selected = show all (no filter)
+                spendableFilter = null;
+            }
+            else if (hasSpendable)
+            {
+                spendableFilter = true;
+            }
+            else if (hasNonSpendable)
+            {
+                spendableFilter = false;
             }
         }
         else
@@ -543,10 +562,31 @@ IAuthorizationService authorizationService,
             includeRecoverable,
             HttpContext.RequestAborted);
 
+        // Get spendable coins to determine which VTXOs are actually spendable
+        var spendableCoins = await arkadeSpender.GetSpendableCoins([config.WalletId], true, HttpContext.RequestAborted);
+        var spendableOutpoints = spendableCoins
+            .SelectMany(kvp => kvp.Value)
+            .Select(coin => coin.Outpoint)
+            .ToHashSet();
+
+        // Apply spendable filter if specified
+        if (spendableFilter.HasValue)
+        {
+            vtxos = vtxos
+                .Where(vtxo =>
+                {
+                    var outpoint = new OutPoint(uint256.Parse(vtxo.TransactionId), (uint)vtxo.TransactionOutputIndex);
+                    var isSpendable = spendableOutpoints.Contains(outpoint);
+                    return spendableFilter.Value ? isSpendable : !isSpendable;
+                })
+                .ToList();
+        }
+
         var model = new StoreVtxosViewModel
         {
             StoreId = storeId,
             Vtxos = vtxos,
+            SpendableOutpoints = spendableOutpoints,
             Skip = skip,
             Count = count,
             SearchText = searchText,
@@ -1029,10 +1069,30 @@ IAuthorizationService authorizationService,
                 iv.TransactionOutputIndex == vtxo.TransactionOutputIndex))
             .Sum(vtxo => vtxo.Amount);
 
+        // Unspendable: unspent VTXOs that don't pass contract conditions yet (e.g., HTLC timelock not reached)
+        // These are not recoverable, not locked, but also not spendable
+        var allSpendableOutpoints = spendableCoins
+            .SelectMany(kvp => kvp.Value)
+            .Select(coin => coin.Outpoint)
+            .Concat(recoverableOutpoints)
+            .ToHashSet();
+
+        var unspendableBalance = vtxos
+            .Where(vtxo => 
+            {
+                var outpoint = new OutPoint(uint256.Parse(vtxo.TransactionId), (uint)vtxo.TransactionOutputIndex);
+                var isLocked = intentVtxoScripts.Any(iv => 
+                    iv.TransactionId == vtxo.TransactionId && 
+                    iv.TransactionOutputIndex == vtxo.TransactionOutputIndex);
+                return !allSpendableOutpoints.Contains(outpoint) && !isLocked;
+            })
+            .Sum(vtxo => vtxo.Amount);
+
         return new ArkBalancesViewModel
         {
             AvailableBalance = availableBalance,
             RecoverableBalance = recoverableBalance,
+            UnspendableBalance = unspendableBalance,
             LockedBalance = lockedBalance
         };
     }

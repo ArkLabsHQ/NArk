@@ -1,7 +1,7 @@
 @model BTCPayServer.Plugins.ArkPayServer.Models.ArkBalancesViewModel
 
 <div class="row g-3 mb-4">
-    <div class="col-xl-4 col-md-6">
+    <div class="col-xl-3 col-md-6">
         <div class="card stats-card card-hover-primary shadow-sm">
             <div class="card-body">
                 <div class="text-muted text-uppercase fw-bold small">Available Balance</div>
@@ -11,14 +11,14 @@
         </div>
     </div>
 
-    <div class="col-xl-4 col-md-6">
+    <div class="col-xl-3 col-md-6">
         <div class="card stats-card card-hover-warning shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
                         <div class="text-muted text-uppercase fw-bold small">Recoverable Balance</div>
                         <div class="stat-value text-warning">@Model.RecoverableBalance sats</div>
-                        <div class="text-muted small">Can be recovered through an intent</div>
+                        <div class="text-muted small">Can be recovered</div>
                     </div>
                     <div class="icon-circle text-warning">
                         <vc:icon symbol="time" />
@@ -28,7 +28,24 @@
         </div>
     </div>
 
-    <div class="col-xl-4 col-md-6">
+    <div class="col-xl-3 col-md-6">
+        <div class="card stats-card card-hover-secondary shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="text-muted text-uppercase fw-bold small">Unspendable Balance</div>
+                        <div class="stat-value text-secondary">@Model.UnspendableBalance sats</div>
+                        <div class="text-muted small">Waiting for conditions</div>
+                    </div>
+                    <div class="icon-circle text-secondary">
+                        <vc:icon symbol="clock" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
         <div class="card stats-card card-hover-info shadow-sm">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-start">
@@ -77,10 +94,15 @@
             background: linear-gradient(45deg, #f6c23e, #dda20a);
         }
 
+        .card-hover-secondary:hover {
+            background: linear-gradient(45deg, #858796, #60616f);
+        }
+
         .stats-card:hover .text-primary,
         .stats-card:hover .text-success,
         .stats-card:hover .text-info,
         .stats-card:hover .text-warning,
+        .stats-card:hover .text-secondary,
         .stats-card:hover .text-muted,
         .stats-card:hover .card-title {
             color: white !important;

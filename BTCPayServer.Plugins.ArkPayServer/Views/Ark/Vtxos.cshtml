@@ -90,6 +90,9 @@
             <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "unspent")" class="dropdown-item @(HasArrayFilter("status", "unspent") ? "custom-active" : "")" text-translate="true">Unspent</a>
             <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "spent")" class="dropdown-item @(HasArrayFilter("status", "spent") ? "custom-active" : "")" text-translate="true">Spent</a>
             <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "recoverable")" class="dropdown-item @(HasArrayFilter("status", "recoverable") ? "custom-active" : "")" text-translate="true">Recoverable</a>
+            <div class="dropdown-divider"></div>
+            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "spendable")" class="dropdown-item @(HasArrayFilter("status", "spendable") ? "custom-active" : "")" text-translate="true">Spendable</a>
+            <a asp-action="Vtxos" asp-route-storeId="@Model.StoreId" asp-route-count="@Model.Count" asp-route-searchTerm="@Model.Search.Toggle("status", "non-spendable")" class="dropdown-item @(HasArrayFilter("status", "non-spendable") ? "custom-active" : "")" text-translate="true">Non-Spendable</a>
         </div>
     </div>
     
@@ -136,6 +139,7 @@
                     <th text-translate="true" class="text-nowrap">Output</th>
                     <th text-translate="true" class="text-nowrap">Amount</th>
                     <th text-translate="true">Status</th>
+                    <th text-translate="true">Spendable</th>
                 </tr>
             </thead>
             <tbody>
@@ -143,6 +147,8 @@
                 {
                     var outpoint = $"{vtxo.TransactionId}:{vtxo.TransactionOutputIndex}";
                     var link = $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?outpoints={outpoint}";
+                    var vtxoOutpoint = new OutPoint(uint256.Parse(vtxo.TransactionId), (uint)vtxo.TransactionOutputIndex);
+                    var isSpendable = Model.SpendableOutpoints.Contains(vtxoOutpoint);
 
                     <tr id="vtxo_@outpoint.GetHashCode()">
                         <td class="align-middle date-col">@vtxo.SeenAt.ToBrowserDate()</td>
@@ -163,6 +169,20 @@
                             else
                             {
                                 <span class="badge text-bg-success">Unspent</span>
+                            }
+                        </td>
+                        <td class="align-middle">
+                            @if (vtxo.SpentByTransactionId != null)
+                            {
+                                <span class="text-muted">-</span>
+                            }
+                            else if (isSpendable)
+                            {
+                                <span class="badge text-bg-success">Yes</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-secondary">No</span>
                             }
                         </td>
                     </tr>
