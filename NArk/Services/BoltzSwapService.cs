@@ -143,8 +143,8 @@ public class BoltzSwapService(
                 $"Address mismatch: computed {claimAddress}, Boltz expects {response.LockupAddress}");
         }
 
-        logger.LogInformation("Successfully created reverse swap with ID: {SwapId}, lockup address: {LockupAddress}",
-            response.Id, response.LockupAddress);
+        logger.LogInformation("Successfully created reverse swap with ID: {SwapId}, lockup address: {LockupAddress}, pr: {Pr}",
+            response.Id, response.LockupAddress, response.Invoice);
 
         return new ReverseSwapResult(vhtlcContract, response, preimageHash);
     }

@@ -37,10 +37,7 @@ public static class ArkExtensions
             ForfeitAddress: BitcoinAddress.Create(response.ForfeitAddress, network),
             ForfeitPubKey: response.ForfeitPubkey.ToECXOnlyPubKey(),
             CheckpointTapscript: new CheckpointTapscript(Script.FromHex(response.CheckpointTapscript)));
-
     }
-    
-    
 
     class CheckpointTapscript( Script serverProvidedScript)
         : UnilateralPathArkTapScript(Sequence.Final, new NofNMultisigTapScript([]))

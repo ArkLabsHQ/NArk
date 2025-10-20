@@ -28,6 +28,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NArk;
+using NArk.Boltz.Client;
 using NArk.Models;
 using NArk.Services.Abstractions;
 using NBitcoin;
@@ -39,7 +40,8 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 [Route("plugins/ark")]
 [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ArkController(
-    
+    BoltzClient boltzClient,
+    ArkConfiguration arkConfiguration,
 IAuthorizationService authorizationService,
     ArkPayoutHandler arkPayoutHandler,
     ArkPluginDbContextFactory dbContextFactory,
@@ -179,6 +181,34 @@ IAuthorizationService authorizationService,
             }
         }
         
+        // Check Ark Operator connection
+        string? arkOperatorUrl = arkConfiguration.ArkUri;
+        bool arkOperatorConnected = false;
+        string? arkOperatorError = null;
+        try
+        {
+            var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+            arkOperatorConnected = terms != null;
+        }
+        catch (Exception ex)
+        {
+            arkOperatorError = ex.Message;
+        }
+        
+        // Check Boltz connection
+        string? boltzUrl = arkConfiguration.BoltzUri;
+        bool boltzConnected = false;
+        string? boltzError = null;
+        try
+        {
+            var pairs = await boltzClient.GetVersionAsync();
+            boltzConnected = pairs != null;
+        }
+        catch (Exception ex)
+        {
+            boltzError = ex.Message;
+        }
+        
         return View(new StoreOverviewViewModel 
         { 
             IsDestinationSweepEnabled = destination is not null, 
@@ -188,7 +218,13 @@ IAuthorizationService authorizationService,
             Destination = destination,
             SignerAvailable = signerAvailable,
             Wallet = walletInfo?.Wallet,
-            DefaultAddress = defaultAddress
+            DefaultAddress = defaultAddress,
+            ArkOperatorUrl = arkOperatorUrl,
+            ArkOperatorConnected = arkOperatorConnected,
+            ArkOperatorError = arkOperatorError,
+            BoltzUrl = boltzUrl,
+            BoltzConnected = boltzConnected,
+            BoltzError = boltzError
         });
     }
 

@@ -10,4 +10,13 @@ public class StoreOverviewViewModel
     public bool SignerAvailable { get; set; }
     public string? Wallet { get; set; }
     public string? DefaultAddress { get; set; }
+    
+    // Service connection status
+    public string? ArkOperatorUrl { get; set; }
+    public bool ArkOperatorConnected { get; set; }
+    public string? ArkOperatorError { get; set; }
+    
+    public string? BoltzUrl { get; set; }
+    public bool BoltzConnected { get; set; }
+    public string? BoltzError { get; set; }
 }
