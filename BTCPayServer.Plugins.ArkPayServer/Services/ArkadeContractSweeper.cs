@@ -9,6 +9,12 @@ namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
 public class ArkadeContractSweeper : IHostedService
 {
+    /// <summary>
+    /// When true, each coin will be swept in its own dedicated transaction.
+    /// When false, all coins for a wallet will be swept together in a single transaction.
+    /// </summary>
+    private const bool SweepEachCoinIndividually = true;
+
     private readonly ArkadeSpender _arkadeSpender;
     private readonly ArkWalletService _arkWalletService;
     private readonly EventAggregator _eventAggregator;
@@ -18,7 +24,7 @@ public class ArkadeContractSweeper : IHostedService
     private CompositeDisposable _leases = new();
     private CancellationTokenSource _cts = new();
     private TaskCompletionSource? _tcsWaitForNextPoll;
-    
+
     public ArkadeContractSweeper(
         ArkadeSpender arkadeSpender,
         ArkWalletService arkWalletService,
@@ -73,7 +79,28 @@ public class ArkadeContractSweeper : IHostedService
                             _logger.LogInformation($"Skipping sweep for wallet {wallet.Id}: no coins to sweep");
                             continue;
                         }
-                        await _arkadeSpender.Spend(wallet, group.Value, [], _cts.Token);
+                        
+                        if (SweepEachCoinIndividually)
+                        {
+                            // Sweep each coin in its own dedicated transaction
+                            foreach (var coin in group.Value)
+                            {
+                                try
+                                {
+                                    _logger.LogInformation($"Sweeping individual coin for wallet {wallet.Id}: {coin}");
+                                    await _arkadeSpender.Spend(wallet, [coin], [], _cts.Token);
+                                }
+                                catch (Exception coinEx)
+                                {
+                                    _logger.LogError(coinEx, $"Error while sweeping individual coin {coin.Outpoint} for wallet {wallet.Id}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Sweep all coins together in a single transaction
+                            await _arkadeSpender.Spend(wallet, group.Value, [], _cts.Token);
+                        }
                     }
                     catch (Exception ex)
                     {

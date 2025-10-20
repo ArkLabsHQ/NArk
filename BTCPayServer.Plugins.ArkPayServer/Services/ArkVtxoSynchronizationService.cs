@@ -234,7 +234,7 @@ public class ArkVtxoSynchronizationService(
         existing.TransactionId = vtxo.Outpoint.Txid;
         existing.TransactionOutputIndex = (int)vtxo.Outpoint.Vout;
         existing.Amount = (long)vtxo.Amount;
-        existing.Recoverable = vtxo.IsSwept;
+        existing.Recoverable = vtxo.IsSwept || DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt) < DateTimeOffset.UtcNow;
         existing.SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt);
         existing.ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt);
         existing.SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy) ? null : vtxo.SpentBy;

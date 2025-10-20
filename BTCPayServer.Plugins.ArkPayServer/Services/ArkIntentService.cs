@@ -179,7 +179,8 @@ public class ArkIntentService(
             Amount = coin.TxOut.Value.Satoshi,
             Script = coin.TxOut.ScriptPubKey.ToHex(),
             SeenAt = DateTimeOffset.UtcNow,
-            Recoverable = false // Assuming these are regular VTXOs, not notes
+            
+            Recoverable = coin.Recoverable
         }).ToList();
         
         foreach (var entityEntry in vtxoEntities.Select(dbContext.Entry))
