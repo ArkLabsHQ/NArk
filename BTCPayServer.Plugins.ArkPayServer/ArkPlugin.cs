@@ -188,12 +188,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
                 arkUri = config.ArkUri;
             }
         }
-        // {
-        //     "ark":"https://bitcoin-beta.arkade.sh",
-        //     "boltz":"https://boltz.arkade.sh/"
-        // }
 
-        return ("https://bitcoin-beta.arkade.sh", "https://boltz.arkade.sh/");
 
         return (arkUri, boltzUri);
     }
