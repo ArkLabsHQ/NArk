@@ -196,7 +196,7 @@
                                     <span class="badge text-bg-danger">Failed</span>
                                     break;
                             }
-                            @if (arkContract is VHTLCContract htlcContract && swap.Status == ArkSwapStatus.Pending)
+                            @if (arkContract is VHTLCContract htlcContract && swap.Status != ArkSwapStatus.Settled && swap.Status != ArkSwapStatus.Unknown)
                             {
                                 <div class="htlc-countdown mt-1" data-locktime="@htlcContract.RefundLocktime.Value" data-is-timelock="@htlcContract.RefundLocktime.IsTimeLock.ToString().ToLower()">
                                     <small>Refund: <span class="countdown-value">calculating...</span></small>

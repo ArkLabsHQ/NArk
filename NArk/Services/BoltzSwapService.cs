@@ -41,9 +41,9 @@ public class BoltzSwapService(
             receiver: receiver,
             hash: hash,
             refundLocktime: new LockTime(response.TimeoutBlockHeights.Refund),
-            unilateralClaimDelay: new Sequence((uint) response.TimeoutBlockHeights.UnilateralClaim),
-            unilateralRefundDelay: new Sequence((uint) response.TimeoutBlockHeights.UnilateralRefund),
-            unilateralRefundWithoutReceiverDelay: new Sequence((uint) response.TimeoutBlockHeights
+            unilateralClaimDelay: ArkExtensions.Parse( response.TimeoutBlockHeights.UnilateralClaim),
+            unilateralRefundDelay: ArkExtensions.Parse(response.TimeoutBlockHeights.UnilateralRefund),
+            unilateralRefundWithoutReceiverDelay: ArkExtensions.Parse(response.TimeoutBlockHeights
                 .UnilateralRefundWithoutReceiver)
         );
 
