@@ -340,6 +340,12 @@ public class BoltzService(
 
         await using var dbContext = dbContextFactory.CreateContext();
         
+        var swap = await dbContext.Swaps.FirstOrDefaultAsync(s => s.Invoice == paymentRequest.ToString(), cancellationToken);
+        if (swap != null)
+        {
+            return swap;
+        }
+        
         // Get the wallet from the database to extract the receiver key
         // var wallet =
         //     await dbContext.Wallets
