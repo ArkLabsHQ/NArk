@@ -38,7 +38,6 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     
     internal static readonly PayoutMethodId ArkadePayoutMethodId = Create();
 
-
     private static PayoutMethodId Create()
     {
         //use reflection to access ctor of PayoutMethodId and create it
@@ -189,6 +188,12 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
                 arkUri = config.ArkUri;
             }
         }
+        // {
+        //     "ark":"https://bitcoin-beta.arkade.sh",
+        //     "boltz":"https://boltz.arkade.sh/"
+        // }
+
+        return ("https://bitcoin-beta.arkade.sh", "https://boltz.arkade.sh/");
 
         return (arkUri, boltzUri);
     }
@@ -207,9 +212,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     private static string? GetBoltzServiceUri(ChainName networkType)
     {
         if (networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName)
-            return "https://mutinynet.boltz.exchange/";
-        if (networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName)
-            return "https://signet.boltz.exchange/";
+            return "https://api.boltz.mutinynet.arkade.sh/";
         if (networkType == ChainName.Regtest)
             return "http://localhost:9001/";
         return null;
