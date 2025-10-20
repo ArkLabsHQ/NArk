@@ -331,25 +331,28 @@ public class BoltzService(
     }
     public async Task<ArkSwap> CreateSubmarineSwap(string walletId, BOLT11PaymentRequest paymentRequest, CancellationToken cancellationToken )
     {
-        var signer = await walletService.CanHandle(walletId, cancellationToken);
-        if (!signer)
+        if (!await walletService.CanHandle(walletId, cancellationToken))
         {
             throw new InvalidOperationException("No signer found for wallet");
         }
+        
+        var signer = await walletService.CreateSigner(walletId, cancellationToken);
 
         await using var dbContext = dbContextFactory.CreateContext();
         
         // Get the wallet from the database to extract the receiver key
-        var wallet =
-            await dbContext.Wallets
-                .FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken)
-                    ?? throw new InvalidOperationException($"Wallet with ID {walletId} not found");
+        // var wallet =
+        //     await dbContext.Wallets
+        //         .FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken)
+        //             ?? throw new InvalidOperationException($"Wallet with ID {walletId} not found");
 
+        
+        
         SubmarineSwapResult? swapResult = null;
         ArkWalletContract? arkWalletContract = null;
         var contract = await walletService.DeriveNewContract(walletId, async wallet =>
         {
-            var sender = wallet.PublicKey;
+            var sender = await signer.GetPublicKey(cancellationToken);
 
             // Create reverse swap with just the receiver key - sender key comes from Boltz response
             swapResult = await boltzSwapService.CreateSubmarineSwap(

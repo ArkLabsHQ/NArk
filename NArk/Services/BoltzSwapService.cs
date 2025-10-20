@@ -19,7 +19,7 @@ public class BoltzSwapService(
     IOperatorTermsService operatorTermsService,
     ILogger<BoltzSwapService> logger)
 {
-    public async Task<SubmarineSwapResult> CreateSubmarineSwap(BOLT11PaymentRequest invoice, ECXOnlyPubKey sender,
+    public async Task<SubmarineSwapResult> CreateSubmarineSwap(BOLT11PaymentRequest invoice, ECPubKey sender,
         CancellationToken cancellationToken = default)
     {
         var operatorTerms = await operatorTermsService.GetOperatorTerms(cancellationToken);
@@ -27,7 +27,7 @@ public class BoltzSwapService(
         var response = await boltzClient.CreateSubmarineSwapAsync(new SubmarineRequest()
         {
             Invoice = invoice.ToString(),
-            RefundPublicKey = sender.ToCompressedEvenYHex(),
+            RefundPublicKey = sender.ToHex(),
             From = "ARK",
             To = "BTC",
         });
@@ -37,7 +37,7 @@ public class BoltzSwapService(
 
         var vhtlcContract = new VHTLCContract(
             server: operatorTerms.SignerKey,
-            sender: sender,
+            sender: sender.ToXOnlyPubKey(),
             receiver: receiver,
             hash: hash,
             refundLocktime: new LockTime(response.TimeoutBlockHeights.Refund),

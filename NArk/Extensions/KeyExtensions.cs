@@ -64,11 +64,6 @@ public static class KeyExtensions
         return ECXOnlyPubKey.Create(xOnly);
     }
 
-    public static string ToCompressedEvenYHex(this ECXOnlyPubKey xOnlyPubKey)
-    {
-        return "02" + xOnlyPubKey.ToHex();
-    }
-
     public static string ToHex(this ECXOnlyPubKey value)
     {
         return Convert.ToHexString(value.ToBytes()).ToLowerInvariant();
