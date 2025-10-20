@@ -5,6 +5,7 @@
 @using NArk.Services.Abstractions
 @using NBitcoin
 @using NArk.Contracts
+@using Microsoft.AspNetCore.Mvc.ViewFeatures
 @model BTCPayServer.Plugins.ArkPayServer.Models.StoreContractsViewModel
 @inject IScopeProvider ScopeProvider
 @inject IOperatorTermsService Terms
@@ -121,22 +122,7 @@
     }
 </form>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const clearBtn = document.getElementById('clearAllFiltersBtn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', function () {
-                const form = clearBtn.closest('form');
-                if (!form) return;
-                const searchText = form.querySelector('[name="SearchText"]');
-                if (searchText) searchText.value = '';
-                const searchTerm = form.querySelector('[name="SearchTerm"]');
-                if (searchTerm) searchTerm.value = '';
-                form.submit();
-            });
-        }
-    });
-</script>
+<partial name="_ClearFiltersScript" />
 
 @if (Model.Contracts.Any())
 {
@@ -173,6 +159,8 @@
 
                     BTCPayServer.Plugins.ArkPayServer.Data.Entities.VTXO[]? vtxos = [];
                     var hasVtxos = Model.ContractVtxos.TryGetValue(contract.Script, out vtxos) && vtxos.Any();
+                    var hasUnspentVtxos = hasVtxos && vtxos.Any(v => v.SpentByTransactionId == null);
+                    var hasRecoverableVtxos = hasVtxos && vtxos.Any(v => v.Recoverable || v.SpentByTransactionId == null);
                     
                     ArkSwap[]? swaps = [];
                     var hasSwaps = Model.ContractSwaps.TryGetValue(contract.Script, out swaps) && swaps.Any();
@@ -184,7 +172,7 @@
                         </td>
                         <td class="align-middle">
                             <vc:truncate-center text="@contract.Type" classes="truncate-center-id"/>
-                            @if (arkContract is VHTLCContract htlcContract)
+                            @if (arkContract is VHTLCContract htlcContract && hasRecoverableVtxos)
                             {
                                 <div class="htlc-countdown mt-1" data-locktime="@htlcContract.RefundLocktime.Value" data-is-timelock="@htlcContract.RefundLocktime.IsTimeLock.ToString().ToLower()">
                                     <small>Refund: <span class="countdown-value">calculating...</span></small>
@@ -201,13 +189,17 @@
                             }
                             else
                             {
-                                <span class="badge text-bg-danger">Inactive</span>
+                                <span class="badge text-bg-secondary">Inactive</span>
                             }
                         </td>
                         <td class="align-middle">
-                            @if (hasVtxos)
+                            @if (hasUnspentVtxos)
                             {
-                                <span class="badge text-bg-info">@vtxos.Length</span>
+                                <span class="badge text-bg-success">@vtxos.Length</span>
+                            }
+                            else if (hasVtxos)
+                            {
+                                <span class="badge text-bg-secondary">@vtxos.Length</span>
                             }
                             else
                             {
@@ -229,7 +221,7 @@
                                 @if (hasVtxos || hasSwaps)
                                 {
                                     <form asp-action="SyncContract" method="post" asp-route-storeId="@storeId" asp-route-script="@contract.Script" class="d-inline">
-                                        <button type="submit" class="btn btn-sm btn-outline-secondary" title="Sync Contract VTXOs">
+                                        <button type="submit" class="btn btn-link p-0 text-secondary" title="Refresh contract data from the Ark operator" data-bs-toggle="tooltip">
                                             <vc:icon symbol="actions-refresh" />
                                         </button>
                                     </form>
@@ -249,100 +241,15 @@
                                 @if (hasVtxos)
                                 {
                                     <h6 class="mb-3">VTXOs</h6>
-                                    <div class="table-responsive mb-4">
-                                        <table class="table table-sm mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th text-translate="true">TXID</th>
-                                                    <th text-translate="true">Output</th>
-                                                    <th text-translate="true">Amount</th>
-                                                    <th text-translate="true">Seen</th>
-                                                    <th text-translate="true">Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @foreach (var vtxo in vtxos)
-                                                {
-                                                    <tr>
-                                                        <td>
-                                                            <vc:truncate-center text="@vtxo.TransactionId" classes="truncate-center-id"/>
-                                                        </td>
-                                                        <td>@vtxo.TransactionOutputIndex</td>
-                                                        <td>@Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC) BTC</td>
-                                                        <td>@vtxo.SeenAt.ToTimeAgo()</td>
-                                                        <td>
-                                                            @if (vtxo.SpentByTransactionId != null)
-                                                            {
-                                                                <span class="badge text-bg-secondary">Spent</span>
-                                                            }
-                                                            else if (vtxo.Recoverable)
-                                                            {
-                                                                <span class="badge text-bg-warning">Recoverable</span>
-                                                            }
-                                                            else
-                                                            {
-                                                                <span class="badge text-bg-success">Unspent</span>
-                                                            }
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
+                                    <div class="mb-4">
+                                        <partial name="_VtxoTable" model="vtxos" view-data='new ViewDataDictionary(ViewData) { { "ShowLinks", true }, { "UseTimeAgo", true }, { "TimeColumnLabel", "Seen" } }' />
                                     </div>
                                 }
                                 
                                 @if (hasSwaps)
                                 {
                                     <h6 class="mb-3">Swaps</h6>
-                                    <div class="table-responsive">
-                                        <table class="table table-sm mb-0">
-                                            <thead>
-                                                <tr>
-                                                    <th text-translate="true">Swap ID</th>
-                                                    <th text-translate="true">Type</th>
-                                                    <th text-translate="true">Amount</th>
-                                                    <th text-translate="true">Created</th>
-                                                    <th text-translate="true">Status</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @foreach (var swap in swaps)
-                                                {
-                                                    <tr>
-                                                        <td>
-                                                            <vc:truncate-center text="@swap.SwapId" classes="truncate-center-id"/>
-                                                        </td>
-                                                        <td>
-                                                            @if (swap.SwapType == ArkSwapType.ReverseSubmarine)
-                                                            {
-                                                                <span class="badge text-bg-primary">Reverse</span>
-                                                            }
-                                                            else
-                                                            {
-                                                                <span class="badge text-bg-info">Submarine</span>
-                                                            }
-                                                        </td>
-                                                        <td>@Money.Satoshis(swap.ExpectedAmount).ToDecimal(MoneyUnit.BTC) BTC</td>
-                                                        <td>@swap.CreatedAt.ToTimeAgo()</td>
-                                                        <td>
-                                                            @switch (swap.Status)
-                                                            {
-                                                                case ArkSwapStatus.Pending:
-                                                                    <span class="badge text-bg-warning">Pending</span>
-                                                                    break;
-                                                                case ArkSwapStatus.Settled:
-                                                                    <span class="badge text-bg-success">Settled</span>
-                                                                    break;
-                                                                case ArkSwapStatus.Failed:
-                                                                    <span class="badge text-bg-danger">Failed</span>
-                                                                    break;
-                                                            }
-                                                        </td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <partial name="_SwapTable" model="swaps" view-data='new ViewDataDictionary(ViewData) { { "UseTimeAgo", true }, { "TimeColumnLabel", "Created" } }' />
                                 }
                             </td>
                         </tr>
@@ -361,83 +268,4 @@ else
     </p>
 }
 
-<script>
-(function() {
-    let currentBlockHeight = null;
-    
-    // Fetch current blockchain info
-    async function fetchBlockchainInfo() {
-        try {
-            const response = await fetch('/plugins/ark/blockchain-info');
-            if (response.ok) {
-                const data = await response.json();
-                currentBlockHeight = data.height;
-            }
-        } catch (e) {
-            console.error('Failed to fetch blockchain info:', e);
-        }
-    }
-    
-    function updateCountdowns() {
-        const now = Math.floor(Date.now() / 1000);
-        document.querySelectorAll('.htlc-countdown').forEach(el => {
-            const locktime = parseInt(el.dataset.locktime);
-            const isTimelock = el.dataset.isTimelock === 'true';
-            const valueSpan = el.querySelector('.countdown-value');
-            
-            if (!valueSpan) return;
-            
-            if (isTimelock) {
-                // Absolute timestamp
-                const diff = locktime - now;
-                
-                if (diff <= 0) {
-                    valueSpan.textContent = 'Refund available';
-                    el.classList.add('expired');
-                    el.classList.remove('active');
-                } else {
-                    const days = Math.floor(diff / 86400);
-                    const hours = Math.floor((diff % 86400) / 3600);
-                    const minutes = Math.floor((diff % 3600) / 60);
-                    const seconds = diff % 60;
-                    
-                    let timeStr = '';
-                    if (days > 0) timeStr += days + 'd ';
-                    if (hours > 0 || days > 0) timeStr += hours + 'h ';
-                    if (minutes > 0 || hours > 0 || days > 0) timeStr += minutes + 'm ';
-                    timeStr += seconds + 's';
-                    
-                    valueSpan.textContent = 'in ' + timeStr;
-                    el.classList.add('active');
-                    el.classList.remove('expired');
-                }
-            } else {
-                // Block height
-                if (currentBlockHeight !== null) {
-                    const blocksRemaining = locktime - currentBlockHeight;
-                    if (blocksRemaining <= 0) {
-                        valueSpan.textContent = 'Refund available';
-                        el.classList.add('expired');
-                        el.classList.remove('active');
-                    } else {
-                        valueSpan.textContent = 'in ~' + blocksRemaining + ' blocks (current: ' + currentBlockHeight + ')';
-                        el.classList.add('active');
-                        el.classList.remove('expired');
-                    }
-                } else {
-                    valueSpan.textContent = 'at block ' + locktime;
-                    el.classList.add('active');
-                }
-            }
-        });
-    }
-    
-    // Fetch blockchain info initially and every 30 seconds
-    fetchBlockchainInfo();
-    setInterval(fetchBlockchainInfo, 30000);
-    
-    // Update countdowns immediately and then every second
-    updateCountdowns();
-    setInterval(updateCountdowns, 1000);
-})();
-</script>
+<partial name="_HtlcCountdownScript" />

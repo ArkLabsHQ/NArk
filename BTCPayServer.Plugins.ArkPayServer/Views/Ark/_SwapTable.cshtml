@@ -1,0 +1,66 @@
+@using BTCPayServer.Abstractions.Extensions
+@using BTCPayServer.Plugins.ArkPayServer.Data.Entities
+@using NBitcoin
+@model IEnumerable<ArkSwap>
+
+@if (Model.Any())
+{
+    <div class="table-responsive">
+        <table class="table table-sm mb-0">
+            <thead>
+                <tr>
+                    <th text-translate="true">Swap ID</th>
+                    <th text-translate="true">Type</th>
+                    <th text-translate="true">Amount</th>
+                    <th text-translate="true">@(ViewData["TimeColumnLabel"] ?? "Created")</th>
+                    <th text-translate="true">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var swap in Model)
+                {
+                    <tr>
+                        <td>
+                            <vc:truncate-center text="@swap.SwapId" classes="truncate-center-id"/>
+                        </td>
+                        <td>
+                            @if (swap.SwapType == ArkSwapType.ReverseSubmarine)
+                            {
+                                <span class="badge text-bg-primary">Reverse</span>
+                            }
+                            else
+                            {
+                                <span class="badge text-bg-info">Submarine</span>
+                            }
+                        </td>
+                        <td>@Money.Satoshis(swap.ExpectedAmount).ToDecimal(MoneyUnit.BTC) BTC</td>
+                        <td>
+                            @if (ViewData["UseTimeAgo"] as bool? ?? false)
+                            {
+                                @swap.CreatedAt.ToTimeAgo()
+                            }
+                            else
+                            {
+                                @swap.CreatedAt.ToBrowserDate()
+                            }
+                        </td>
+                        <td>
+                            @switch (swap.Status)
+                            {
+                                case ArkSwapStatus.Pending:
+                                    <span class="badge text-bg-warning">Pending</span>
+                                    break;
+                                case ArkSwapStatus.Settled:
+                                    <span class="badge text-bg-success">Settled</span>
+                                    break;
+                                case ArkSwapStatus.Failed:
+                                    <span class="badge text-bg-danger">Failed</span>
+                                    break;
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

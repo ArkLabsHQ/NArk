@@ -5,6 +5,7 @@
 @using BTCPayServer.Plugins.ArkPayServer.Data.Entities
 @using NArk.Services.Abstractions
 @using NBitcoin
+@using Microsoft.AspNetCore.Mvc.ViewFeatures
 @model BTCPayServer.Plugins.ArkPayServer.Models.StoreIntentsViewModel
 @inject IScopeProvider ScopeProvider
 @inject IOperatorTermsService Terms
@@ -104,22 +105,7 @@
     }
 </form>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        const clearBtn = document.getElementById('clearAllFiltersBtn');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', function () {
-                const form = clearBtn.closest('form');
-                if (!form) return;
-                const searchText = form.querySelector('[name="SearchText"]');
-                if (searchText) searchText.value = '';
-                const searchTerm = form.querySelector('[name="SearchTerm"]');
-                if (searchTerm) searchTerm.value = '';
-                form.submit();
-            });
-        }
-    });
-</script>
+<partial name="_ClearFiltersScript" />
 
 @if (Model.Intents.Any())
 {
@@ -233,50 +219,10 @@
                         <tr id="@detailsId" class="intent-details-row collapse">
                             <td colspan="@colspanCount" class="border-top-0">
                                 <h6 class="mb-3">VTXOs</h6>
-                                <div class="table-responsive">
-                                    <table class="table table-sm mb-0">
-                                        <thead>
-                                            <tr>
-                                                <th text-translate="true">TXID</th>
-                                                <th text-translate="true">Output</th>
-                                                <th text-translate="true">Amount</th>
-                                                <th text-translate="true">Linked</th>
-                                                <th text-translate="true">Status</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var intentVtxo in vtxos)
-                                            {
-                                                var vtxo = intentVtxo.Vtxo;
-                                                var outpoint = $"{vtxo.TransactionId}:{vtxo.TransactionOutputIndex}";
-                                                var link = $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?outpoints={outpoint}";
-                                                
-                                                <tr>
-                                                    <td>
-                                                        <vc:truncate-center link="@link" text="@vtxo.TransactionId" classes="truncate-center-id"/>
-                                                    </td>
-                                                    <td>@vtxo.TransactionOutputIndex</td>
-                                                    <td>@Money.Satoshis(vtxo.Amount).ToDecimal(MoneyUnit.BTC) BTC</td>
-                                                    <td>@intentVtxo.LinkedAt.ToTimeAgo()</td>
-                                                    <td>
-                                                        @if (vtxo.SpentByTransactionId != null)
-                                                        {
-                                                            <span class="badge text-bg-secondary">Spent</span>
-                                                        }
-                                                        else if (vtxo.Recoverable)
-                                                        {
-                                                            <span class="badge text-bg-warning">Recoverable</span>
-                                                        }
-                                                        else
-                                                        {
-                                                            <span class="badge text-bg-success">Unspent</span>
-                                                        }
-                                                    </td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
+                                @{
+                                    var vtxoList = vtxos.Select(iv => iv.Vtxo).ToList();
+                                }
+                                <partial name="_VtxoTable" model="vtxoList" view-data='new ViewDataDictionary(ViewData) { { "ShowLinks", true }, { "UseTimeAgo", true }, { "TimeColumnLabel", "Linked" } }' />
                             </td>
                         </tr>
                     }
