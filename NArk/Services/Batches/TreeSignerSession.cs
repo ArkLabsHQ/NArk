@@ -37,7 +37,7 @@ public class TreeSignerSession
         var myPubKey = await _signer.GetPublicKey(cancellationToken);
         foreach (var g in _graph)
         {
-            var txid = g.Root.GetGlobalTransaction().GetHash();
+            var tx = g.Root.GetGlobalTransaction();
             
             // Extract cosigner keys for this transaction
             var cosignerKeys = g.Root.Inputs[0].GetArkFieldsCosigners()
@@ -52,7 +52,6 @@ public class TreeSignerSession
 
             // Get prevout information and calculate sighash for this transaction
             var (prevoutAmount, prevoutScript) = GetPrevOutput(g, _graph);
-            var tx = g.Root.GetGlobalTransaction();
             var execData = new TaprootExecutionData(0) { SigHash = TaprootSigHash.Default };
             var prevoutArray = new[] { new TxOut(Money.Satoshis(prevoutAmount), prevoutScript) };
             var sighash = tx.GetSignatureHashTaproot(prevoutArray, execData);
@@ -60,7 +59,17 @@ public class TreeSignerSession
             // Create MUSIG context with the actual sighash that will be signed
             var musigContext = new MusigContext(cosignerKeys, sighash.ToBytes(), myPubKey);
             
-            _musigContexts[txid] = musigContext;
+            if (_tapsciptMerkleRoot is not null)
+            {
+                using var sha = new NBitcoin.Secp256k1.SHA256();
+                sha.InitializeTagged("TapTweak");
+                sha.Write(musigContext.AggregatePubKey.ToXOnlyPubKey().ToBytes());
+                sha.Write(_tapsciptMerkleRoot.ToBytes());
+                var taprootHash = sha.GetHash();
+                musigContext.Tweak(taprootHash);
+            }
+            
+            _musigContexts[tx.GetHash()] = musigContext;
         }
     }
     
