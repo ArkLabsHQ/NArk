@@ -565,11 +565,10 @@ public class ArkWalletService(
         {
             // Convert outpoints to a format we can query
             var outpointPairs = vtxoOutpoints
-                .Select(op => new { TxId = op.Hash.ToString(), Vout = (int)op.N })
-                .ToList();
+                .Select(op => $"{op.Hash}{op.N}")
+                .ToHashSet();
             
-            vtxosQuery = vtxosQuery.Where(vtxo => 
-                outpointPairs.Any(op => op.TxId == vtxo.TransactionId && op.Vout == vtxo.TransactionOutputIndex));
+            vtxosQuery = vtxosQuery.Where(vtxo => outpointPairs.Contains(vtxo.TransactionId + vtxo.TransactionOutputIndex));
         }
         
         var vtxos = await vtxosQuery

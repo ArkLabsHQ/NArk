@@ -90,14 +90,14 @@ public static class TreeValidator
     /// </summary>
     public static void ValidateVtxoTxGraph(
         TxTree graph,
-        Transaction roundTransaction,
+        PSBT roundTransaction,
         uint256 sweepTapTreeRoot)
     {
         if (graph.Root == null)
             throw ValidationErrors.EmptyTree;
 
         var rootInput = graph.Root.Inputs[0];
-        var commitmentTxid = roundTransaction.GetHash();
+        var commitmentTxid = roundTransaction.GetGlobalTransaction().GetHash();
 
         if (rootInput.PrevOut.Hash != commitmentTxid)
         {

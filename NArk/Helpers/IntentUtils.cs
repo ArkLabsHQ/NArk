@@ -93,7 +93,7 @@ public class IntentUtils
     }
     
     
-    public static async Task<(PSBT register, PSBT delete, string registerMessage, string deleteMessage)> CreateIntent(Network network,ECXOnlyPubKey[] cosigners, DateTimeOffset validAt, DateTimeOffset expireAt, SpendableArkCoinWithSigner[] ins,
+    public static async Task<(PSBT register, PSBT delete, string registerMessage, string deleteMessage)> CreateIntent(Network network,ECPubKey[] cosigners, DateTimeOffset validAt, DateTimeOffset expireAt, SpendableArkCoinWithSigner[] ins,
         IntentTxOut[]? outs = null, CancellationToken cancellationToken = default)
     {
         var msg = new RegisterIntentMessage

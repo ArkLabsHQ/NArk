@@ -25,6 +25,7 @@ public class ArkIntentService(
     ArkPluginDbContextFactory dbContextFactory,
     ArkService.ArkServiceClient arkServiceClient,
     ArkadeWalletSignerProvider signerProvider,
+    ArkWalletService arkWalletService,
     CachedOperatorTermsService operatorTermsService,
     ArkTransactionBuilder arkTransactionBuilder,
     ArkadeSpender arkadeSpender,
@@ -51,10 +52,11 @@ public class ArkIntentService(
         
         _serviceCts = new CancellationTokenSource();
         
-        // Start automatic submission task
-        _submissionTriggerTimer = new Timer(_ => TriggerSubmissionCheck(), null, TimeSpan.Zero,
-            SubmissionPollingInterval);
+        
         _submissionTask = AutoSubmitIntentsAsync(_serviceCts.Token);
+        // Start automatic submission task
+        _submissionTriggerTimer = new Timer(_ => TriggerSubmissionCheck(), null, TimeSpan.FromSeconds(1),
+            SubmissionPollingInterval);
         
         // Load existing WaitingForBatch intents and start shared event stream
         await LoadActiveIntentsAsync(cancellationToken);
@@ -102,11 +104,13 @@ public class ArkIntentService(
     public async Task<string> CreateIntentAsync(
         string walletId,
         SpendableArkCoinWithSigner[] coins,
-        IntentTxOut[] outputs,
+        IntentTxOut[]? outputs,
         DateTimeOffset? validFrom = null,
         DateTimeOffset? validUntil = null,
         CancellationToken cancellationToken = default)
     {
+        outputs ??= await GetDefaultOutputs(coins.Sum(c => c.Amount), walletId, cancellationToken);        
+        
         await using var dbContext = dbContextFactory.CreateContext();
         
         // Check if any VTXOs are already locked
@@ -139,8 +143,10 @@ public class ArkIntentService(
         var vtxoScripts = coins.Select(c => c.Contract.GetArkAddress().ScriptPubKey.ToHex()).ToList();
         // ensure the wallet has the contract of the vtxos in question
        
-        var contracts = await dbContext.WalletContracts.Where(wc => wc.WalletId == walletId && vtxoScripts.Contains(wc.Script))
-           .ToDictionaryAsync(contract => contract.Script, cancellationToken);
+        var contracts =
+            await dbContext.WalletContracts
+                .Where(wc => wc.WalletId == walletId && vtxoScripts.Contains(wc.Script))
+                .ToDictionaryAsync(contract => contract.Script, cancellationToken);
        
         if (contracts.Count != vtxoScripts.Count)
        
@@ -153,7 +159,7 @@ public class ArkIntentService(
         var effectiveValidFrom = validFrom ?? DateTimeOffset.UtcNow;
         var effectiveValidUntil = validUntil ?? DateTimeOffset.UtcNow.Add(DefaultIntentExpiry);
         
-        var cosigners = new[] { await signer.GetXOnlyPublicKey(cancellationToken) };
+        var cosigners = new[] { await signer.GetPublicKey(cancellationToken) };
         var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
         var (registerTx, deleteTx, registerMsg, deleteMsg) = await IntentUtils.CreateIntent(
             terms.Network,
@@ -214,6 +220,25 @@ public class ArkIntentService(
         }
         
         return intent.InternalId.ToString();
+    }
+
+    private async Task<IntentTxOut[]> GetDefaultOutputs(Money totalAmount, string destinationWalletId, CancellationToken cancellationToken)
+    {
+        var wallet = await arkWalletService.GetWallet(destinationWalletId, cancellationToken);
+
+        if (wallet is null) throw new Exception("Destination wallet did not exist");
+        
+        // Default: send all funds back to wallet (refreshes VTXOs, moves from recoverable state, etc.)
+        var destination = await arkadeSpender.GetDestination(wallet, await operatorTermsService.GetOperatorTerms(cancellationToken));
+
+        return [
+            new IntentTxOut
+            {
+                ScriptPubKey = destination.ScriptPubKey,
+                Type = IntentTxOut.IntentOutputType.VTXO,
+                Value = totalAmount
+            }
+        ];
     }
 
     private void TriggerSubmissionCheck()
@@ -327,6 +352,52 @@ public class ArkIntentService(
                     try
                     {
                         await SubmitIntentAsync(intent, dbContext, cancellationToken);
+                    }
+                    catch (Exception ex) when (ex.Message.Contains("duplicated input"))
+                    {
+                        var vtxoTransactionIds = intent.IntentVtxos.Select(i => i.Vtxo.TransactionId).ToList();
+                        var intentsToReview = await dbContext.Vtxos
+                            .Where(v => vtxoTransactionIds.Contains(v.TransactionId))
+                            .Include(v => v.IntentVtxos)
+                            .ThenInclude(i => i.Intent)
+                            .SelectMany(i => i.IntentVtxos)
+                            .Select(iv => iv.Intent)
+                            .ToListAsync(cancellationToken);
+
+                        var intentsToCancel = intentsToReview
+                            .Where(i => i.State == ArkIntentState.Cancelled || i.ValidUntil <= now)
+                            .ToList();
+
+                        try
+                        {
+                            foreach (var intentToCancel in intentsToCancel)
+                            {
+                                var deleteRequest = new DeleteIntentRequest
+                                {
+                                    Intent = new Intent()
+                                    {
+                                        Message = intent.DeleteProofMessage,
+                                        Proof = intent.DeleteProof
+                                    }
+                                };
+                
+                                await arkServiceClient.DeleteIntentAsync(deleteRequest, cancellationToken: cancellationToken);
+                                logger.LogInformation("Submitted delete proof for intent {IntentId}", intentToCancel.InternalId);
+                            }
+                        }
+                        catch (Exception e)
+                        { 
+                            // ignored
+                        }
+
+                        try
+                        {
+                            await SubmitIntentAsync(intent, dbContext, cancellationToken);
+                        }
+                        catch (Exception resubmitException)
+                        {
+                            logger.LogError(resubmitException, "Failed to resubmit intent {InternalId}", intent.InternalId);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -470,14 +541,13 @@ public class ArkIntentService(
                     await ProcessEventForAllIntentsAsync(eventResponse, cancellationToken);
                 }
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) 
             {
-                logger.LogInformation("Shared event stream cancelled");
-                // While will not repeat if this token is cancelled
+                logger.LogInformation("Stream was cancelled, possibly switching to new stream...");
             }
-            catch (OperationCanceledException)
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
             {
-                logger.LogInformation("Switching to new stream...");
+                logger.LogInformation("Stream was cancelled, possibly switching to new stream...");
             }
             catch (Exception ex)
             {

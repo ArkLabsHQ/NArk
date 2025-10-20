@@ -742,7 +742,7 @@ IAuthorizationService authorizationService,
             var intentId = await arkIntentService.CreateIntentAsync(
                 config.WalletId,
                 coins.ToArray(),
-                [],
+                null,
                 null,
                 null,
                 cancellationToken);

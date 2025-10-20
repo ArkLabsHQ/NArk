@@ -214,7 +214,7 @@ public class BatchSession
         var vtxoGraph = TxTree.Create(vtxoChunks);
 
         // Validate the tree
-        var commitmentTx = Transaction.Parse(signingEvent.UnsignedCommitmentTx, _network);
+        var commitmentTx = PSBT.Parse(signingEvent.UnsignedCommitmentTx, _network);
         TreeValidator.ValidateVtxoTxGraph(vtxoGraph, commitmentTx, sweepTapTreeRoot);
 
         // Validate that all intent outputs exist in the correct locations
@@ -390,7 +390,7 @@ public class BatchSession
     /// - Onchain outputs must exist in the commitment transaction
     /// - Offchain outputs (VTXOs) must exist as leaves in the VTXO tree
     /// </summary>
-    private void ValidateIntentOutputs(TxTree vtxoGraph, Transaction commitmentTx)
+    private void ValidateIntentOutputs(TxTree vtxoGraph, PSBT commitmentTx)
     {
         if (IntentParameters == null)
         {
@@ -406,7 +406,7 @@ public class BatchSession
             return;
         }
 
-        var onchainIndexes = new HashSet<int>(IntentParameters.OnchainOutputsIndexes ?? Array.Empty<int>());
+        var onchainIndexes = new HashSet<int>(IntentParameters.OnchainOutputsIndexes ?? []);
         
         // Get all VTXO leaf outputs for validation
         var vtxoLeaves = vtxoGraph.Leaves().ToList();
@@ -466,7 +466,7 @@ public class BatchSession
     {
         try
         {
-            var registerProof = Transaction.Parse(_arkIntent.RegisterProof, _network);
+            var registerProof = PSBT.Parse(_arkIntent.RegisterProof, _network);
             
             // The register proof transaction contains the outputs directly
             // (see IntentUtils.CreateIntent - outputs are added to the BIP322 tx)
@@ -474,7 +474,7 @@ public class BatchSession
             var outputs = registerProof.Outputs.ToList();
             
             _logger.LogDebug("Parsed {Count} outputs from register proof transaction", outputs.Count);
-            return outputs;
+            return registerProof.GetGlobalTransaction().Outputs;
         }
         catch (Exception ex)
         {
