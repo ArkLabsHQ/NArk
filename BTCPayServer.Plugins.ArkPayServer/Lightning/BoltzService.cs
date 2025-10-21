@@ -4,6 +4,7 @@ using BTCPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Lightning.Events;
+using BTCPayServer.Plugins.ArkPayServer.Models.Events;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
@@ -35,8 +36,15 @@ public class BoltzService(
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _leases.Add(eventAggregator.SubscribeAsync<ArkSwapUpdated>(OnLightningSwapUpdated));
+        _leases.Add(eventAggregator.SubscribeAsync<VTXOsUpdated>(VTXOSUpdated));
         _ = ListenForSwapUpdates(cancellationToken);
         return Task.CompletedTask;
+    }
+
+    private async Task VTXOSUpdated(VTXOsUpdated arg)
+    {
+       var scripts = arg.Vtxos.Select(vtxo => vtxo.Script).ToArray();
+       await PollActiveManually(swaps => swaps.Where(swap => scripts.Contains(swap.ContractScript)), CancellationToken.None);
     }
 
     private async Task OnLightningSwapUpdated(ArkSwapUpdated arg)
@@ -44,7 +52,7 @@ public class BoltzService(
         var active = arg.Swap.Status == ArkSwapStatus.Pending;
         if (active)
         {
-            if (_activeSwaps.TryAdd(arg.Swap.SwapId, 0))
+            if (_activeSwaps.TryAdd(arg.Swap.SwapId, arg.Swap.ContractScript))
             {
                 logger.LogInformation("Subscribed to swap {SwapId}", arg.Swap.SwapId);
             }
@@ -118,6 +126,7 @@ public class BoltzService(
                 if (swapUpdate != null)
                 {
                     var id = swapUpdate["id"]!.GetValue<string>();
+                    logger.LogInformation("Received swap update for {SwapId}", id);
                     _ = HandleSwapUpdate(id);
                 }
             }
@@ -130,7 +139,7 @@ public class BoltzService(
         return Task.CompletedTask;
     }
     
-    private readonly ConcurrentDictionary<string,int> _activeSwaps = new();
+    private readonly ConcurrentDictionary<string,string> _activeSwaps = new();
 
     public async Task PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
     {
@@ -175,7 +184,7 @@ public class BoltzService(
             await dbContext.SaveChangesAsync(cancellationToken);
             foreach (var evt in evts)
             {
-                _activeSwaps.TryAdd(evt.Swap.SwapId, 0);
+                _activeSwaps.TryAdd(evt.Swap.SwapId, evt.Swap.ContractScript);
             }
             PublishUpdates(evts.ToArray());
         }
