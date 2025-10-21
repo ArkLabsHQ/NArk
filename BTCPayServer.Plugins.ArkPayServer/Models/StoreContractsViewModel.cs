@@ -12,6 +12,7 @@ public class StoreContractsViewModel: BasePagingViewModel
     public SearchString Search { get; set; }
     public string? SearchText { get; set; }
     public string StoreId { get; set; }
+    public bool CanManageContracts { get; set; }
 
     public override int CurrentPageCount => Contracts.Count;
 }
