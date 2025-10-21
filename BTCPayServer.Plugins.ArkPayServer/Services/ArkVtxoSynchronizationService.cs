@@ -34,7 +34,6 @@ public class ArkVtxoSynchronizationService(
     private readonly TaskCompletionSource _startedTcs = new();
     public Task Started => _startedTcs.Task;
     public bool IsActive => _lastListeningLoop is not null && _lastListeningLoop.Status == TaskStatus.Running;
-    
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await SubscriptionUpdateLoop(stoppingToken);
@@ -44,8 +43,17 @@ public class ArkVtxoSynchronizationService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            logger.LogInformation("Waiting for cache update event...");
             var waitForCacheUpdate = await eventAggregator.WaitNext<ArkCacheUpdated>(stoppingToken);
-            if (waitForCacheUpdate.CacheName is not nameof(TrackedContractsCache)) continue;
+            logger.LogInformation("Received cache update event: CacheName={CacheName}, IsFake={IsFake}", 
+                waitForCacheUpdate.CacheName, waitForCacheUpdate.IsFake);
+            
+            if (waitForCacheUpdate.CacheName is not nameof(TrackedContractsCache))
+            {
+                logger.LogInformation("Ignoring cache update for {CacheName}", waitForCacheUpdate.CacheName);
+                continue;
+            }
+            
             var contracts = contractsCache.Contracts;
             var payouts = contractsCache.Payouts;
             
@@ -55,8 +63,9 @@ public class ArkVtxoSynchronizationService(
             var subscribedScripts = subscribedContractScripts.Concat(subscribedPayoutScripts).ToHashSet();
             
             logger.LogInformation(
-                "Updating subscription with {ActiveContractsCount} active contracts and {PendingPayoutsCount}.",
+                "Updating subscription with {ActiveContractsCount} active contracts ({ContractScripts}) and {PendingPayoutsCount} pending payouts.",
                 subscribedContractScripts.Count,
+                string.Join(", ", subscribedContractScripts.Take(5)),
                 subscribedPayoutScripts.Count
             );
 

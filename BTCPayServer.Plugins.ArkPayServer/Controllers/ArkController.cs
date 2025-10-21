@@ -30,7 +30,6 @@ using Microsoft.EntityFrameworkCore;
 using NArk;
 using NArk.Boltz.Client;
 using NArk.Contracts;
-using NArk.Models;
 using NArk.Services.Abstractions;
 using NBitcoin;
 using NBitcoin.DataEncoders;
@@ -1295,6 +1294,191 @@ IAuthorizationService authorizationService,
         {
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    [HttpGet("~/ark-admin/wallet/{walletId}")]
+    [Authorize(Policy = Policies.CanModifyServerSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> AdminWalletOverview(string walletId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(walletId))
+            return NotFound();
+
+        // Check if wallet exists
+        if (!await arkWalletService.WalletExists(walletId, cancellationToken))
+        {
+            TempData[WellKnownTempData.ErrorMessage] = "Wallet not found.";
+            return RedirectToAction("ListWallets");
+        }
+
+        var destination = await arkWalletService.GetWalletDestination(walletId, cancellationToken);
+        var balances = await GetArkBalances(walletId, cancellationToken);
+        var signerAvailable = await walletSignerProvider.GetSigner(walletId, cancellationToken) is not null;
+        var walletInfo = await arkWalletService.GetWalletInfo(walletId, true);
+        
+        // Get the default/active contract address
+        string? defaultAddress = null;
+        await using (var dbContext = dbContextFactory.CreateContext())
+        {
+            var activeContract = await dbContext.WalletContracts
+                .Where(c => c.WalletId == walletId && c.Active)
+                .OrderBy(c => c.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken);
+            
+            if (activeContract != null)
+            {
+                var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+                var script = Script.FromHex(activeContract.Script);
+                var address = ArkAddress.FromScriptPubKey(script, terms.SignerKey);
+                defaultAddress = address.ToString(terms.Network.ChainName == ChainName.Mainnet);
+            }
+        }
+        
+        // Check Ark Operator connection
+        string? arkOperatorUrl = arkConfiguration.ArkUri;
+        bool arkOperatorConnected = false;
+        string? arkOperatorError = null;
+        try
+        {
+            var terms = await operatorTermsService.GetOperatorTerms(cancellationToken);
+            arkOperatorConnected = terms != null;
+        }
+        catch (Exception ex)
+        {
+            arkOperatorError = ex.Message;
+        }
+        
+        // Check Boltz connection
+        string? boltzUrl = arkConfiguration.BoltzUri;
+        bool boltzConnected = false;
+        string? boltzError = null;
+        try
+        {
+            var pairs = await boltzClient.GetVersionAsync();
+            boltzConnected = pairs != null;
+        }
+        catch (Exception ex)
+        {
+            boltzError = ex.Message;
+        }
+        
+        ViewData["IsAdminView"] = true;
+        ViewData["WalletId"] = walletId;
+        
+        return View("StoreOverview", new StoreOverviewViewModel 
+        { 
+            IsDestinationSweepEnabled = destination is not null, 
+            IsLightningEnabled = false, // Admin view doesn't check Lightning
+            Balances = balances,
+            WalletId = walletId,
+            Destination = destination,
+            SignerAvailable = signerAvailable,
+            Wallet = walletInfo?.Wallet,
+            DefaultAddress = defaultAddress,
+            ArkOperatorUrl = arkOperatorUrl,
+            ArkOperatorConnected = arkOperatorConnected,
+            ArkOperatorError = arkOperatorError,
+            BoltzUrl = boltzUrl,
+            BoltzConnected = boltzConnected,
+            BoltzError = boltzError
+        });
+    }
+
+    [HttpGet("~/ark-admin/wallets")]
+    [Authorize(Policy = Policies.CanModifyServerSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> ListWallets(CancellationToken cancellationToken)
+    {
+        await using var dbContext = dbContextFactory.CreateContext();
+        
+        var wallets = await dbContext.Wallets
+            .OrderByDescending(w => w.CreatedAt)
+            .ToListAsync(cancellationToken);
+
+        return View(wallets);
+    }
+
+    [HttpPost("~/ark-admin/wallet/{walletId}/delete")]
+    [Authorize(Policy = Policies.CanModifyServerSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> AdminDeleteWallet(string walletId, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(walletId))
+            return NotFound();
+
+        try
+        {
+            await using var dbContext = dbContextFactory.CreateContext();
+            
+            var wallet = await dbContext.Wallets
+                .Include(w => w.Contracts)
+                .Include(w => w.Swaps)
+                .FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken);
+
+            if (wallet == null)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Wallet not found.";
+                return RedirectToAction(nameof(ListWallets));
+            }
+
+            // Check if wallet has any unspent VTXOs
+            var contractScripts = wallet.Contracts.Select(c => c.Script).ToList();
+            var hasUnspentVtxos = await dbContext.Vtxos
+                .AnyAsync(v => contractScripts.Contains(v.Script) && 
+                              (v.SpentByTransactionId == null || v.SpentByTransactionId == ""), 
+                         cancellationToken);
+
+            if (hasUnspentVtxos)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot delete wallet: It has unspent VTXOs. Please spend them first.";
+                return RedirectToAction(nameof(AdminWalletOverview), new { walletId });
+            }
+
+            // Check if wallet has any pending swaps
+            var hasPendingSwaps = wallet.Swaps?.Any(s => s.Status == ArkSwapStatus.Pending) ?? false;
+            if (hasPendingSwaps)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot delete wallet: It has pending swaps.";
+                return RedirectToAction(nameof(AdminWalletOverview), new { walletId });
+            }
+
+            // Check if wallet has any pending intents
+            var hasPendingIntents = await dbContext.Intents
+                .AnyAsync(i => i.WalletId == walletId && 
+                              (i.State == ArkIntentState.WaitingToSubmit || 
+                               i.State == ArkIntentState.WaitingForBatch), 
+                         cancellationToken);
+
+            if (hasPendingIntents)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot delete wallet: It has pending intents.";
+                return RedirectToAction(nameof(AdminWalletOverview), new { walletId });
+            }
+
+            // Delete all VTXOs associated with the wallet's contracts
+            var vtxos = await dbContext.Vtxos
+                .Where(v => contractScripts.Contains(v.Script))
+                .ToListAsync(cancellationToken);
+            dbContext.Vtxos.RemoveRange(vtxos);
+
+            // Delete all intents and their associated data
+            var intents = await dbContext.Intents
+                .Include(i => i.IntentVtxos)
+                .Where(i => i.WalletId == walletId)
+                .ToListAsync(cancellationToken);
+            dbContext.Intents.RemoveRange(intents);
+
+            // Delete the wallet (cascade will delete contracts and swaps)
+            dbContext.Wallets.Remove(wallet);
+            
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            TempData[WellKnownTempData.SuccessMessage] = $"Wallet {walletId} and all associated data deleted successfully.";
+        }
+        catch (Exception ex)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Failed to delete wallet: {ex.Message}";
+            return RedirectToAction(nameof(AdminWalletOverview), new { walletId });
+        }
+
+        return RedirectToAction(nameof(ListWallets));
     }
 }
 
