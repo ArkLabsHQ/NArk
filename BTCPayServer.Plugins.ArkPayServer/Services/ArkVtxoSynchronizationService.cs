@@ -41,10 +41,12 @@ public class ArkVtxoSynchronizationService(
 
     private async Task SubscriptionUpdateLoop(CancellationToken stoppingToken)
     {
+        var skipWait = false;
         while (!stoppingToken.IsCancellationRequested)
         {
             logger.LogInformation("Waiting for cache update event...");
-            var waitForCacheUpdate = await eventAggregator.WaitNext<ArkCacheUpdated>(stoppingToken);
+            var waitForCacheUpdate = skipWait? new ArkCacheUpdated(nameof(TrackedContractsCache), true) : await eventAggregator.WaitNext<ArkCacheUpdated>(stoppingToken);
+            skipWait = false;
             logger.LogInformation("Received cache update event: CacheName={CacheName}, IsFake={IsFake}", 
                 waitForCacheUpdate.CacheName, waitForCacheUpdate.IsFake);
             
@@ -91,7 +93,8 @@ public class ArkVtxoSynchronizationService(
             catch (RpcException ex)
             {
                 logger.LogError(ex, "Failed to subscribe to scripts. Republishing the event with Fake flag.");
-                eventAggregator.Publish(waitForCacheUpdate with { IsFake = true });
+                eventAggregator.Publish(new ArkCacheUpdated(nameof(TrackedContractsCache), true));
+                skipWait = true;
             }
 
         }

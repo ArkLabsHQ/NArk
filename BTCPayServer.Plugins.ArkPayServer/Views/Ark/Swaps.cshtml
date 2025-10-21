@@ -164,11 +164,14 @@
                 {
                     var arkContract = swap.Contract != null ? ArkContract.Parse(swap.Contract.Type, swap.Contract.ContractData) : null;
                     var link = arkContract != null ? $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}" : "#";
+                    var boltzSwapLink = !string.IsNullOrEmpty(ArkConfiguration.BoltzUri) 
+                        ? $"{ArkConfiguration.BoltzUri.TrimEnd('/')}/v2/swap/{swap.SwapId}" 
+                        : null;
 
                     <tr id="swap_@swap.SwapId.GetHashCode()">
                         <td class="align-middle date-col">@swap.CreatedAt.ToBrowserDate()</td>
                         <td class="align-middle">
-                            <vc:truncate-center text="@swap.SwapId" classes="truncate-center-id"/>
+                            <vc:truncate-center text="@swap.SwapId" link="@boltzSwapLink" classes="truncate-center-id"/>
                         </td>
                         <td class="align-middle">
                             @if (swap.SwapType == ArkSwapType.ReverseSubmarine)
