@@ -223,6 +223,11 @@ public class BoltzService(
             }
             return null;
         }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Error polling swap status for {SwapId}", swap.SwapId);
+            return null;
+        }
     }
 
     public ArkSwapStatus Map(string status)
