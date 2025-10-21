@@ -1423,13 +1423,7 @@ IAuthorizationService authorizationService,
                 .AnyAsync(v => contractScripts.Contains(v.Script) && 
                               (v.SpentByTransactionId == null || v.SpentByTransactionId == ""), 
                          cancellationToken);
-
-            if (hasUnspentVtxos)
-            {
-                TempData[WellKnownTempData.ErrorMessage] = "Cannot delete wallet: It has unspent VTXOs. Please spend them first.";
-                return RedirectToAction(nameof(AdminWalletOverview), new { walletId });
-            }
-
+            
             // Check if wallet has any pending swaps
             var hasPendingSwaps = wallet.Swaps?.Any(s => s.Status == ArkSwapStatus.Pending) ?? false;
             if (hasPendingSwaps)

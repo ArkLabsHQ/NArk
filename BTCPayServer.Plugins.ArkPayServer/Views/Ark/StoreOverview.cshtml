@@ -174,11 +174,11 @@
                 <h5 class="modal-title" id="transferModalLabel">Transfer Funds</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form asp-action="SpendOverview" method="post" asp-route-storeId="@storeId">
+            <form asp-action="SpendOverview" method="get" asp-route-storeId="@storeId">
                 <div class="modal-body">
                     <div class="form-group mb-3">
                         <label class="form-label">Destination</label>
-                        <input type="text" name="Destination" class="form-control" 
+                        <input type="text" name="destinations" class="form-control" 
                                placeholder="BIP21 URI, Lightning invoice, or Ark address..." 
                                required />
                         <div class="form-text">
@@ -191,7 +191,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Transfer</button>
+                    <button type="submit" class="btn btn-primary">Continue</button>
                 </div>
             </form>
         </div>
