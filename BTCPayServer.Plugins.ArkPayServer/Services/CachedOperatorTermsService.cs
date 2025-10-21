@@ -18,7 +18,10 @@ public class CachedOperatorTermsService(ArkService.ArkServiceClient arkClient, I
         });
 
         if (terms is null)
+        {
+            memoryCache.Remove("OperatorTerms");
             throw new InvalidOperationException("Failed to fetch operator terms");
+        }
 
         return terms;
     }

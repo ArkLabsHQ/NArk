@@ -195,6 +195,8 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
 
     private static string? GetArkServiceUri(ChainName networkType)
     {
+        if (networkType == NBitcoin.Bitcoin.Instance.Mainnet.ChainName)
+            return "https://arkade.computer";
         if (networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName)
             return "https://mutinynet.arkade.sh";
         if (networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName)
@@ -206,6 +208,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     
     private static string? GetBoltzServiceUri(ChainName networkType)
     {
+        if (networkType == NBitcoin.Bitcoin.Instance.Mainnet.ChainName)
+        
+            return "https://api.ark.boltz.exchange/";
+        
         if (networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName)
             return "https://api.boltz.mutinynet.arkade.sh/";
         if (networkType == ChainName.Regtest)

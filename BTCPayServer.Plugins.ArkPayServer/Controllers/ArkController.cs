@@ -1390,6 +1390,8 @@ IAuthorizationService authorizationService,
         await using var dbContext = dbContextFactory.CreateContext();
         
         var wallets = await dbContext.Wallets
+            .Include(wallet => wallet.Contracts)
+            .Include(wallet => wallet.Swaps)
             .ToListAsync(cancellationToken);
 
         return View(wallets);
