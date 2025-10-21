@@ -54,13 +54,15 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     {
         var pluginServiceCollection = (PluginServiceCollection) serviceCollection;
         
-        var (arkUri, boltzUri) = GetServiceUris(pluginServiceCollection);
+        var (arkUri, boltzUri, arkadeWalletUri) = GetServiceUris(pluginServiceCollection);
         
         if (arkUri is null) return;
+
+        var config = new ArkConfiguration(arkUri,  arkadeWalletUri, boltzUri);
         
         SetupBtcPayPluginServices(serviceCollection);
         
-        serviceCollection.AddSingleton<ArkConfiguration>(_ => new ArkConfiguration(arkUri, boltzUri));
+        serviceCollection.AddSingleton(config);
         serviceCollection.AddSingleton<ArkadePaymentMethodHandler>();
         serviceCollection.AddSingleton<ArkPluginDbContextFactory>();
         serviceCollection.AddSingleton<AsyncKeyedLocker>();
@@ -119,22 +121,17 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             location: "ln-payment-method-setup-tab",
             partialViewName: "/Views/Lightning/LNPaymentMethodSetupTab.cshtml");
         
-        // Use NArk SDK Services
-        var configuration = new ArkConfiguration(
-            ArkUri: arkUri,
-            BoltzUri: boltzUri
-        );
-        
+       
         serviceCollection.AddGrpcClient<ArkService.ArkServiceClient>(options =>
         {
-            options.Address = new Uri(configuration.ArkUri);
+            options.Address = new Uri(config.ArkUri);
             options.InterceptorRegistrations.Add(new InterceptorRegistration(InterceptorScope.Client, provider => new DeadlineInterceptor(TimeSpan.FromSeconds(10))));
             
         });
         
         serviceCollection.AddGrpcClient<IndexerService.IndexerServiceClient>(options =>
         {
-            options.Address = new Uri(configuration.ArkUri);
+            options.Address = new Uri(config.ArkUri);
             options.InterceptorRegistrations.Add(new InterceptorRegistration(InterceptorScope.Client, provider => new DeadlineInterceptor(TimeSpan.FromSeconds(10))));
 
         });
@@ -143,17 +140,17 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<CachedOperatorTermsService>();
         serviceCollection.AddSingleton<IOperatorTermsService, CachedOperatorTermsService>(provider => provider.GetRequiredService<CachedOperatorTermsService>());
 
-        if (!string.IsNullOrWhiteSpace(configuration.BoltzUri))
+        if (!string.IsNullOrWhiteSpace(config.BoltzUri))
         {
             serviceCollection.AddHttpClient<BoltzClient>(client =>
             {
-                client.BaseAddress = new Uri(configuration.BoltzUri);
+                client.BaseAddress = new Uri(config.BoltzUri);
             });
         }
     }
 
     
-    private static (string? ArkUri, string? BoltzUri) GetServiceUris(PluginServiceCollection pluginServiceCollection)
+    private static (string? ArkUri, string? BoltzUri, string? ArkadeWalletUri) GetServiceUris(PluginServiceCollection pluginServiceCollection)
     {
         var networkType = 
             DefaultConfiguration.GetNetworkType(
@@ -164,6 +161,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         
         var arkUri = GetArkServiceUri(networkType);
         var boltzUri = GetBoltzServiceUri(networkType);
+        var arkadeWalletUri = GetArkadeWalletServiceUri(networkType);
         
         var configurationServices =
             pluginServiceCollection
@@ -186,11 +184,31 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             if(!string.IsNullOrEmpty(config?.ArkUri))
             {
                 arkUri = config.ArkUri;
+            }  
+            if(!string.IsNullOrEmpty(config?.ArkadeWalletUri))
+            {
+                arkadeWalletUri = config.ArkadeWalletUri;
             }
+            
+            
+            
         }
 
 
-        return (arkUri, boltzUri);
+        return (arkUri, boltzUri, arkadeWalletUri);
+    }
+    
+    private static string? GetArkadeWalletServiceUri(ChainName networkType)
+    {
+        if (networkType == NBitcoin.Bitcoin.Instance.Mainnet.ChainName)
+            return "https://arkade.money";
+        if (networkType == NBitcoin.Bitcoin.Instance.Mutinynet.ChainName)
+            return "https://mutinynet.arkade.money";
+        if (networkType == NBitcoin.Bitcoin.Instance.Signet.ChainName)
+            return "https://signet.arkade.money";
+        if (networkType == ChainName.Regtest)
+            return "http://localhost:3002";
+        return null;
     }
 
     private static string? GetArkServiceUri(ChainName networkType)
