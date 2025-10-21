@@ -1390,7 +1390,6 @@ IAuthorizationService authorizationService,
         await using var dbContext = dbContextFactory.CreateContext();
         
         var wallets = await dbContext.Wallets
-            .OrderByDescending(w => w.CreatedAt)
             .ToListAsync(cancellationToken);
 
         return View(wallets);
