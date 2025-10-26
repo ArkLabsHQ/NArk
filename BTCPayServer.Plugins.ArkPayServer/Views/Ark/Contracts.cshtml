@@ -105,8 +105,9 @@
     <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
         <vc:icon symbol="info" />
         <div>
-            <strong>Debug Mode Active</strong> - Showing cache status. 
-            Total cached swap scripts: <strong>@Model.CachedSwapScripts.Count</strong>
+            <strong>Debug Mode Active</strong> - Showing cache status.<br/>
+            Tracked contracts cache: <strong>@Model.CachedContractScripts.Count</strong> active contracts<br/>
+            Boltz swaps cache: <strong>@Model.CachedSwapScripts.Count</strong> active swaps
         </div>
     </div>
 }
@@ -205,6 +206,10 @@
                             @if (contract.Active)
                             {
                                 <span class="badge text-bg-success">Active</span>
+                                @if (Model.Debug && Model.CachedContractScripts.Contains(contract.Script))
+                                {
+                                    <span class="badge text-bg-info ms-1" title="In tracked contracts cache">📌</span>
+                                }
                             }
                             else
                             {

@@ -178,7 +178,7 @@ public class BoltzService(
             await using var dbContext = dbContextFactory.CreateContext();
             var queryable = dbContext.Swaps
                 .Include(swap => swap.Contract)
-                .Where(swap => swap.Status.IsActive());
+                .Where(swap => swap.Status == ArkSwapStatus.Pending || swap.Status == ArkSwapStatus.Unknown);
 
             if (query is not null)
                 queryable = query(queryable);

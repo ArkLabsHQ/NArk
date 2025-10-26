@@ -15,6 +15,7 @@ public class StoreContractsViewModel: BasePagingViewModel
     public bool CanManageContracts { get; set; }
     public bool Debug { get; set; }
     public HashSet<string> CachedSwapScripts { get; set; } = new();
+    public HashSet<string> CachedContractScripts { get; set; } = new();
 
     public override int CurrentPageCount => Contracts.Count;
 }

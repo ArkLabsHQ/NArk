@@ -14,6 +14,7 @@ using BTCPayServer.Payments.Lightning;
 using BTCPayServer.PayoutProcessors;
 using BTCPayServer.PayoutProcessors.Lightning;
 using BTCPayServer.Payouts;
+using BTCPayServer.Plugins.ArkPayServer.Cache;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Exceptions;
@@ -59,7 +60,8 @@ IAuthorizationService authorizationService,
     ArkadeWalletSignerProvider walletSignerProvider,
     ArkIntentService arkIntentService,
     ArkadeSpender arkadeSpender,
-    BitcoinTimeChainProvider bitcoinTimeChainProvider) : Controller
+    BitcoinTimeChainProvider bitcoinTimeChainProvider,
+    TrackedContractsCache trackedContractsCache) : Controller
 {
     [HttpGet("stores/{storeId}/initial-setup")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
@@ -448,7 +450,8 @@ IAuthorizationService authorizationService,
             ContractSwaps = contractSwaps,
             CanManageContracts = config.GeneratedByStore,
             Debug = debug,
-            CachedSwapScripts = boltzService.GetActiveSwapsCache().Values.ToHashSet()
+            CachedSwapScripts = boltzService.GetActiveSwapsCache().Values.ToHashSet(),
+            CachedContractScripts = trackedContractsCache.Contracts.Select(c => c.Script).ToHashSet()
         };
 
         return View(model);
