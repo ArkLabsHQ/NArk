@@ -188,7 +188,7 @@
                         </td>
                         <td class="align-middle">
                             @{
-                                var Swapclass = swap.Status switch
+                                var swapclass = swap.Status switch
                                 {
                                     ArkSwapStatus.Pending => "text-bg-info",
                                     ArkSwapStatus.Settled => "text-bg-success",
@@ -197,9 +197,9 @@
                                 }; 
                             }
                             
-                            <span class="badge @Swapclass">@Enum.GetName(typeof(ArkSwapStatus), swap.Status)</span>
+                            <span class="badge @swapclass">@Enum.GetName(typeof(ArkSwapStatus), swap.Status)</span>
                             
-                            }
+                            
                             @if (arkContract is VHTLCContract htlcContract && swap.Status != ArkSwapStatus.Settled && swap.Status != ArkSwapStatus.Unknown)
                             {
                                 <div class="htlc-countdown mt-1" data-locktime="@htlcContract.RefundLocktime.Value" data-is-timelock="@htlcContract.RefundLocktime.IsTimeLock.ToString().ToLower()">

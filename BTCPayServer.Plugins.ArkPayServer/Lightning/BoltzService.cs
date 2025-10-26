@@ -82,7 +82,6 @@ public class BoltzService(
             Uri? wsUrl = null;
             try
             {
-                await PollActiveManually(null, cancellationToken);
                 if(error == "")
                     logger.LogInformation("Start listening for swap updates.");
                 wsUrl = boltzClient.DeriveWebSocketUri();
@@ -92,6 +91,7 @@ public class BoltzService(
                 _wsClient.OnAnyEventReceived += OnWebSocketEvent;
                 await _wsClient.SubscribeAsync(_activeSwaps.Keys.ToArray(), cancellationToken);
                 
+                await PollActiveManually(null, cancellationToken);
                 await _wsClient.WaitUntilDisconnected(cancellationToken);
             }
             catch (OperationCanceledException)
@@ -105,6 +105,15 @@ public class BoltzService(
                 {
                     error = newError;
                     logger.LogError(e, error); ;
+                }
+
+                try
+                {
+                    await PollActiveManually(null, cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    logger.LogError(exception, "Error polling active swaps as failsafe");
                 }
                 await Task.Delay(5000, cancellationToken);
             }
@@ -180,11 +189,21 @@ public class BoltzService(
                 }
                 
             }
-            _activeSwaps.Clear();
+            
             await dbContext.SaveChangesAsync(cancellationToken);
+            
+            // Update cache: add active swaps, remove inactive ones
             foreach (var evt in evts)
             {
-                _activeSwaps.TryAdd(evt.Swap.SwapId, evt.Swap.ContractScript);
+                var isActive = evt.Swap.Status == ArkSwapStatus.Pending || evt.Swap.Status == ArkSwapStatus.Unknown;
+                if (isActive)
+                {
+                    _activeSwaps.TryAdd(evt.Swap.SwapId, evt.Swap.ContractScript);
+                }
+                else
+                {
+                    _activeSwaps.TryRemove(evt.Swap.SwapId, out _);
+                }
             }
             PublishUpdates(evts.ToArray());
         }

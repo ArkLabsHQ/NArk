@@ -275,7 +275,7 @@
                         <div class="modal fade" id="deleteContractModal_@contract.Script.GetHashCode()" tabindex="-1" aria-labelledby="deleteContractModalLabel_@contract.Script.GetHashCode()" aria-hidden="true">
                             <div class="modal-dialog">
                                 <div class="modal-content">
-                                    <div class="modal-header bg-danger text-white">
+                                    <div class="modal-header">
                                         <h5 class="modal-title" id="deleteContractModalLabel_@contract.Script.GetHashCode()">
                                             <vc:icon symbol="warning" /> Delete Contract
                                         </h5>
@@ -295,13 +295,7 @@
                                                 <label class="text-muted small">Contract Type</label>
                                                 <div>@contract.Type</div>
                                             </div>
-                                            @if (hasUnspentVtxos)
-                                            {
-                                                <div class="alert alert-warning">
-                                                    <strong>Note:</strong> This contract has unspent VTXOs. You must spend them before deletion.
-                                                </div>
-                                            }
-                                            else if (hasSwaps)
+                                            if (hasSwaps)
                                             {
                                                 <div class="alert alert-info">
                                                     <strong>Note:</strong> This contract has swap history. Deleting will remove all swap records.
@@ -313,7 +307,7 @@
                                         </div>
                                         <div class="modal-footer">
                                             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                                            <button type="submit" class="btn btn-danger" @(hasUnspentVtxos ? "disabled" : "")>Delete Contract</button>
+                                            <button type="submit" class="btn btn-danger">Delete Contract</button>
                                         </div>
                                     </form>
                                 </div>
