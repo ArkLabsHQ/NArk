@@ -379,7 +379,8 @@ IAuthorizationService authorizationService,
         string? searchTerm = null,
         string? searchText = null,
         int skip = 0,
-        int count = 50)
+        int count = 50,
+        bool debug = false)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -443,7 +444,9 @@ IAuthorizationService authorizationService,
             Search = new SearchString(searchTerm),
             ContractVtxos = contractVtxos,
             ContractSwaps = contractSwaps,
-            CanManageContracts = config.GeneratedByStore
+            CanManageContracts = config.GeneratedByStore,
+            Debug = debug,
+            CachedSwapScripts = boltzService.GetActiveSwapsCache().Values.ToHashSet()
         };
 
         return View(model);
@@ -456,7 +459,8 @@ IAuthorizationService authorizationService,
         string? searchTerm = null,
         string? searchText = null,
         int skip = 0,
-        int count = 50)
+        int count = 50,
+        bool debug = false)
     {
         var store = HttpContext.GetStoreData();
         if (store == null)
@@ -519,7 +523,9 @@ IAuthorizationService authorizationService,
             Skip = skip,
             Count = count,
             SearchText = searchText,
-            Search = new SearchString(searchTerm)
+            Search = new SearchString(searchTerm),
+            Debug = debug,
+            CachedSwapIds = boltzService.GetActiveSwapsCache().Keys.ToHashSet()
         };
 
         return View(model);

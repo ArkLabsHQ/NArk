@@ -88,6 +88,17 @@
 
 <partial name="_StatusMessage" />
 
+@if (Model.Debug)
+{
+    <div class="alert alert-info d-flex align-items-center gap-2 mb-4">
+        <vc:icon symbol="info" />
+        <div>
+            <strong>Debug Mode Active</strong> - Showing cache status. 
+            Total cached swap IDs: <strong>@Model.CachedSwapIds.Count</strong>
+        </div>
+    </div>
+}
+
 <form class="d-flex flex-wrap flex-sm-nowrap align-items-center gap-3 mb-4 col-xxl-8" asp-action="Swaps" asp-route-storeId="@Model.StoreId" method="get">
     <input asp-for="Count" type="hidden" />
     <input asp-for="SearchTerm" type="hidden" value="@(Model.Search?.WithoutSearchText() ?? "")"/>
@@ -157,6 +168,10 @@
                     <th text-translate="true" class="text-nowrap">Amount</th>
                     <th text-translate="true">Status</th>
                     <th text-translate="true">Invoice</th>
+                    @if (Model.Debug)
+                    {
+                        <th text-translate="true">Cache</th>
+                    }
                 </tr>
             </thead>
             <tbody>
@@ -217,6 +232,19 @@
                                 <span class="text-muted">-</span>
                             }
                         </td>
+                        @if (Model.Debug)
+                        {
+                            <td class="align-middle">
+                                @if (Model.CachedSwapIds.Contains(swap.SwapId))
+                                {
+                                    <span class="badge text-bg-success" title="In active swaps cache">✓ Cached</span>
+                                }
+                                else
+                                {
+                                    <span class="badge text-bg-secondary" title="Not in active swaps cache">✗ Not Cached</span>
+                                }
+                            </td>
+                        }
                     </tr>
                 }
             </tbody>

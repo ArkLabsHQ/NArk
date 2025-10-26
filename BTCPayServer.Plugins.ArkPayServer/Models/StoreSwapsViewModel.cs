@@ -10,6 +10,8 @@ public class StoreSwapsViewModel : BasePagingViewModel
     public SearchString Search { get; set; } = new(null);
     public string? SearchText { get; set; }
     public string StoreId { get; set; }
+    public bool Debug { get; set; }
+    public HashSet<string> CachedSwapIds { get; set; } = new();
 
     public override int CurrentPageCount => Swaps.Count;
 }

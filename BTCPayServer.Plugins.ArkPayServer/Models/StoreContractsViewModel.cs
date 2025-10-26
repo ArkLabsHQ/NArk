@@ -13,6 +13,8 @@ public class StoreContractsViewModel: BasePagingViewModel
     public string? SearchText { get; set; }
     public string StoreId { get; set; }
     public bool CanManageContracts { get; set; }
+    public bool Debug { get; set; }
+    public HashSet<string> CachedSwapScripts { get; set; } = new();
 
     public override int CurrentPageCount => Contracts.Count;
 }
