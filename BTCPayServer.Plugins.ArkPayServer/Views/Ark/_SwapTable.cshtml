@@ -51,18 +51,17 @@
                             }
                         </td>
                         <td>
-                            @switch (swap.Status)
-                            {
-                                case ArkSwapStatus.Pending:
-                                    <span class="badge text-bg-warning">Pending</span>
-                                    break;
-                                case ArkSwapStatus.Settled:
-                                    <span class="badge text-bg-success">Settled</span>
-                                    break;
-                                case ArkSwapStatus.Failed:
-                                    <span class="badge text-bg-danger">Failed</span>
-                                    break;
+                            @{
+                                var swapclass = swap.Status switch
+                                {
+                                    ArkSwapStatus.Pending => "text-bg-info",
+                                    ArkSwapStatus.Settled => "text-bg-success",
+                                    ArkSwapStatus.Failed => "text-bg-danger",
+                                    _ => "text-bg-warning"
+                                }; 
                             }
+                            
+                            <span class="badge @swapclass">@Enum.GetName(typeof(ArkSwapStatus), swap.Status)</span>
                         </td>
                     </tr>
                 }

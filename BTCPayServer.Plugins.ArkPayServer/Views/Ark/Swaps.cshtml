@@ -187,17 +187,18 @@
                             @Money.Satoshis(swap.ExpectedAmount).ToDecimal(MoneyUnit.BTC) BTC
                         </td>
                         <td class="align-middle">
-                            @switch (swap.Status)
-                            {
-                                case ArkSwapStatus.Pending:
-                                    <span class="badge text-bg-warning">Pending</span>
-                                    break;
-                                case ArkSwapStatus.Settled:
-                                    <span class="badge text-bg-success">Settled</span>
-                                    break;
-                                case ArkSwapStatus.Failed:
-                                    <span class="badge text-bg-danger">Failed</span>
-                                    break;
+                            @{
+                                var Swapclass = swap.Status switch
+                                {
+                                    ArkSwapStatus.Pending => "text-bg-info",
+                                    ArkSwapStatus.Settled => "text-bg-success",
+                                    ArkSwapStatus.Failed => "text-bg-danger",
+                                    _ => "text-bg-warning"
+                                }; 
+                            }
+                            
+                            <span class="badge @Swapclass">@Enum.GetName(typeof(ArkSwapStatus), swap.Status)</span>
+                            
                             }
                             @if (arkContract is VHTLCContract htlcContract && swap.Status != ArkSwapStatus.Settled && swap.Status != ArkSwapStatus.Unknown)
                             {

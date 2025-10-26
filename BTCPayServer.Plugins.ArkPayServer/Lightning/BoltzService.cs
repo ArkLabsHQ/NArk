@@ -49,7 +49,7 @@ public class BoltzService(
 
     private async Task OnLightningSwapUpdated(ArkSwapUpdated arg)
     {
-        var active = arg.Swap.Status == ArkSwapStatus.Pending;
+        var active = arg.Swap.Status == ArkSwapStatus.Pending || arg.Swap.Status == ArkSwapStatus.Unknown;
         if (active)
         {
             if (_activeSwaps.TryAdd(arg.Swap.SwapId, arg.Swap.ContractScript))
@@ -148,7 +148,7 @@ public class BoltzService(
             await using var dbContext = dbContextFactory.CreateContext();
             var queryable = dbContext.Swaps
                 .Include(swap => swap.Contract)
-                .Where(swap => swap.Status == ArkSwapStatus.Pending);
+                .Where(swap => swap.Status == ArkSwapStatus.Pending || swap.Status == ArkSwapStatus.Unknown);
 
             if (query is not null)
                 queryable = query(queryable);
