@@ -28,6 +28,7 @@ public class BoltzService(
     BoltzSwapService boltzSwapService,
     BoltzClient boltzClient,
     ArkWalletService walletService,
+    ArkVtxoSynchronizationService arkVtxoSynchronizationService,
     ILogger<BoltzService> logger) : IHostedService
 {
     private CompositeDisposable _leases = new();
@@ -70,6 +71,21 @@ public class BoltzService(
             {
                 await  _wsClient.UnsubscribeAsync([arg.Swap.SwapId]);
             }
+            
+            // Trigger contract sync when swap completes to detect VTXOs
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    logger.LogInformation("Triggering contract sync for swap {SwapId} with script {Script}", 
+                        arg.Swap.SwapId, arg.Swap.ContractScript);
+                    await arkVtxoSynchronizationService.PollScriptsForVtxos([arg.Swap.ContractScript], CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Error syncing contract after swap {SwapId} status update", arg.Swap.SwapId);
+                }
+            });
         }
         
     }
@@ -150,6 +166,8 @@ public class BoltzService(
     
     private readonly ConcurrentDictionary<string,string> _activeSwaps = new();
     private readonly SemaphoreSlim _pollLock = new(1, 1);
+
+    public IReadOnlyDictionary<string, string> GetActiveSwapsCache() => _activeSwaps;
 
     public async Task PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
     {
