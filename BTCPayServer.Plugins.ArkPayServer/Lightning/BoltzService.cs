@@ -79,7 +79,7 @@ public class BoltzService(
                 {
                     logger.LogInformation("Triggering contract sync for swap {SwapId} with script {Script}", 
                         arg.Swap.SwapId, arg.Swap.ContractScript);
-                    await arkVtxoSynchronizationService.PollScriptsForVtxos([arg.Swap.ContractScript], CancellationToken.None);
+                    await arkVtxoSynchronizationService.PollScriptsForVtxos(new HashSet<string>([arg.Swap.ContractScript]), CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
