@@ -17,6 +17,7 @@ using BTCPayServer.Payouts;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
 using BTCPayServer.Plugins.ArkPayServer.Exceptions;
+using BTCPayServer.Plugins.ArkPayServer.Lightning;
 using BTCPayServer.Plugins.ArkPayServer.Models;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
@@ -40,6 +41,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 [Route("plugins/ark")]
 [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ArkController(
+    BoltzService boltzService,
     BoltzClient boltzClient,
     ArkConfiguration arkConfiguration,
 IAuthorizationService authorizationService,
