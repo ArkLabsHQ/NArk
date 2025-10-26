@@ -70,7 +70,7 @@ public class ArkadeContractSweeper : IHostedService
                         // Only sweep if we have coins not at the destination to avoid infinite sweeping loops
                         if (group.Value.All(x => x.TxOut.IsTo(destination)))
                         {
-                            _logger.LogInformation($"Skipping sweep for wallet {wallet.Id}: all coins are already at destination\n{string.Join("\n", group.Value.Select(x => x.ToString()))}");
+                            _logger.LogInformation($"Skipping sweep for wallet {wallet.Id}: all {group.Value.Count} coins worth {group.Value.Sum(x => x.TxOut.Value)} are already at destination");
                            continue;
                         }
                         
