@@ -49,8 +49,7 @@ public class BoltzService(
 
     private async Task OnLightningSwapUpdated(ArkSwapUpdated arg)
     {
-        var active = arg.Swap.Status == ArkSwapStatus.Pending || arg.Swap.Status == ArkSwapStatus.Unknown;
-        if (active)
+        if (arg.Swap.Status.IsActive())
         {
             if (_activeSwaps.TryAdd(arg.Swap.SwapId, arg.Swap.ContractScript))
             {
@@ -60,7 +59,8 @@ public class BoltzService(
             {
                await  _wsClient.SubscribeAsync([arg.Swap.SwapId]);
             }
-        } else
+        }
+        else
         {
             if(_activeSwaps.TryRemove(arg.Swap.SwapId, out _))
             {
@@ -149,22 +149,27 @@ public class BoltzService(
     }
     
     private readonly ConcurrentDictionary<string,string> _activeSwaps = new();
+    private readonly SemaphoreSlim _pollLock = new(1, 1);
 
     public async Task PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
     {
+        await _pollLock.WaitAsync(cancellationToken);
+        
         try
         {
             await using var dbContext = dbContextFactory.CreateContext();
             var queryable = dbContext.Swaps
                 .Include(swap => swap.Contract)
-                .Where(swap => swap.Status == ArkSwapStatus.Pending || swap.Status == ArkSwapStatus.Unknown);
+                .Where(swap => swap.Status.IsActive());
 
             if (query is not null)
                 queryable = query(queryable);
             
             var activeSwaps = await queryable.ToArrayAsync(cancellationToken);
             if (activeSwaps.Length == 0)
+            {
                 return;
+            }
             
             var scripts = activeSwaps.Select(swap => swap.ContractScript).ToHashSet();
             
@@ -195,8 +200,7 @@ public class BoltzService(
             // Update cache: add active swaps, remove inactive ones
             foreach (var evt in evts)
             {
-                var isActive = evt.Swap.Status == ArkSwapStatus.Pending || evt.Swap.Status == ArkSwapStatus.Unknown;
-                if (isActive)
+                if (evt.Swap.Status.IsActive())
                 {
                     _activeSwaps.TryAdd(evt.Swap.SwapId, evt.Swap.ContractScript);
                 }
@@ -210,6 +214,10 @@ public class BoltzService(
         catch (Exception ex)
         {
             logger.LogError(ex, "Error polling active swaps");
+        }
+        finally
+        {
+            _pollLock.Release();
         }
     }
 
@@ -284,6 +292,7 @@ public class BoltzService(
     {
         _leases.Dispose();
         _leases = new CompositeDisposable();
+        _pollLock.Dispose();
         return Task.CompletedTask;
     }
     
