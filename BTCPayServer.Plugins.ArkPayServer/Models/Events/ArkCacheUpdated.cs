@@ -1,3 +1,3 @@
 namespace BTCPayServer.Plugins.ArkPayServer.Models.Events;
 
-public record ArkCacheUpdated(string CacheName, bool IsFake = false);
+public record ArkCacheUpdated(string CacheName);

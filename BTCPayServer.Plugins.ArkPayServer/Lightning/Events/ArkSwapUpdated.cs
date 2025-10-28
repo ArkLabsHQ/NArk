@@ -11,6 +11,4 @@ public record ArkSwapUpdated
     }
 
     public ArkSwap Swap { get; init; }
-
-    public VTXO[] Vtxos { get; set; }
 }

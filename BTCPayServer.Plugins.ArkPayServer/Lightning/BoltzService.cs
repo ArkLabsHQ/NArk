@@ -151,7 +151,6 @@ public class BoltzService(
                 if (swapUpdate != null)
                 {
                     var id = swapUpdate["id"]!.GetValue<string>();
-                    logger.LogInformation("Received swap update for {SwapId}", id);
                     _ = HandleSwapUpdate(id);
                 }
             }
@@ -169,7 +168,7 @@ public class BoltzService(
 
     public IReadOnlyDictionary<string, string> GetActiveSwapsCache() => _activeSwaps;
 
-    public async Task PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
+    public async Task<List<ArkSwapUpdated>> PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
     {
         await _pollLock.WaitAsync(cancellationToken);
         
@@ -186,20 +185,10 @@ public class BoltzService(
             var activeSwaps = await queryable.ToArrayAsync(cancellationToken);
             if (activeSwaps.Length == 0)
             {
-                return;
+                return [];
             }
             
-            var scripts = activeSwaps.Select(swap => swap.ContractScript).ToHashSet();
-            
-            var vtxos = 
-                await dbContext.Vtxos
-                    .Where(vtxo => scripts.Contains(vtxo.Script))
-                    .GroupBy(vtxo => vtxo.Script)
-                    .ToDictionaryAsync(
-                        group => group.Key,
-                        group => group.ToArray(),
-                        cancellationToken
-                    );
+      
             
             var evts = new List<ArkSwapUpdated>();
             foreach (var swap in activeSwaps)
@@ -207,7 +196,6 @@ public class BoltzService(
                 var evt = await PollSwapStatus(swap);
                 if (evt != null)
                 {
-                    evt.Vtxos = vtxos.TryGet(swap.ContractScript);
                     evts.Add(evt);
                 }
                 
@@ -228,6 +216,7 @@ public class BoltzService(
                 }
             }
             PublishUpdates(evts.ToArray());
+            return evts;
         }
         catch (Exception ex)
         {
@@ -237,6 +226,8 @@ public class BoltzService(
         {
             _pollLock.Release();
         }
+
+        return [];
     }
 
     private void PublishUpdates(params ArkSwapUpdated[] updates)
@@ -313,12 +304,16 @@ public class BoltzService(
         _pollLock.Dispose();
         return Task.CompletedTask;
     }
-    
-    private async Task HandleSwapUpdate(string swapId )
-    {
-        await PollActiveManually(swaps => swaps.Where(swap => swap.SwapId == swapId), CancellationToken.None);
-    }
 
+    private async Task HandleSwapUpdate(string swapId)
+    {
+        logger.LogInformation("Received swap update for {SwapId}", swapId);
+        var updatedSwaps =
+            await PollActiveManually(swaps => swaps.Where(swap => swap.SwapId == swapId), CancellationToken.None);
+
+        var scripts = updatedSwaps.Select(updated => updated.Swap.ContractScript).ToHashSet();
+        await arkVtxoSynchronizationService.PollScriptsForVtxos(scripts, CancellationToken.None);
+    }
 
     public async Task<ArkSwap> CreateReverseSwap(string walletId, CreateInvoiceParams createInvoiceRequest,
         CancellationToken cancellationToken)
@@ -405,13 +400,6 @@ public class BoltzService(
         {
             return swap;
         }
-        
-        // Get the wallet from the database to extract the receiver key
-        // var wallet =
-        //     await dbContext.Wallets
-        //         .FirstOrDefaultAsync(w => w.Id == walletId, cancellationToken)
-        //             ?? throw new InvalidOperationException($"Wallet with ID {walletId} not found");
-
         
         
         SubmarineSwapResult? swapResult = null;

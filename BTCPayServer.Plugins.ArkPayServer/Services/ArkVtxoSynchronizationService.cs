@@ -2,20 +2,14 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Ark.V1;
 using AsyncKeyedLock;
-using BTCPayServer.Data;
+using BTCPayServer.HostedServices;
 using BTCPayServer.Plugins.ArkPayServer.Cache;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Models.Events;
-using Microsoft.Extensions.Hosting;
 using Grpc.Core;
 using Microsoft.EntityFrameworkCore;
 using BTCPayServer.Plugins.ArkPayServer.Data.Entities;
-using BTCPayServer.Plugins.ArkPayServer.Payouts.Ark;
-using BTCPayServer.Services;
 using NArk;
-using NArk.Services.Abstractions;
-using NBitcoin;
-using NBitcoin.Payment;
 using PayoutData = BTCPayServer.Data.PayoutData;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
@@ -26,80 +20,187 @@ public class ArkVtxoSynchronizationService(
     EventAggregator eventAggregator,
     TrackedContractsCache contractsCache,
     ArkPluginDbContextFactory arkPluginDbContextFactory,
-    IndexerService.IndexerServiceClient indexerClient) : BackgroundService
+    IndexerService.IndexerServiceClient indexerClient) : EventHostedServiceBase(eventAggregator, logger)
 {
-    private CancellationTokenSource? _lastLoopCts = null;
     private Task? _lastListeningLoop = null;
     private string? _subscriptionId = null;
     private readonly TaskCompletionSource _startedTcs = new();
+    private CancellationTokenSource? _cts = null;
+    private HashSet<string> _lastSubscribedScripts = new();
+    private Task? _watchdogTask = null;
+    
     public Task Started => _startedTcs.Task;
-    public bool IsActive => _lastListeningLoop is not null && _lastListeningLoop.Status == TaskStatus.Running;
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public bool IsActive => _lastListeningLoop is { IsCompleted: false };
+    protected override void SubscribeToEvents()
     {
-        await SubscriptionUpdateLoop(stoppingToken);
+        Subscribe<ArkCacheUpdated>();
     }
-
-    private async Task SubscriptionUpdateLoop(CancellationToken stoppingToken)
+    
+    public override async Task StartAsync(CancellationToken cancellationToken)
     {
-        var skipWait = false;
-        while (!stoppingToken.IsCancellationRequested)
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        await base.StartAsync(cancellationToken);
+        
+        // Immediately establish subscription with current contracts
+        // This ensures we don't miss any events while waiting for cache updates
+        PushEvent(new ArkCacheUpdated(nameof(TrackedContractsCache)));
+        
+        // Start watchdog to ensure connection stays alive when there are scripts to track
+        _watchdogTask = WatchdogLoop(_cts.Token);
+    }
+    
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        if (_cts is not null)
         {
-            logger.LogInformation("Waiting for cache update event...");
-            var waitForCacheUpdate = skipWait? new ArkCacheUpdated(nameof(TrackedContractsCache), true) : await eventAggregator.WaitNext<ArkCacheUpdated>(stoppingToken);
-            skipWait = false;
-            logger.LogInformation("Received cache update event: CacheName={CacheName}, IsFake={IsFake}", 
-                waitForCacheUpdate.CacheName, waitForCacheUpdate.IsFake);
-            
-            if (waitForCacheUpdate.CacheName is not nameof(TrackedContractsCache))
-            {
-                logger.LogInformation("Ignoring cache update for {CacheName}", waitForCacheUpdate.CacheName);
-                continue;
-            }
-            
-            var contracts = contractsCache.Contracts;
-            var payouts = contractsCache.Payouts;
-            
-            var subscribedContractScripts = contracts.Select(c => c.Script).ToHashSet();
-            var subscribedPayoutScripts = payouts.Select(GetPayoutScript).ToHashSet();
-
-            var subscribedScripts = subscribedContractScripts.Concat(subscribedPayoutScripts).ToHashSet();
-            
-            logger.LogInformation(
-                "Updating subscription with {ActiveContractsCount} active contracts ({ContractScripts}) and {PendingPayoutsCount} pending payouts.",
-                subscribedContractScripts.Count,
-                string.Join(", ", subscribedContractScripts.Take(5)),
-                subscribedPayoutScripts.Count
-            );
-
-            var req = new SubscribeForScriptsRequest();
-
-            // Only use existing subscriptionId when fake flag is false, true IsFake flag shows that something has gone wrong 
-            if (_subscriptionId is not null && !waitForCacheUpdate.IsFake)
-                req.SubscriptionId = _subscriptionId;
-
-            req.Scripts.AddRange(subscribedScripts);
-
-            await PollScriptsForVtxos(subscribedScripts, stoppingToken);
-
-            _startedTcs.TrySetResult();
-
-            try
-            {
-                var subscribeRes = await indexerClient.SubscribeForScriptsAsync(req, cancellationToken: stoppingToken);
-                _subscriptionId = subscribeRes.SubscriptionId;
-                logger.LogInformation("Successfully subscribed with ID: {SubscriptionId}", _subscriptionId);
-                StartListening(subscribeRes.SubscriptionId, stoppingToken);
-            }
-            catch (RpcException ex)
-            {
-                logger.LogError(ex, "Failed to subscribe to scripts. Republishing the event with Fake flag.");
-                eventAggregator.Publish(new ArkCacheUpdated(nameof(TrackedContractsCache), true));
-                skipWait = true;
-            }
-
+            await _cts.CancelAsync();
+            _cts?.Dispose();
+        }
+        
+        if (_watchdogTask != null)
+        {
+            try { await _watchdogTask; } catch { /* expected on cancellation */ }
+        }
+     
+        await base.StopAsync(cancellationToken);
+    }
+    
+    protected override async Task ProcessEvent(object evt, CancellationToken cancellationToken)
+    {
+        if (evt is ArkCacheUpdated cacheUpdated)
+        {
+            await HandleCacheUpdate(cacheUpdated, cancellationToken);
         }
     }
+    
+    private async Task HandleCacheUpdate(ArkCacheUpdated waitForCacheUpdate, CancellationToken cancellationToken)
+    {
+        logger.LogInformation("Received cache update event: CacheName={CacheName}", 
+            waitForCacheUpdate.CacheName);
+            
+        if (waitForCacheUpdate.CacheName is not nameof(TrackedContractsCache))
+        {
+            logger.LogInformation("Ignoring cache update for {CacheName}", waitForCacheUpdate.CacheName);
+            return;
+        }
+            
+        var contracts = contractsCache.Contracts;
+        var payouts = contractsCache.Payouts;
+        
+        var subscribedContractScripts = contracts.Select(c => c.Script).ToHashSet();
+        var subscribedPayoutScripts = payouts.Select(GetPayoutScript).ToHashSet();
 
+        var subscribedScripts = subscribedContractScripts.Concat(subscribedPayoutScripts).ToHashSet();
+        
+        logger.LogInformation(
+            "Updating subscription with {ActiveContractsCount} active contracts ({ContractScripts}) and {PendingPayoutsCount} pending payouts.",
+            subscribedContractScripts.Count,
+            string.Join(", ", subscribedContractScripts.Take(5)),
+            subscribedPayoutScripts.Count
+        );
+
+        // Skip if no scripts to track
+        if (subscribedScripts.Count == 0)
+        {
+            logger.LogInformation("No scripts to track. Skipping subscription.");
+            _lastSubscribedScripts.Clear();
+            _startedTcs.TrySetResult();
+            return;
+        }
+        
+        // Skip if scripts haven't changed
+        if (subscribedScripts.SetEquals(_lastSubscribedScripts))
+        {
+            logger.LogDebug("Scripts unchanged. Ensuring listener is active.");
+            // Still ensure listener is running
+            if (_subscriptionId != null && _lastListeningLoop is null or { IsCompleted: true })
+            {
+                StartListening(_subscriptionId, _cts!.Token);
+            }
+            _startedTcs.TrySetResult();
+            return;
+        }
+
+        var req = new SubscribeForScriptsRequest
+        {
+            SubscriptionId = _subscriptionId ?? string.Empty
+        };
+
+        req.Scripts.AddRange(subscribedScripts);
+
+        try
+        {
+            var subscribeRes = await indexerClient.SubscribeForScriptsAsync(req, cancellationToken: cancellationToken);
+            var isNewSubscription = _subscriptionId != subscribeRes.SubscriptionId;
+            _subscriptionId = subscribeRes.SubscriptionId;
+            _lastSubscribedScripts = subscribedScripts;
+            logger.LogInformation("Successfully subscribed with ID: {SubscriptionId} (New: {IsNew})", _subscriptionId, isNewSubscription);
+            
+            // Always ensure listener is running, especially for new subscriptions
+            if (isNewSubscription || _lastListeningLoop is null or { IsCompleted: true })
+            {
+                StartListening(subscribeRes.SubscriptionId, _cts!.Token);
+            }
+            
+            _startedTcs.TrySetResult();
+            
+            // Re-read cache after subscribing to catch any contracts added during subscription
+            var currentContracts = contractsCache.Contracts;
+            var currentPayouts = contractsCache.Payouts;
+            var currentContractScripts = currentContracts.Select(c => c.Script).ToHashSet();
+            var currentPayoutScripts = currentPayouts.Select(GetPayoutScript).ToHashSet();
+            var currentScripts = currentContractScripts.Concat(currentPayoutScripts).ToHashSet();
+            
+            // If cache changed during subscription, trigger another update
+            if (!currentScripts.SetEquals(subscribedScripts))
+            {
+                logger.LogWarning("Cache changed during subscription. Triggering immediate re-subscription. " +
+                                 "Old: {OldCount}, New: {NewCount}", 
+                                 subscribedScripts.Count, currentScripts.Count);
+                PushEvent(new ArkCacheUpdated(nameof(TrackedContractsCache)));
+            }
+            
+            // Protected polling - don't let exceptions abort reconnection logic
+            try
+            {
+                await PollScriptsForVtxos(currentScripts, _cts!.Token);
+            }
+            catch (Exception pollEx)
+            {
+                logger.LogWarning(pollEx, "Failed to poll scripts after subscription. Will retry on next event.");
+            }
+        }
+        catch (RpcException ex)
+        {
+            logger.LogError(ex, "Failed to subscribe to scripts. Will retry after delay.");
+            _subscriptionId = null;
+            _lastSubscribedScripts.Clear();
+            
+            // Protected polling - even if this fails, we still want to retry subscribe
+            try
+            {
+                await PollScriptsForVtxos(subscribedScripts, _cts!.Token);
+            }
+            catch (Exception pollEx)
+            {
+                logger.LogWarning(pollEx, "Failed to poll scripts after subscribe failure.");
+            }
+            
+            // Backoff before retry to avoid hot loop
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogInformation("Retry delay cancelled during shutdown.");
+                return;
+            }
+            
+            PushEvent(new ArkCacheUpdated(nameof(TrackedContractsCache)));
+        }
+    }
+    
     private string GetPayoutScript(PayoutData payout)
     {
         return ArkAddress.Parse(payout.DedupId!).ScriptPubKey.ToHex();
@@ -107,19 +208,25 @@ public class ArkVtxoSynchronizationService(
 
     private void StartListening(string subscriptionId, CancellationToken stoppingToken)
     {
+        // Check if listener is still alive - only use IsCompleted for reliability
         if (_lastListeningLoop is { IsCompleted: false })
         {
-            logger.LogDebug("Listener already running.");
+            logger.LogDebug("Listener already active for subscription ID: {SubscriptionId}", subscriptionId);
             return;
         }
+        
+        if (_lastListeningLoop?.IsCompleted == true)
+        {
+            logger.LogWarning("Previous listener completed. Restarting with subscription ID: {SubscriptionId}", subscriptionId);
+        }
 
-        _lastLoopCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-        _lastListeningLoop = ListenToStream(subscriptionId, _lastLoopCts.Token);
-        logger.LogInformation("Stream listener started.");
+        _lastListeningLoop = ListenToStream(subscriptionId, stoppingToken);
+        logger.LogInformation("Stream listener started with subscription ID: {SubscriptionId}", subscriptionId);
     }
 
     private async Task ListenToStream(string subscriptionId, CancellationToken token)
     {
+        var streamCompletedNormally = false;
         try
         {
             logger.LogInformation("Connecting to stream with subscription ID: {SubscriptionId}", subscriptionId);
@@ -133,6 +240,7 @@ public class ArkVtxoSynchronizationService(
                     case GetSubscriptionResponse.DataOneofCase.None:
                         break;
                     case GetSubscriptionResponse.DataOneofCase.Heartbeat:
+                        logger.LogTrace("Received heartbeat for subscription {SubscriptionId}", subscriptionId);
                         break;
                     case GetSubscriptionResponse.DataOneofCase.Event when response.Event is not null :
                         await PollScriptsForVtxos( response.Event.Scripts.ToHashSet(), token);
@@ -141,24 +249,40 @@ public class ArkVtxoSynchronizationService(
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
-
-                
             }
+            
+            // If we reach here, the stream completed normally (disconnect)
+            streamCompletedNormally = true;
+            logger.LogWarning("Stream completed unexpectedly for subscription {SubscriptionId}. Triggering reconnection.", subscriptionId);
         }
         catch (RpcException ex) when (ex.StatusCode == StatusCode.Cancelled)
         {
-            logger.LogInformation("Stream was cancelled.");
+            logger.LogInformation("Stream was cancelled for subscription {SubscriptionId}.", subscriptionId);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Stream listener failed. It will be restarted on the next check.");
-            // The main loop will handle restarting the subscription.
-            // To ensure it restarts, we can trigger a check.
-            eventAggregator.Publish(new ArkCacheUpdated(nameof(TrackedContractsCache), true));
+            logger.LogError(ex, "Stream listener failed for subscription {SubscriptionId}. Triggering immediate reconnection.", subscriptionId);
+            // Clear subscription ID to force re-subscription (might be invalid/stale)
+            _subscriptionId = null;
+            _lastSubscribedScripts.Clear();
         }
         finally
         {
-            logger.LogInformation("ListenToStream finished.");
+            logger.LogInformation("ListenToStream finished for subscription {SubscriptionId}.", subscriptionId);
+            
+            // Trigger reconnection if stream completed (disconnect) or failed, but not if cancelled
+            if (streamCompletedNormally || (!token.IsCancellationRequested && _lastListeningLoop?.IsCompleted == true))
+            {
+                // Clear subscription ID on unexpected completion too (might be server-side issue)
+                if (streamCompletedNormally)
+                {
+                    logger.LogWarning("Clearing subscription ID due to unexpected stream completion.");
+                    _subscriptionId = null;
+                    _lastSubscribedScripts.Clear();
+                }
+                logger.LogInformation("Triggering reconnection for subscription {SubscriptionId}", subscriptionId);
+                PushEvent(new ArkCacheUpdated(nameof(TrackedContractsCache)));
+            }
         }
     }
     
@@ -209,10 +333,21 @@ public class ArkVtxoSynchronizationService(
                             v.TransactionId == vtxoToProccess.Outpoint.Txid &&
                             v.TransactionOutputIndex == (int)vtxoToProccess.Outpoint.Vout) is { } existing)
                     {
+                        // Track state before mapping to detect actual changes
+                        var stateBefore = dbContext.Entry(existing).State;
                         Map(vtxoToProccess, existing);
-                        Debug.Assert(dbContext.Entry(existing).State != EntityState.Added);
-                        if (dbContext.Entry(existing).State == EntityState.Modified)
+                        var stateAfter = dbContext.Entry(existing).State;
+                        
+                        Debug.Assert(stateAfter != EntityState.Added);
+                        
+                        // Only add to updated list if actually modified (not just re-mapped with same values)
+                        if (stateBefore == EntityState.Unchanged && stateAfter == EntityState.Modified)
                         {
+                            vtxosUpdated.Add(existing);
+                        }
+                        else if (stateBefore == EntityState.Modified && stateAfter == EntityState.Modified)
+                        {
+                            // Was already modified, keep it in the list
                             vtxosUpdated.Add(existing);
                         }
                     }
@@ -231,28 +366,75 @@ public class ArkVtxoSynchronizationService(
             await dbContext.SaveChangesAsync(cancellationToken);
             if (vtxosUpdated.Count != 0)
             {
-                var updateEvent = new VTXOsUpdated([.. vtxosUpdated]);
-                logger.LogInformation("Publishing event: {Event}", updateEvent.ToString());
-                eventAggregator.Publish(updateEvent);
+                eventAggregator.Publish(new VTXOsUpdated([.. vtxosUpdated]));
             }
         }
     }
 
     public static VTXO Map(IndexerVtxo vtxo, VTXO? existing = null)
     {
-        
+        var isNew = existing == null;
         existing ??= new VTXO();
 
-        existing.TransactionId = vtxo.Outpoint.Txid;
-        existing.TransactionOutputIndex = (int)vtxo.Outpoint.Vout;
-        existing.Amount = (long)vtxo.Amount;
-        existing.Recoverable = vtxo.IsSwept || DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt) < DateTimeOffset.UtcNow;
-        existing.SeenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt);
-        existing.ExpiresAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt);
-        existing.SpentByTransactionId = string.IsNullOrEmpty(vtxo.SpentBy) ? null : vtxo.SpentBy;
-        existing.Script = vtxo.Script;
+        // Only set properties if they differ to avoid triggering EF change tracking unnecessarily
+        if (isNew || existing.TransactionId != vtxo.Outpoint.Txid)
+            existing.TransactionId = vtxo.Outpoint.Txid;
+        
+        if (isNew || existing.TransactionOutputIndex != (int)vtxo.Outpoint.Vout)
+            existing.TransactionOutputIndex = (int)vtxo.Outpoint.Vout;
+        
+        if (isNew || existing.Amount != (long)vtxo.Amount)
+            existing.Amount = (long)vtxo.Amount;
+        
+        var recoverable = vtxo.IsSwept || DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt) < DateTimeOffset.UtcNow;
+        if (isNew || existing.Recoverable != recoverable)
+            existing.Recoverable = recoverable;
+        
+        var seenAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.CreatedAt);
+        if (isNew || existing.SeenAt != seenAt)
+            existing.SeenAt = seenAt;
+        
+        var expiresAt = DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt);
+        if (isNew || existing.ExpiresAt != expiresAt)
+            existing.ExpiresAt = expiresAt;
+        
+        var spentBy = string.IsNullOrEmpty(vtxo.SpentBy) ? null : vtxo.SpentBy;
+        if (isNew || existing.SpentByTransactionId != spentBy)
+            existing.SpentByTransactionId = spentBy;
+        
+        if (isNew || existing.Script != vtxo.Script)
+            existing.Script = vtxo.Script;
 
         return existing;
+    }
+    
+    private async Task WatchdogLoop(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+                
+                var contracts = contractsCache.Contracts;
+                var payouts = contractsCache.Payouts;
+                var hasScripts = contracts.Count > 0 || payouts.Count > 0;
+                
+                if (hasScripts && _lastListeningLoop is null or { IsCompleted: true })
+                {
+                    logger.LogWarning("Watchdog detected inactive listener with scripts to track. Triggering reconnection.");
+                    PushEvent(new ArkCacheUpdated(nameof(TrackedContractsCache)));
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("Watchdog stopped.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Watchdog encountered unexpected error.");
+        }
     }
 
 
