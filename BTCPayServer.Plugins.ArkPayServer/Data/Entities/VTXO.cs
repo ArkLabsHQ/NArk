@@ -14,7 +14,6 @@ public class VTXO
     public DateTimeOffset SeenAt { get; set; }
     // public DateTimeOffset? SpentAt { get; set; }
     public bool Recoverable { get; set; }
-
     public DateTimeOffset ExpiresAt { get; set; }
 
     public virtual ICollection<ArkIntentVtxo> IntentVtxos { get; set; } = null!;
@@ -24,6 +23,21 @@ public class VTXO
         var outpoint = new OutPoint(new uint256(TransactionId), (uint) TransactionOutputIndex);
         var txout = new TxOut(Money.Satoshis(Amount), NBitcoin.Script.FromHex(Script));
         return new Coin(outpoint, txout);
+    }
+
+    public override int GetHashCode()
+    {
+        // Hash all properties to detect changes
+        return HashCode.Combine(
+            TransactionId,
+            TransactionOutputIndex,
+            Amount,
+            Recoverable,
+            SeenAt,
+            ExpiresAt,
+            SpentByTransactionId,
+            Script
+        );
     }
     
     internal static void OnModelCreating(ModelBuilder builder)

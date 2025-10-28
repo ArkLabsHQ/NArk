@@ -333,21 +333,14 @@ public class ArkVtxoSynchronizationService(
                             v.TransactionId == vtxoToProccess.Outpoint.Txid &&
                             v.TransactionOutputIndex == (int)vtxoToProccess.Outpoint.Vout) is { } existing)
                     {
-                        // Track state before mapping to detect actual changes
-                        var stateBefore = dbContext.Entry(existing).State;
+                        // Compute hash before and after to detect actual changes
+                        var hashBefore = existing.GetHashCode();
                         Map(vtxoToProccess, existing);
-                        var stateAfter = dbContext.Entry(existing).State;
+                        var hashAfter = existing.GetHashCode();
                         
-                        Debug.Assert(stateAfter != EntityState.Added);
-                        
-                        // Only add to updated list if actually modified (not just re-mapped with same values)
-                        if (stateBefore == EntityState.Unchanged && stateAfter == EntityState.Modified)
+                        // Only publish if the VTXO actually changed
+                        if (hashBefore != hashAfter)
                         {
-                            vtxosUpdated.Add(existing);
-                        }
-                        else if (stateBefore == EntityState.Modified && stateAfter == EntityState.Modified)
-                        {
-                            // Was already modified, keep it in the list
                             vtxosUpdated.Add(existing);
                         }
                     }

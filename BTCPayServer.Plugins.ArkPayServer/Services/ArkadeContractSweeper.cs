@@ -71,7 +71,7 @@ public class ArkadeContractSweeper : IHostedService
                         if (group.Value.All(x => x.TxOut.IsTo(destination)))
                         {
                             _logger.LogInformation($"Skipping sweep for wallet {wallet.Id}: all {group.Value.Count} coins worth {group.Value.Sum(x => x.TxOut.Value)} are already at destination");
-                           continue;
+                            continue;
                         }
                         
                         if(group.Value.Count == 0)
@@ -85,6 +85,12 @@ public class ArkadeContractSweeper : IHostedService
                             // Sweep each coin in its own dedicated transaction
                             foreach (var coin in group.Value)
                             {
+                                // Skip coins already at destination to avoid infinite loops
+                                if (coin.TxOut.IsTo(destination))
+                                {
+                                    _logger.LogTrace($"Skipping coin {coin.Outpoint} for wallet {wallet.Id}: already at destination");
+                                    continue;
+                                }
                                 try
                                 {
                                     _logger.LogInformation($"Sweeping individual coin for wallet {wallet.Id}: {coin}");
