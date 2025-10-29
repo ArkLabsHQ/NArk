@@ -33,12 +33,17 @@ public class BoltzService(
 {
     private CompositeDisposable _leases = new();
     private BoltzWebsocketClient? _wsClient;
+    private CancellationTokenSource? _periodicPollCts;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _leases.Add(eventAggregator.SubscribeAsync<ArkSwapUpdated>(OnLightningSwapUpdated));
         _leases.Add(eventAggregator.SubscribeAsync<VTXOsUpdated>(VTXOSUpdated));
-        _ = ListenForSwapUpdates(cancellationToken);
+        
+        _periodicPollCts = new CancellationTokenSource();
+        _ = ListenForSwapUpdates(_periodicPollCts.Token);
+        _ = PeriodicSwapPolling(_periodicPollCts.Token);
+        
         return Task.CompletedTask;
     }
 
@@ -299,6 +304,8 @@ public class BoltzService(
 
     public Task StopAsync(CancellationToken cancellationToken)
     {
+        _periodicPollCts?.Cancel();
+        _periodicPollCts?.Dispose();
         _leases.Dispose();
         _leases = new CompositeDisposable();
         _pollLock.Dispose();
@@ -313,6 +320,56 @@ public class BoltzService(
 
         var scripts = updatedSwaps.Select(updated => updated.Swap.ContractScript).ToHashSet();
         await arkVtxoSynchronizationService.PollScriptsForVtxos(scripts, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Periodic polling failsafe to ensure no swaps are missed due to WebSocket issues or race conditions.
+    /// Polls all pending swaps every 5 minutes.
+    /// </summary>
+    private async Task PeriodicSwapPolling(CancellationToken cancellationToken)
+    {
+        // Wait 30 seconds before starting periodic polling to allow initial setup
+        await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+        
+        logger.LogInformation("Starting periodic swap polling failsafe (every 5 minutes)");
+        
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken);
+                
+                logger.LogDebug("Running periodic swap poll failsafe");
+                var updates = await PollActiveManually(null, cancellationToken);
+                
+                if (updates.Count > 0)
+                {
+                    logger.LogInformation("Periodic poll detected {Count} swap status changes", updates.Count);
+                    
+                    // Sync VTXOs for any completed swaps
+                    var completedScripts = updates
+                        .Where(u => !u.Swap.Status.IsActive())
+                        .Select(u => u.Swap.ContractScript)
+                        .ToHashSet();
+                    
+                    if (completedScripts.Count > 0)
+                    {
+                        await arkVtxoSynchronizationService.PollScriptsForVtxos(completedScripts, cancellationToken);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error in periodic swap polling failsafe");
+                // Continue polling despite errors
+            }
+        }
+        
+        logger.LogInformation("Periodic swap polling stopped");
     }
 
     public async Task<ArkSwap> CreateReverseSwap(string walletId, CreateInvoiceParams createInvoiceRequest,
