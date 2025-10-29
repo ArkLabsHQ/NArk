@@ -172,6 +172,7 @@
                     {
                         <th text-translate="true">Cache</th>
                     }
+                    <th text-translate="true" class="text-end">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -245,6 +246,16 @@
                                 }
                             </td>
                         }
+                        <td class="align-middle text-end">
+                            @if (swap.Status == ArkSwapStatus.Pending || swap.Status == ArkSwapStatus.Unknown)
+                            {
+                                <form asp-action="PollSwap" asp-route-storeId="@Model.StoreId" asp-route-swapId="@swap.SwapId" method="post" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-secondary" title="Manually poll swap status">
+                                        <vc:icon symbol="refresh" />
+                                    </button>
+                                </form>
+                            }
+                        </td>
                     </tr>
                 }
             </tbody>

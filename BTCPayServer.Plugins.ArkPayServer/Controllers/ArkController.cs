@@ -536,6 +536,46 @@ IAuthorizationService authorizationService,
         return View(model);
     }
 
+    [HttpPost("stores/{storeId}/swaps/{swapId}/poll")]
+    [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
+    public async Task<IActionResult> PollSwap(string storeId, string swapId)
+    {
+        var store = HttpContext.GetStoreData();
+        if (store == null)
+            return NotFound();
+
+        var config = GetConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, store);
+        if (config?.WalletId is null)
+            return NotFound();
+
+        try
+        {
+            // Poll the specific swap
+            var (updates, matchedScripts) = await boltzService.PollActiveManually(
+                swaps => swaps.Where(swap => swap.SwapId == swapId && swap.WalletId == config.WalletId),
+                HttpContext.RequestAborted);
+
+            if (updates.Count > 0)
+            {
+                TempData[WellKnownTempData.SuccessMessage] = $"Swap {swapId} polled successfully. Status: {updates[0].Swap.Status}";
+            }
+            else if (matchedScripts.Count > 0)
+            {
+                TempData[WellKnownTempData.SuccessMessage] = $"Swap {swapId} polled successfully. No status change detected.";
+            }
+            else
+            {
+                TempData[WellKnownTempData.ErrorMessage] = $"Swap {swapId} not found or not active.";
+            }
+        }
+        catch (Exception ex)
+        {
+            TempData[WellKnownTempData.ErrorMessage] = $"Error polling swap: {ex.Message}";
+        }
+
+        return RedirectToAction("Swaps", new { storeId });
+    }
+
     [HttpGet("stores/{storeId}/vtxos")]
     [Authorize(Policy = Policies.CanModifyStoreSettings, AuthenticationSchemes = AuthenticationSchemes.Cookie)]
     public async Task<IActionResult> Vtxos(

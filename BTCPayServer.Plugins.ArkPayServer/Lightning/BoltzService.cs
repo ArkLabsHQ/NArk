@@ -173,7 +173,7 @@ public class BoltzService(
 
     public IReadOnlyDictionary<string, string> GetActiveSwapsCache() => _activeSwaps;
 
-    public async Task<List<ArkSwapUpdated>> PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
+    public async Task<(List<ArkSwapUpdated> Updates, HashSet<string> MatchedScripts)> PollActiveManually(Func<IQueryable<ArkSwap>, IQueryable<ArkSwap>>? query = null, CancellationToken cancellationToken = default)
     {
         await _pollLock.WaitAsync(cancellationToken);
         
@@ -190,10 +190,11 @@ public class BoltzService(
             var activeSwaps = await queryable.ToArrayAsync(cancellationToken);
             if (activeSwaps.Length == 0)
             {
-                return [];
+                return ([], []);
             }
             
-      
+            // Collect all matched contract scripts
+            var matchedScripts = activeSwaps.Select(s => s.ContractScript).ToHashSet();
             
             var evts = new List<ArkSwapUpdated>();
             foreach (var swap in activeSwaps)
@@ -221,7 +222,7 @@ public class BoltzService(
                 }
             }
             PublishUpdates(evts.ToArray());
-            return evts;
+            return (evts, matchedScripts);
         }
         catch (Exception ex)
         {
@@ -232,7 +233,7 @@ public class BoltzService(
             _pollLock.Release();
         }
 
-        return [];
+        return ([], []);
     }
 
     private void PublishUpdates(params ArkSwapUpdated[] updates)
@@ -315,11 +316,21 @@ public class BoltzService(
     private async Task HandleSwapUpdate(string swapId)
     {
         logger.LogInformation("Received swap update for {SwapId}", swapId);
-        var updatedSwaps =
+        var (updates, matchedScripts) =
             await PollActiveManually(swaps => swaps.Where(swap => swap.SwapId == swapId), CancellationToken.None);
 
-        var scripts = updatedSwaps.Select(updated => updated.Swap.ContractScript).ToHashSet();
-        await arkVtxoSynchronizationService.PollScriptsForVtxos(scripts, CancellationToken.None);
+        // Always sync VTXOs when we receive a WebSocket update, even if status didn't change
+        // The swap may have progressed (e.g., invoice paid, funds received) without changing our status mapping
+        if (matchedScripts.Count > 0)
+        {
+            if (updates.Count == 0)
+            {
+                logger.LogInformation("No status change for swap {SwapId}, but syncing {Count} contract(s) anyway", 
+                    swapId, matchedScripts.Count);
+            }
+            
+            await arkVtxoSynchronizationService.PollScriptsForVtxos(matchedScripts, CancellationToken.None);
+        }
     }
 
     /// <summary>
@@ -340,7 +351,7 @@ public class BoltzService(
                 await Task.Delay(TimeSpan.FromMinutes(5), cancellationToken);
                 
                 logger.LogDebug("Running periodic swap poll failsafe");
-                var updates = await PollActiveManually(null, cancellationToken);
+                var (updates, matchedScripts) = await PollActiveManually(null, cancellationToken);
                 
                 if (updates.Count > 0)
                 {
@@ -356,6 +367,12 @@ public class BoltzService(
                     {
                         await arkVtxoSynchronizationService.PollScriptsForVtxos(completedScripts, cancellationToken);
                     }
+                }
+                else if (matchedScripts.Count > 0)
+                {
+                    // No status changes but we have pending swaps - sync them anyway
+                    logger.LogDebug("Periodic poll: no status changes, but syncing {Count} pending swap contract(s)", matchedScripts.Count);
+                    await arkVtxoSynchronizationService.PollScriptsForVtxos(matchedScripts, cancellationToken);
                 }
             }
             catch (OperationCanceledException)
