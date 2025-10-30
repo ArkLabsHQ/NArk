@@ -205,7 +205,7 @@
                         <td class="align-middle">
                             @if (arkContract != null)
                             {
-                                var arkAddress = arkContract.GetArkAddress().ToString();
+                                var arkAddress = arkContract.GetArkAddress().ToString(mainnet);
                                 <vc:truncate-center text="@arkAddress" link="@link" classes="truncate-center-id"/>
                             }
                             else

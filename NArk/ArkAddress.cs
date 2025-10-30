@@ -22,7 +22,7 @@ public class ArkAddress: TaprootPubKey
     protected static string HrpMainnet => "ark";
     protected static string HrpTestnet => "tark";
 
-    public ArkAddress(TaprootAddress taprootAddress, ECXOnlyPubKey serverKey, int version = 0) : base(taprootAddress.PubKey.ToBytes())
+    public ArkAddress(TaprootAddress taprootAddress, ECXOnlyPubKey serverKey, int version = 0, Network? network =null) : base(taprootAddress.PubKey.ToBytes())
     {
         ArgumentNullException.ThrowIfNull(taprootAddress);
         ArgumentNullException.ThrowIfNull(serverKey);
@@ -30,9 +30,10 @@ public class ArkAddress: TaprootPubKey
 
         ServerKey = serverKey;
         Version = version;
+        Network = network;
     }
     
-    public ArkAddress(ECXOnlyPubKey tweakedKey, ECXOnlyPubKey serverKey, int version = 0) : base(tweakedKey.ToBytes())
+    public ArkAddress(ECXOnlyPubKey tweakedKey, ECXOnlyPubKey serverKey, int version = 0, Network? network =null) : base(tweakedKey.ToBytes())
     {
         ArgumentNullException.ThrowIfNull(tweakedKey);
         ArgumentNullException.ThrowIfNull(version);
@@ -40,14 +41,16 @@ public class ArkAddress: TaprootPubKey
 
         ServerKey = serverKey;
         Version = version;
+        Network = network;
     }
 
     public ECXOnlyPubKey ServerKey { get; }
     public int Version { get; }
+    public Network? Network { get; }
 
     public override string ToString()
     {
-        throw new NotImplementedException();
+        return Network is null ? throw new InvalidOperationException("Network is required for address generation") : ToString(Network == Network.Main);
     }
     
     public string ToString(bool mainnet)
