@@ -23,14 +23,8 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "Detected version: $VERSION"
         
-    - name: Check if version changed
-      id: check
-      run: |
-        git diff HEAD^ HEAD -- BTCPayServer.Plugins.ArkPayServer/BTCPayServer.Plugins.ArkPayServer.csproj | grep -q '<Version>' && echo "changed=true" >> $GITHUB_OUTPUT || echo "changed=false" >> $GITHUB_OUTPUT
-        
     - name: Check if tag exists
       id: tag_check
-      if: steps.check.outputs.changed == 'true'
       run: |
         if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
           echo "exists=true" >> $GITHUB_OUTPUT
@@ -41,7 +35,7 @@ jobs:
         fi
         
     - name: Create and push tag
-      if: steps.check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+      if: steps.tag_check.outputs.exists == 'false'
       run: |
         git tag "v${{ steps.version.outputs.version }}"
         git push origin "v${{ steps.version.outputs.version }}"
