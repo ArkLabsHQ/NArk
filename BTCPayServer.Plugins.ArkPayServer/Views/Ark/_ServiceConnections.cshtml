@@ -37,35 +37,40 @@
                     </div>
                 </div>
             </div>
-            
+
             <!-- Boltz -->
             <div class="col-md-6">
                 <div class="d-flex align-items-start">
                     <div class="me-3">
                         @if (Model.BoltzConnected)
                         {
-                            <span class="badge rounded-circle bg-success p-2" style="width: 16px; height: 16px;" title="Connected" data-bs-toggle="tooltip"></span>
+                            <span class="badge rounded-circle bg-success p-2" style="width: 16px; height: 16px;"
+                                  title="Connected" data-bs-toggle="tooltip"></span>
                         }
                         else
                         {
-                            <span class="badge rounded-circle bg-danger p-2" style="width: 16px; height: 16px;" title="@(Model.BoltzError ?? "Disconnected")" data-bs-toggle="tooltip"></span>
+                            <span class="badge rounded-circle bg-danger p-2" style="width: 16px; height: 16px;"
+                                  title="@(Model.BoltzError ?? "Disconnected")" data-bs-toggle="tooltip"></span>
                         }
                     </div>
-                    <div class="flex-fill">
-                        <h6 class="mb-1">Boltz Swap Service</h6>
-                        @if (!string.IsNullOrEmpty(Model.BoltzUrl))
-                        {
+                    @if (!string.IsNullOrEmpty(Model.BoltzUrl))
+                    {
+                        <div class="flex-fill">
+                            <h6 class="mb-1">Boltz Swap Service</h6>
+
+
                             <div class="text-muted small font-monospace text-break">@Model.BoltzUrl</div>
-                        }
-                        @if (!Model.BoltzConnected && !string.IsNullOrEmpty(Model.BoltzError))
-                        {
-                            <div class="text-danger small mt-1">@Model.BoltzError</div>
-                        }
-                        else if (Model.BoltzConnected)
-                        {
-                            <div class="text-success small mt-1">Connected</div>
-                        }
-                    </div>
+
+                            @if (!Model.BoltzConnected && !string.IsNullOrEmpty(Model.BoltzError))
+                            {
+                                <div class="text-danger small mt-1">@Model.BoltzError</div>
+                            }
+                            else if (Model.BoltzConnected)
+                            {
+                                <div class="text-success small mt-1">Connected</div>
+                            }
+                        </div>
+                    }
                 </div>
             </div>
         </div>

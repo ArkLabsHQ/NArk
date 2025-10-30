@@ -42,8 +42,8 @@ namespace BTCPayServer.Plugins.ArkPayServer.Controllers;
 [Route("plugins/ark")]
 [Authorize(AuthenticationSchemes = AuthenticationSchemes.Cookie)]
 public class ArkController(
-    BoltzService boltzService,
-    BoltzClient boltzClient,
+    BoltzService? boltzService,
+    BoltzClient? boltzClient,
     ArkConfiguration arkConfiguration,
 IAuthorizationService authorizationService,
     ArkPayoutHandler arkPayoutHandler,
@@ -205,7 +205,7 @@ IAuthorizationService authorizationService,
         string? boltzError = null;
         try
         {
-            var pairs = await boltzClient.GetVersionAsync();
+            var pairs = boltzClient != null ? await boltzClient.GetVersionAsync() : null;
             boltzConnected = pairs != null;
         }
         catch (Exception ex)
@@ -450,7 +450,7 @@ IAuthorizationService authorizationService,
             ContractSwaps = contractSwaps,
             CanManageContracts = config.GeneratedByStore,
             Debug = debug,
-            CachedSwapScripts = boltzService.GetActiveSwapsCache().Values.ToHashSet(),
+            CachedSwapScripts = boltzService?.GetActiveSwapsCache().Values.ToHashSet() ?? [],
             CachedContractScripts = trackedContractsCache.Contracts.Select(c => c.Script).ToHashSet()
         };
 
@@ -530,7 +530,7 @@ IAuthorizationService authorizationService,
             SearchText = searchText,
             Search = new SearchString(searchTerm),
             Debug = debug,
-            CachedSwapIds = boltzService.GetActiveSwapsCache().Keys.ToHashSet()
+            CachedSwapIds = boltzService?.GetActiveSwapsCache().Keys.ToHashSet() ?? []
         };
 
         return View(model);
@@ -550,6 +550,12 @@ IAuthorizationService authorizationService,
 
         try
         {
+            if (boltzService == null)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Boltz service is not configured";
+                return RedirectToAction(nameof(Swaps), new { storeId });
+            }
+            
             // Poll the specific swap
             var (updates, matchedScripts) = await boltzService.PollActiveManually(
                 swaps => swaps.Where(swap => swap.SwapId == swapId && swap.WalletId == config.WalletId),
@@ -1404,7 +1410,7 @@ IAuthorizationService authorizationService,
         string? boltzError = null;
         try
         {
-            var pairs = await boltzClient.GetVersionAsync();
+            var pairs = boltzClient != null ? await boltzClient.GetVersionAsync() : null;
             boltzConnected = pairs != null;
         }
         catch (Exception ex)

@@ -99,18 +99,11 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         
         serviceCollection.AddSingleton<ArkadeSpendingService>();
         
-        // Register the Boltz swap services
-        serviceCollection.AddSingleton<BoltzSwapService>();
-        serviceCollection.AddSingleton<BoltzService>();
-        serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
-
         serviceCollection.AddSingleton<TrackedContractsCache>();
         serviceCollection.AddHostedService<TrackedContractsCache>(provider => provider.GetRequiredService<TrackedContractsCache>());
 
         // Register Arkade checkout view
         serviceCollection.AddUIExtension("checkout-end", "Arkade/ArkadeMethodCheckout");
-        
-        serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/OldArk/ArkLNSetupTabhead.cshtml");
         serviceCollection.AddUIExtension("dashboard-setup-guide-payment", "/Views/OldArk/DashboardSetupGuidePayment.cshtml");
         serviceCollection.AddUIExtension("store-invoices-payments", "/Views/OldArk/ArkPaymentData.cshtml");
         // Display Ark as a wallet type in navigation sidebar
@@ -140,12 +133,25 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
         serviceCollection.AddSingleton<CachedOperatorTermsService>();
         serviceCollection.AddSingleton<IOperatorTermsService, CachedOperatorTermsService>(provider => provider.GetRequiredService<CachedOperatorTermsService>());
 
+        // Register Boltz services only if BoltzUri is configured
         if (!string.IsNullOrWhiteSpace(config.BoltzUri))
         {
             serviceCollection.AddHttpClient<BoltzClient>(client =>
             {
                 client.BaseAddress = new Uri(config.BoltzUri);
             });
+            
+            // Register the Boltz swap services only when BoltzClient is available
+            serviceCollection.AddSingleton<BoltzSwapService>();
+            serviceCollection.AddSingleton<BoltzService>();
+            serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
+            serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/OldArk/ArkLNSetupTabhead.cshtml");
+        }
+        else
+        {
+            // Register null implementations so DI can inject null for optional dependencies
+            serviceCollection.AddSingleton<BoltzClient>(provider => null!);
+            serviceCollection.AddSingleton<BoltzService>(provider => null!);
         }
     }
 

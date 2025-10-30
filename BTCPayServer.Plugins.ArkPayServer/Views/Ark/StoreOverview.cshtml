@@ -118,14 +118,24 @@
                         <span class="badge text-bg-warning">Watch-Only</span>
                     }
                 </div>
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <span class="text-muted">Lightning</span>
-                    <form asp-action="@(Model.IsLightningEnabled ? "DisableLightning" : "EnableLightning")" method="post" asp-route-storeId="@storeId" class="d-inline">
-                        <button type="submit" class="btn btn-sm @(Model.IsLightningEnabled ? "btn-outline-secondary" : "btn-primary")">
-                            @(Model.IsLightningEnabled ? "Disable" : "Enable")
-                        </button>
-                    </form>
-                </div>
+                @if (!string.IsNullOrEmpty(Model.BoltzUrl))
+                {
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted">Lightning</span>
+                        <form asp-action="@(Model.IsLightningEnabled ? "DisableLightning" : "EnableLightning")" method="post" asp-route-storeId="@storeId" class="d-inline">
+                            <button type="submit" class="btn btn-sm @(Model.IsLightningEnabled ? "btn-outline-secondary" : "btn-primary")">
+                                @(Model.IsLightningEnabled ? "Disable" : "Enable")
+                            </button>
+                        </form>
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="text-muted">Lightning</span>
+                        <span class="badge text-bg-secondary" title="Boltz service is required for Lightning functionality">Not Available</span>
+                    </div>
+                }
                 @if (!string.IsNullOrEmpty(Model.Destination))
                 {
                     <div class="d-flex justify-content-between align-items-center">
