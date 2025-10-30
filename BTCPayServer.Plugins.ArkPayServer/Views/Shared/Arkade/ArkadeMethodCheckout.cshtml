@@ -12,9 +12,15 @@
             <img class="qr-icon" :src="model.cryptoImage" :alt="model.paymentMethodName"/>
         </div>
         <div v-if="model.address" class="input-group mt-3">
-            <div class="form-floating" id="Address_@Model.PaymentMethodId">
+            <div class="form-floating" id="ArkAddress_@Model.PaymentMethodId">
                 <vc:truncate-center text="model.address" is-vue="true" padding="15" elastic="true" classes="form-control-plaintext" />
-                <label v-t="{ path: 'address', args: { paymentMethod: model.paymentMethodName }}"></label>
+                <label>Ark Address</label>
+            </div>
+        </div>
+        <div v-if="onchainAddress" class="input-group mt-3">
+            <div class="form-floating" id="OnchainAddress_@Model.PaymentMethodId">
+                <vc:truncate-center text="onchainAddress" is-vue="true" padding="15" elastic="true" classes="form-control-plaintext" />
+                <label>Bitcoin Address</label>
             </div>
         </div>
         <div v-if="lightning" class="input-group mt-3">
@@ -52,6 +58,11 @@
             };
         },
         computed: {
+            onchainAddress () {
+                // Extract onchain address from bitcoin: URI (bitcoin:ADDRESS?...)
+                const match = this.model.invoiceBitcoinUrl?.match(/^bitcoin:([a-zA-Z0-9]+)/i);
+                return match ? match[1] : null;
+            },
             lightning () {
                 const match = this.model.invoiceBitcoinUrl?.match(/[&?]lightning=(.*)&?/i);
                 return match ? match[1].toLowerCase() : null;

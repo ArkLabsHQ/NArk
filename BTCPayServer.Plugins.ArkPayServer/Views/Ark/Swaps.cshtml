@@ -2,6 +2,7 @@
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.ArkPayServer
 @using BTCPayServer.Plugins.ArkPayServer.Data.Entities
+@using BTCPayServer.Plugins.ArkPayServer.Helpers
 @using NArk.Services.Abstractions
 @using NBitcoin
 @using NArk.Contracts
@@ -166,6 +167,7 @@
                     <th text-translate="true" class="text-nowrap">Swap ID</th>
                     <th text-translate="true" class="text-nowrap">Type</th>
                     <th text-translate="true" class="text-nowrap">Amount</th>
+                    <th text-translate="true">Contract Address</th>
                     <th text-translate="true">Status</th>
                     <th text-translate="true">Invoice</th>
                     @if (Model.Debug)
@@ -179,10 +181,8 @@
                 @foreach (var swap in Model.Swaps)
                 {
                     var arkContract = swap.Contract != null ? ArkContract.Parse(swap.Contract.Type, swap.Contract.ContractData) : null;
-                    var link = arkContract != null ? $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}" : "#";
-                    var boltzSwapLink = !string.IsNullOrEmpty(ArkConfiguration.BoltzUri) 
-                        ? $"{ArkConfiguration.BoltzUri.TrimEnd('/')}/v2/swap/{swap.SwapId}" 
-                        : null;
+                    var link = arkContract != null ? ArkadeLinkHelper.GetIndexerLinkForContract(ArkConfiguration.ArkUri, arkContract) : "#";
+                    var boltzSwapLink = ArkadeLinkHelper.GetBoltzSwapLink(ArkConfiguration.BoltzUri, swap.SwapId);
 
                     <tr id="swap_@swap.SwapId.GetHashCode()">
                         <td class="align-middle date-col">@swap.CreatedAt.ToBrowserDate()</td>
@@ -201,6 +201,17 @@
                         </td>
                         <td class="align-middle">
                             @Money.Satoshis(swap.ExpectedAmount).ToDecimal(MoneyUnit.BTC) BTC
+                        </td>
+                        <td class="align-middle">
+                            @if (arkContract != null)
+                            {
+                                var arkAddress = arkContract.GetArkAddress().ToString();
+                                <vc:truncate-center text="@arkAddress" link="@link" classes="truncate-center-id"/>
+                            }
+                            else
+                            {
+                                <span class="text-muted">-</span>
+                            }
                         </td>
                         <td class="align-middle">
                             @{
@@ -250,8 +261,8 @@
                             @if (swap.Status == ArkSwapStatus.Pending || swap.Status == ArkSwapStatus.Unknown)
                             {
                                 <form asp-action="PollSwap" asp-route-storeId="@Model.StoreId" asp-route-swapId="@swap.SwapId" method="post" class="d-inline">
-                                    <button type="submit" class="btn btn-sm btn-secondary" title="Manually poll swap status">
-                                        <vc:icon symbol="refresh" />
+                                    <button type="submit" class="btn btn-link p-0 text-secondary" title="Manually poll swap status" data-bs-toggle="tooltip">
+                                        <vc:icon symbol="actions-refresh" />
                                     </button>
                                 </form>
                             }

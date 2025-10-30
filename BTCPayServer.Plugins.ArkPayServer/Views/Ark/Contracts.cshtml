@@ -2,15 +2,14 @@
 @using BTCPayServer.Abstractions.Extensions
 @using BTCPayServer.Plugins.ArkPayServer
 @using BTCPayServer.Plugins.ArkPayServer.Data.Entities
+@using BTCPayServer.Plugins.ArkPayServer.Helpers
 @using NArk.Services.Abstractions
 @using NBitcoin
 @using NArk.Contracts
-@using Microsoft.AspNetCore.Mvc.ViewFeatures
 @model BTCPayServer.Plugins.ArkPayServer.Models.StoreContractsViewModel
 @inject IScopeProvider ScopeProvider
 @inject IOperatorTermsService Terms
 @inject ArkConfiguration ArkConfiguration
-
 @{
     Layout = "_Layout";
     ViewData.SetActivePage(category: "Ark", activePage: "Contracts", title: "Ark - Contracts");
@@ -174,7 +173,7 @@
                 {
                     var arkContract = ArkContract.Parse(contract.Type, contract.ContractData);
                     if (arkContract is null) continue;
-                    var link = $"{ArkConfiguration.ArkUri}/v1/indexer/vtxos?scripts={arkContract.GetArkAddress().ScriptPubKey.ToHex()}";
+                    var link = ArkadeLinkHelper.GetIndexerLinkForContract(ArkConfiguration.ArkUri, arkContract);
                     var detailsId = $"contract_details_{contract.Script.GetHashCode()}";
 
                     BTCPayServer.Plugins.ArkPayServer.Data.Entities.VTXO[]? vtxos = [];

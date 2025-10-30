@@ -1,4 +1,3 @@
-using System.Globalization;
 using BTCPayServer.Models;
 using BTCPayServer.Payments;
 using BTCPayServer.Services.Invoices;
@@ -12,31 +11,34 @@ public class ArkadePaymentLinkExtension : IPaymentLinkExtension
 
     public string GetPaymentLink(PaymentPrompt prompt, IUrlHelper? urlHelper)
     {
-        var onchain =
-            prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.CHAIN.GetPaymentMethodId("BTC"));
-        var ln =
-            prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LN.GetPaymentMethodId("BTC"));
-        var lnurl =
-            prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LNURL.GetPaymentMethodId("BTC"));
+        // Get other payment methods if available
+        var onchain = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.CHAIN.GetPaymentMethodId("BTC"));
+        var ln = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LN.GetPaymentMethodId("BTC"));
+        var lnurl = prompt.ParentEntity.GetPaymentPrompt(PaymentTypes.LNURL.GetPaymentMethodId("BTC"));
 
-        var amountInString = prompt.Calculate().Due.ToString(CultureInfo.InvariantCulture);
+        var amount = prompt.Calculate().Due;
         
-        if (string.IsNullOrEmpty(onchain?.Destination) && ln is null && lnurl is null)
+        // Build BIP21 URI using the helper
+        var builder = ArkadeBip21Builder.Create()
+            .WithArkAddress(prompt.Destination)
+            .WithAmount(amount);
+        
+        // Add onchain address if available
+        if (!string.IsNullOrEmpty(onchain?.Destination))
         {
-            return $"bitcoin:{prompt.Destination}?amount={amountInString}";
+            builder.WithOnchainAddress(onchain.Destination);
         }
-
-        var res = $"bitcoin:{onchain?.Destination ?? string.Empty}?amount={amountInString}&ark={prompt.Destination}";
         
+        // Add lightning invoice if available (prefer LN over LNURL)
         if (ln is not null)
         {
-            res += $"&lightning={ln.Destination}";
+            builder.WithLightning(ln.Destination);
         }
         else if (lnurl is not null)
         {
-            res += $"&lightning={lnurl.Destination}";
+            builder.WithLightning(lnurl.Destination);
         }
         
-        return res;
+        return builder.Build();
     }
 }
