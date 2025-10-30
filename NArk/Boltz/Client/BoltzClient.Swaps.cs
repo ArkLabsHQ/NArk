@@ -13,9 +13,9 @@ public partial class BoltzClient
     /// </summary>
     /// <param name="swapId">The ID of the swap.</param>
     /// <returns>The status response for the swap.</returns>
-    public async Task<SwapStatusResponse?> GetSwapStatusAsync(string swapId)
+    public async Task<SwapStatusResponse?> GetSwapStatusAsync(string swapId, CancellationToken cancellation)
     {
-        return await _httpClient.GetFromJsonAsync<SwapStatusResponse>($"v2/swap/{swapId}");
+        return await _httpClient.GetFromJsonAsync<SwapStatusResponse>($"v2/swap/{swapId}", cancellation);
     }
 
     // Submarine Swaps
@@ -25,9 +25,9 @@ public partial class BoltzClient
     /// </summary>
     /// <param name="request">The submarine swap creation request.</param>
     /// <returns>The submarine swap response.</returns>
-    public async Task<SubmarineResponse> CreateSubmarineSwapAsync(SubmarineRequest request)
+    public async Task<SubmarineResponse> CreateSubmarineSwapAsync(SubmarineRequest request, CancellationToken cancellation)
     {
-        return await PostAsJsonAsync<SubmarineRequest, SubmarineResponse>("v2/swap/submarine", request);
+        return await PostAsJsonAsync<SubmarineRequest, SubmarineResponse>("v2/swap/submarine", request, cancellation);
     }
 
     // Reverse Swaps
@@ -36,10 +36,11 @@ public partial class BoltzClient
     /// Creates a new Reverse Swap.
     /// </summary>
     /// <param name="request">The reverse swap creation request.</param>
+    /// <param name="cancellation"></param>
     /// <returns>The reverse swap response.</returns>
-    public async Task<ReverseResponse?> CreateReverseSwapAsync(ReverseRequest request)
+    public async Task<ReverseResponse?> CreateReverseSwapAsync(ReverseRequest request, CancellationToken cancellation)
     {
-        return await PostAsJsonAsync<ReverseRequest, ReverseResponse>("v2/swap/reverse", request);
+        return await PostAsJsonAsync<ReverseRequest, ReverseResponse>("v2/swap/reverse", request, cancellation);
     }
 
 }

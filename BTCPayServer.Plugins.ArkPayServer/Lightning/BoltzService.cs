@@ -199,7 +199,7 @@ public class BoltzService(
             var evts = new List<ArkSwapUpdated>();
             foreach (var swap in activeSwaps)
             {
-                var evt = await PollSwapStatus(swap);
+                var evt = await PollSwapStatus(swap, cancellationToken);
                 if (evt != null)
                 {
                     evts.Add(evt);
@@ -247,11 +247,11 @@ public class BoltzService(
         logger.LogInformation(sb.ToString());
     }
 
-    private async Task<ArkSwapUpdated?> PollSwapStatus(ArkSwap swap)
+    private async Task<ArkSwapUpdated?> PollSwapStatus(ArkSwap swap, CancellationToken cancellationToken)
     {
         try
         {
-            var response = await boltzClient.GetSwapStatusAsync(swap.SwapId);
+            var response = await boltzClient.GetSwapStatusAsync(swap.SwapId, cancellationToken);
             var oldStatus = swap.Status;
             if (Map(response.Status) is var newStatus && newStatus != oldStatus)
             {

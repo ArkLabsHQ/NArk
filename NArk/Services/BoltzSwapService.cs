@@ -30,7 +30,7 @@ public class BoltzSwapService(
             RefundPublicKey = sender.ToHex(),
             From = "ARK",
             To = "BTC",
-        });
+        }, cancellationToken);
 
         var hash = new uint160(Hashes.RIPEMD160(invoice.PaymentHash.ToBytes(false)), false);
         var receiver = response.ClaimPublicKey.ToECXOnlyPubKey();
@@ -55,8 +55,7 @@ public class BoltzSwapService(
         return new SubmarineSwapResult(vhtlcContract, response, address);
     }
 
-    public async Task<ReverseSwapResult> CreateReverseSwap(
-        CreateInvoiceParams createInvoiceRequest,
+    public async Task<ReverseSwapResult> CreateReverseSwap(CreateInvoiceParams createInvoiceRequest,
         ECPubKey receiver,
         CancellationToken cancellationToken = default)
     {
@@ -86,7 +85,7 @@ public class BoltzSwapService(
         };
 
         logger.LogDebug("Sending reverse swap request to Boltz");
-        var response = await boltzClient.CreateReverseSwapAsync(request);
+        var response = await boltzClient.CreateReverseSwapAsync(request, cancellationToken);
 
         if (response == null)
         {
