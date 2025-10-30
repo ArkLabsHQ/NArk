@@ -258,7 +258,7 @@
                             </td>
                         }
                         <td class="align-middle text-end">
-                            @if (swap.Status == ArkSwapStatus.Pending || swap.Status == ArkSwapStatus.Unknown)
+                            @if (swap.Status.IsActive())
                             {
                                 <form asp-action="PollSwap" asp-route-storeId="@Model.StoreId" asp-route-swapId="@swap.SwapId" method="post" class="d-inline">
                                     <button type="submit" class="btn btn-link p-0 text-secondary" title="Manually poll swap status" data-bs-toggle="tooltip">
