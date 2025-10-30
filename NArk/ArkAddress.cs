@@ -1,4 +1,4 @@
-﻿using NBitcoin;
+using NBitcoin;
 using NBitcoin.DataEncoders;
 using NBitcoin.Secp256k1;
 
@@ -6,6 +6,11 @@ namespace NArk;
 
 public class ArkAddress: TaprootPubKey
 {
+    protected static Bech32Encoder TestnetEncoder { get; set; }
+    protected static readonly Bech32Encoder MainnetEncoder;
+    protected static string HrpMainnet => "ark";
+    protected static string HrpTestnet => "tark";
+
     static ArkAddress()
     {
         MainnetEncoder = Encoders.Bech32(HrpMainnet);
@@ -17,12 +22,7 @@ public class ArkAddress: TaprootPubKey
         TestnetEncoder.SquashBytes = true;
     }
 
-    protected static Bech32Encoder TestnetEncoder { get; set; }
-    protected static readonly Bech32Encoder MainnetEncoder;
-    protected static string HrpMainnet => "ark";
-    protected static string HrpTestnet => "tark";
-
-    public ArkAddress(TaprootAddress taprootAddress, ECXOnlyPubKey serverKey, int version = 0, Network? network =null) : base(taprootAddress.PubKey.ToBytes())
+    public ArkAddress(TaprootAddress taprootAddress, ECXOnlyPubKey serverKey, int version = 0, Network? network = null) : base(taprootAddress.PubKey.ToBytes())
     {
         ArgumentNullException.ThrowIfNull(taprootAddress);
         ArgumentNullException.ThrowIfNull(serverKey);
@@ -32,8 +32,8 @@ public class ArkAddress: TaprootPubKey
         Version = version;
         Network = network;
     }
-    
-    public ArkAddress(ECXOnlyPubKey tweakedKey, ECXOnlyPubKey serverKey, int version = 0, Network? network =null) : base(tweakedKey.ToBytes())
+
+    public ArkAddress(ECXOnlyPubKey tweakedKey, ECXOnlyPubKey serverKey, int version = 0, Network? network = null) : base(tweakedKey.ToBytes())
     {
         ArgumentNullException.ThrowIfNull(tweakedKey);
         ArgumentNullException.ThrowIfNull(version);
@@ -52,7 +52,6 @@ public class ArkAddress: TaprootPubKey
     {
         return Network is null ? throw new InvalidOperationException("Network is required for address generation") : ToString(Network == Network.Main);
     }
-    
     public string ToString(bool mainnet)
     {
         var encoder = mainnet ? MainnetEncoder : TestnetEncoder;
