@@ -1,0 +1,48 @@
+name: Auto Tag on Version Bump
+
+on:
+  push:
+    branches: [ "master" ]
+    paths:
+      - 'BTCPayServer.Plugins.ArkPayServer/BTCPayServer.Plugins.ArkPayServer.csproj'
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 2  # Need at least 2 commits to compare
+        
+    - name: Extract version from csproj
+      id: version
+      run: |
+        VERSION=$(grep -oP '<Version>\K[^<]+' BTCPayServer.Plugins.ArkPayServer/BTCPayServer.Plugins.ArkPayServer.csproj)
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Detected version: $VERSION"
+        
+    - name: Check if version changed
+      id: check
+      run: |
+        git diff HEAD^ HEAD -- BTCPayServer.Plugins.ArkPayServer/BTCPayServer.Plugins.ArkPayServer.csproj | grep -q '<Version>' && echo "changed=true" >> $GITHUB_OUTPUT || echo "changed=false" >> $GITHUB_OUTPUT
+        
+    - name: Check if tag exists
+      id: tag_check
+      if: steps.check.outputs.changed == 'true'
+      run: |
+        if git rev-parse "v${{ steps.version.outputs.version }}" >/dev/null 2>&1; then
+          echo "exists=true" >> $GITHUB_OUTPUT
+          echo "Tag v${{ steps.version.outputs.version }} already exists"
+        else
+          echo "exists=false" >> $GITHUB_OUTPUT
+          echo "Tag v${{ steps.version.outputs.version }} does not exist"
+        fi
+        
+    - name: Create and push tag
+      if: steps.check.outputs.changed == 'true' && steps.tag_check.outputs.exists == 'false'
+      run: |
+        git tag "v${{ steps.version.outputs.version }}"
+        git push origin "v${{ steps.version.outputs.version }}"
+        echo "✅ Created and pushed tag v${{ steps.version.outputs.version }}"
