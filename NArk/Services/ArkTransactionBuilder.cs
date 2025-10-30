@@ -16,6 +16,10 @@ namespace NArk.Services
         IOperatorTermsService operatorTermsService,
         ILogger<ArkTransactionBuilder> logger)
     {
+        /// <summary>
+        /// Maximum number of OP_RETURN outputs allowed per transaction
+        /// </summary>
+        public const int MaxOpReturnOutputs = 1;
 
         public async Task<PSBT> FinalizeCheckpointTx(PSBT checkpointTx, PSBT receivedCheckpointTx, SpendableArkCoinWithSigner coin, CancellationToken cancellationToken)
         {
@@ -337,9 +341,43 @@ namespace NArk.Services
             // arkTx.Send(p2a, Money.Zero);
             arkTx.AddCoins(checkpointCoins);
 
+            // Track OP_RETURN outputs to enforce the limit
+            // First, count any existing OP_RETURN outputs
+            int opReturnCount = outputs.Count(o => o.ScriptPubKey.IsUnspendable);
+            
+            if (opReturnCount > MaxOpReturnOutputs)
+            {
+                throw new InvalidOperationException(
+                    $"Transaction already contains {opReturnCount} OP_RETURN outputs, which exceeds the maximum of {MaxOpReturnOutputs}.");
+            }
+            
             foreach (var output in outputs)
             {
-                arkTx.Send(output.ScriptPubKey, output.Value);
+                // Check if this is an Ark address output that needs subdust handling
+                var scriptPubKey = output.ScriptPubKey;
+                
+                // If the output value is below dust threshold and it's a P2TR output,
+                // convert it to an OP_RETURN output
+                if (output.Value < terms.Dust && PayToTaprootTemplate.Instance.CheckScriptPubKey(scriptPubKey))
+                {
+                    if (opReturnCount >= MaxOpReturnOutputs)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot create more than {MaxOpReturnOutputs} OP_RETURN outputs per transaction. " +
+                            $"Output with value {output.Value} is below dust threshold {terms.Dust}. " +
+                            $"Transaction already contains {opReturnCount} OP_RETURN output(s).");
+                    }
+                    
+                    // Extract the taproot pubkey and create OP_RETURN script
+                    var taprootPubKey = PayToTaprootTemplate.Instance.ExtractScriptPubKeyParameters(scriptPubKey);
+                    scriptPubKey = new Script(OpcodeType.OP_RETURN, Op.GetPushOp(taprootPubKey.ToBytes()));
+                    opReturnCount++;
+                    
+                    logger.LogDebug("Converting sub-dust output ({Value} < {Dust}) to OP_RETURN script", 
+                        output.Value, terms.Dust);
+                }
+                
+                arkTx.Send(scriptPubKey, output.Value);
             }
 
             var tx = arkTx.BuildPSBT(false, PSBTVersion.PSBTv0);
