@@ -160,7 +160,19 @@ IAuthorizationService authorizationService,
             return RedirectToAction(nameof(InitialSetup), new { storeId = store.Id });
 
         var destination = await arkWalletService.GetWalletDestination(config.WalletId, cancellationToken);
-        var balances = await GetArkBalances(config.WalletId, cancellationToken);
+        
+        // Get balances with error handling - indexer service may be unavailable
+        ArkBalancesViewModel? balances = null;
+        try
+        {
+            balances = await GetArkBalances(config.WalletId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            // Log the error but don't fail the entire page
+            TempData[WellKnownTempData.ErrorMessage] = $"Unable to fetch balances: {ex.Message}";
+        }
+        
         var signerAvailable = await walletSignerProvider.GetSigner(config.WalletId, cancellationToken) is not null;
         var includeData = config.GeneratedByStore ||
                           (await authorizationService.AuthorizeAsync(User, null,

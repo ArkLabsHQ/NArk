@@ -4,7 +4,7 @@ public class StoreOverviewViewModel
 {
     public bool IsLightningEnabled { get; set; }
     public bool IsDestinationSweepEnabled { get; set; }
-    public ArkBalancesViewModel Balances { get; set; } = new();
+    public ArkBalancesViewModel? Balances { get; set; }
     public string? WalletId { get; set; }
     public string? Destination { get; set; }
     public bool SignerAvailable { get; set; }

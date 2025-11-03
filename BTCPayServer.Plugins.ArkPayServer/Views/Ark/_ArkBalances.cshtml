@@ -1,5 +1,7 @@
 @model BTCPayServer.Plugins.ArkPayServer.Models.ArkBalancesViewModel
 
+@if (Model != null)
+{
 <div class="row g-3 mb-4">
     @if (Model.AvailableBalance > 0)
     {
@@ -74,6 +76,7 @@
         </div>
     }
 </div>
+}
 
 @section PageHeadContent
 {
