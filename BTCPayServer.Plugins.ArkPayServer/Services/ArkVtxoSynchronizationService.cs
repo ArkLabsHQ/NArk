@@ -89,14 +89,26 @@ public class ArkVtxoSynchronizationService(
         
         var subscribedContractScripts = contracts.Select(c => c.Script).ToHashSet();
         var subscribedPayoutScripts = payouts.Select(GetPayoutScript).ToHashSet();
+        
+        // Also subscribe to non-spent VTXO scripts to detect when they are spent or swept
+        await using var dbContext = arkPluginDbContextFactory.CreateContext();
+        var nonSpentVtxoScripts = await dbContext.Vtxos
+            .Where(v => v.SpentByTransactionId == null)
+            .Select(v => v.Script)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 
-        var subscribedScripts = subscribedContractScripts.Concat(subscribedPayoutScripts).ToHashSet();
+        var subscribedScripts = subscribedContractScripts
+            .Concat(subscribedPayoutScripts)
+            .Concat(nonSpentVtxoScripts)
+            .ToHashSet();
         
         logger.LogInformation(
-            "Updating subscription with {ActiveContractsCount} active contracts ({ContractScripts}) and {PendingPayoutsCount} pending payouts.",
+            "Updating subscription with {ActiveContractsCount} active contracts ({ContractScripts}), {PendingPayoutsCount} pending payouts, and {NonSpentVtxosCount} non-spent VTXOs.",
             subscribedContractScripts.Count,
             string.Join(", ", subscribedContractScripts.Take(5)),
-            subscribedPayoutScripts.Count
+            subscribedPayoutScripts.Count,
+            nonSpentVtxoScripts.Count
         );
 
         // Skip if no scripts to track
@@ -149,7 +161,18 @@ public class ArkVtxoSynchronizationService(
             var currentPayouts = contractsCache.Payouts;
             var currentContractScripts = currentContracts.Select(c => c.Script).ToHashSet();
             var currentPayoutScripts = currentPayouts.Select(GetPayoutScript).ToHashSet();
-            var currentScripts = currentContractScripts.Concat(currentPayoutScripts).ToHashSet();
+            
+            // Re-read non-spent VTXOs
+            var currentNonSpentVtxoScripts = await dbContext.Vtxos
+                .Where(v => v.SpentByTransactionId == null)
+                .Select(v => v.Script)
+                .Distinct()
+                .ToListAsync(cancellationToken);
+            
+            var currentScripts = currentContractScripts
+                .Concat(currentPayoutScripts)
+                .Concat(currentNonSpentVtxoScripts)
+                .ToHashSet();
             
             // If cache changed during subscription, trigger another update
             if (!currentScripts.SetEquals(subscribedScripts))
@@ -411,7 +434,13 @@ public class ArkVtxoSynchronizationService(
                 
                 var contracts = contractsCache.Contracts;
                 var payouts = contractsCache.Payouts;
-                var hasScripts = contracts.Count > 0 || payouts.Count > 0;
+                
+                // Check if there are non-spent VTXOs to track
+                await using var dbContext = arkPluginDbContextFactory.CreateContext();
+                var hasNonSpentVtxos = await dbContext.Vtxos
+                    .AnyAsync(v => v.SpentByTransactionId == null, cancellationToken);
+                
+                var hasScripts = contracts.Count > 0 || payouts.Count > 0 || hasNonSpentVtxos;
                 
                 if (hasScripts && _lastListeningLoop is null or { IsCompleted: true })
                 {
