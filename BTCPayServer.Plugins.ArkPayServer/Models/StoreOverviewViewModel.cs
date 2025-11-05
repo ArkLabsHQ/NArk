@@ -10,6 +10,7 @@ public class StoreOverviewViewModel
     public bool SignerAvailable { get; set; }
     public string? Wallet { get; set; }
     public string? DefaultAddress { get; set; }
+    public bool AllowSubDustAmounts { get; set; }
     
     // Service connection status
     public string? ArkOperatorUrl { get; set; }
@@ -19,4 +20,14 @@ public class StoreOverviewViewModel
     public string? BoltzUrl { get; set; }
     public bool BoltzConnected { get; set; }
     public string? BoltzError { get; set; }
+    
+    // Boltz limits for Lightning - Reverse Swap (Receiving Lightning)
+    public long? BoltzReverseMinAmount { get; set; }
+    public long? BoltzReverseMaxAmount { get; set; }
+    public decimal? BoltzReverseFeePercentage { get; set; }
+    
+    // Boltz limits for Lightning - Submarine Swap (Sending Lightning)
+    public long? BoltzSubmarineMinAmount { get; set; }
+    public long? BoltzSubmarineMaxAmount { get; set; }
+    public decimal? BoltzSubmarineFeePercentage { get; set; }
 }

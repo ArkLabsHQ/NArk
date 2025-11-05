@@ -118,6 +118,9 @@ IAuthorizationService authorizationService,
             var config = new ArkadePaymentMethodConfig(walletSettings.WalletId!, walletSettings.IsOwnedByStore);
             store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], config);
 
+            // Set Arkade as the default payment method
+            store.SetDefaultPaymentId(ArkadePlugin.ArkadePaymentMethodId);
+
             // Enable Lightning by default if not already configured
             var lightningPaymentMethodId = GetLightningPaymentMethod();
             var existingLnConfig = store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(lightningPaymentMethodId, paymentMethodHandlerDictionary);
@@ -221,14 +224,34 @@ IAuthorizationService authorizationService,
             arkOperatorError = ex.Message;
         }
         
-        // Check Boltz connection
+        // Check Boltz connection and get cached limits
         string? boltzUrl = arkConfiguration.BoltzUri;
         bool boltzConnected = false;
         string? boltzError = null;
+        long? boltzReverseMinAmount = null;
+        long? boltzReverseMaxAmount = null;
+        decimal? boltzReverseFeePercentage = null;
+        long? boltzSubmarineMinAmount = null;
+        long? boltzSubmarineMaxAmount = null;
+        decimal? boltzSubmarineFeePercentage = null;
+        
         try
         {
-            var pairs = boltzClient != null ? await boltzClient.GetVersionAsync() : null;
-            boltzConnected = pairs != null;
+            if (boltzService != null)
+            {
+                // Get cached limits from BoltzService (fetches if expired)
+                var limits = await boltzService.GetLimitsAsync(cancellationToken);
+                if (limits != null)
+                {
+                    boltzConnected = true;
+                    boltzReverseMinAmount = limits.ReverseMinAmount;
+                    boltzReverseMaxAmount = limits.ReverseMaxAmount;
+                    boltzReverseFeePercentage = limits.ReverseFeePercentage;
+                    boltzSubmarineMinAmount = limits.SubmarineMinAmount;
+                    boltzSubmarineMaxAmount = limits.SubmarineMaxAmount;
+                    boltzSubmarineFeePercentage = limits.SubmarineFeePercentage;
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -245,12 +268,19 @@ IAuthorizationService authorizationService,
             SignerAvailable = signerAvailable,
             Wallet = walletInfo?.Wallet,
             DefaultAddress = defaultAddress,
+            AllowSubDustAmounts = config.AllowSubDustAmounts,
             ArkOperatorUrl = arkOperatorUrl,
             ArkOperatorConnected = arkOperatorConnected,
             ArkOperatorError = arkOperatorError,
             BoltzUrl = boltzUrl,
             BoltzConnected = boltzConnected,
-            BoltzError = boltzError
+            BoltzError = boltzError,
+            BoltzReverseMinAmount = boltzReverseMinAmount,
+            BoltzReverseMaxAmount = boltzReverseMaxAmount,
+            BoltzReverseFeePercentage = boltzReverseFeePercentage,
+            BoltzSubmarineMinAmount = boltzSubmarineMinAmount,
+            BoltzSubmarineMaxAmount = boltzSubmarineMaxAmount,
+            BoltzSubmarineFeePercentage = boltzSubmarineFeePercentage
         });
     }
 
@@ -383,6 +413,13 @@ IAuthorizationService authorizationService,
 
         if (command == "save" && !string.IsNullOrEmpty(model.Destination))
         {
+            // Prevent setting auto-sweep if sub-dust amounts are enabled
+            if (config.AllowSubDustAmounts)
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot configure auto-sweep while sub-dust amounts are enabled. Disable sub-dust amounts first.";
+                return RedirectToAction(nameof(StoreOverview), new { storeId });
+            }
+            
             try
             {
                 await arkWalletService.SetWalletDestination(config.WalletId, model.Destination, cancellationToken);
@@ -392,6 +429,27 @@ IAuthorizationService authorizationService,
             {
                 TempData[WellKnownTempData.ErrorMessage] = $"Failed to update destination: {ex.Message}";
             }
+            return RedirectToAction(nameof(StoreOverview), new { storeId });
+        }
+
+        if (command == "toggle-subdust")
+        {
+            // Check if auto-sweep is enabled
+            var destination = await arkWalletService.GetWalletDestination(config.WalletId, cancellationToken);
+            
+            // Prevent enabling sub-dust when auto-sweep is configured
+            if (!config.AllowSubDustAmounts && !string.IsNullOrEmpty(destination))
+            {
+                TempData[WellKnownTempData.ErrorMessage] = "Cannot enable sub-dust amounts while auto-sweep is configured. Clear the auto-sweep destination first.";
+                return RedirectToAction(nameof(StoreOverview), new { storeId });
+            }
+            
+            var newConfig = config with { AllowSubDustAmounts = !config.AllowSubDustAmounts };
+            store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], newConfig);
+            await storeRepository.UpdateStore(store);
+            TempData[WellKnownTempData.SuccessMessage] = newConfig.AllowSubDustAmounts 
+                ? "Sub-dust amounts enabled for Arkade payments." 
+                : "Sub-dust amounts disabled for Arkade payments.";
             return RedirectToAction(nameof(StoreOverview), new { storeId });
         }
 

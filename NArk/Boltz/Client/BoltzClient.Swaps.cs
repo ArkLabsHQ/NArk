@@ -21,6 +21,16 @@ public partial class BoltzClient
     // Submarine Swaps
 
     /// <summary>
+    /// Gets the submarine swap pairs information including fees and limits.
+    /// </summary>
+    /// <param name="cancellation">Cancellation token.</param>
+    /// <returns>The submarine pairs response.</returns>
+    public async Task<SubmarinePairsResponse?> GetSubmarinePairsAsync(CancellationToken cancellation = default)
+    {
+        return await _httpClient.GetFromJsonAsync<SubmarinePairsResponse>("v2/swap/submarine", cancellation);
+    }
+
+    /// <summary>
     /// Creates a new Submarine Swap.
     /// </summary>
     /// <param name="request">The submarine swap creation request.</param>
@@ -31,6 +41,16 @@ public partial class BoltzClient
     }
 
     // Reverse Swaps
+
+    /// <summary>
+    /// Gets the reverse swap pairs information including fees and limits.
+    /// </summary>
+    /// <param name="cancellation">Cancellation token.</param>
+    /// <returns>The reverse pairs response.</returns>
+    public async Task<ReversePairsResponse?> GetReversePairsAsync(CancellationToken cancellation = default)
+    {
+        return await _httpClient.GetFromJsonAsync<ReversePairsResponse>("v2/swap/reverse", cancellation);
+    }
 
     /// <summary>
     /// Creates a new Reverse Swap.

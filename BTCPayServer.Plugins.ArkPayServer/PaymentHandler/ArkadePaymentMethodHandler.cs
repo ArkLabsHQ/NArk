@@ -30,17 +30,17 @@ public class ArkadePaymentMethodHandler(
             throw new PaymentMethodUnavailableException("Ark operator unavailable");
         }
 
-        if (Money.Coins(context.Prompt.Calculate().Due) < terms.Dust)
-        {
-            throw new PaymentMethodUnavailableException("Amount too small");
-        }
-
         var store = context.Store;
 
         if (ParsePaymentMethodConfig(store.GetPaymentMethodConfigs()[PaymentMethodId]) is not ArkadePaymentMethodConfig
             arkadePaymentMethodConfig)
         {
             throw new PaymentMethodUnavailableException("Arkade payment method not configured");
+        }
+
+        if (!arkadePaymentMethodConfig.AllowSubDustAmounts && Money.Coins(context.Prompt.Calculate().Due) < terms.Dust)
+        {
+            throw new PaymentMethodUnavailableException("Amount too small");
         }
 
         var contract = await arkWalletService.DerivePaymentContract(arkadePaymentMethodConfig.WalletId, CancellationToken.None);

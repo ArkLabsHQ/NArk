@@ -68,6 +68,34 @@
                             else if (Model.BoltzConnected)
                             {
                                 <div class="text-success small mt-1">Connected</div>
+                                @if (Model.BoltzReverseMinAmount.HasValue || Model.BoltzSubmarineMinAmount.HasValue)
+                                {
+                                    <div class="text-muted small mt-2">
+                                        <strong>Lightning Limits:</strong>
+                                        @if (Model.BoltzReverseMinAmount.HasValue && Model.BoltzReverseMaxAmount.HasValue)
+                                        {
+                                            <div class="mt-1">
+                                                <span class="badge bg-secondary">Receive</span>
+                                                @Model.BoltzReverseMinAmount.Value - @Model.BoltzReverseMaxAmount.Value sats
+                                                @if (Model.BoltzReverseFeePercentage.HasValue)
+                                                {
+                                                    <text>(@Model.BoltzReverseFeePercentage.Value%)</text>
+                                                }
+                                            </div>
+                                        }
+                                        @if (Model.BoltzSubmarineMinAmount.HasValue && Model.BoltzSubmarineMaxAmount.HasValue)
+                                        {
+                                            <div class="mt-1">
+                                                <span class="badge bg-secondary">Send</span>
+                                                @Model.BoltzSubmarineMinAmount.Value - @Model.BoltzSubmarineMaxAmount.Value sats
+                                                @if (Model.BoltzSubmarineFeePercentage.HasValue)
+                                                {
+                                                    <text>(@Model.BoltzSubmarineFeePercentage.Value%)</text>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                }
                             }
                         </div>
                     }

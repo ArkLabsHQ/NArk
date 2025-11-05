@@ -191,15 +191,54 @@ else
             {
                 <div class="form-group mb-3">
                     <label asp-for="Destination" class="form-label">Auto-Sweep Destination (Optional)</label>
-                    <input asp-for="Destination" class="form-control" placeholder="ark1..." />
-                    <div class="form-text">Enter an Ark address to automatically sweep detected VTXOs</div>
+                    <input asp-for="Destination" class="form-control" placeholder="ark1..."  disabled="@Model.AllowSubDustAmounts"/>
+                    <div class="form-text">
+                        Enter an Ark address to automatically sweep detected VTXOs
+                        @if (Model.AllowSubDustAmounts)
+                        {
+                            <br /><span class="text-warning small">⚠️ Cannot configure auto-sweep while sub-dust amounts are enabled</span>
+                        }
+                    </div>
                 </div>
             }
             
             @if (string.IsNullOrEmpty(Model.Destination))
             {
-                <button type="submit" name="command" value="save" class="btn btn-primary">Save Configuration</button>
+                <button type="submit" name="command" value="save" class="btn btn-primary" 
+                        @(Model.AllowSubDustAmounts ? "disabled" : "")>Save Configuration</button>
             }
+        </form>
+        
+        <hr class="my-4" />
+        
+        <form asp-action="UpdateWalletConfig" method="post" asp-route-storeId="@storeId">
+            <div class="form-group">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <label class="form-label mb-1">Allow Sub-Dust Amounts</label>
+                        <div class="form-text">
+                            Enable accepting Arkade payments below the operator's dust threshold
+                            @if (Model.AllowSubDustAmounts)
+                            {
+                                <span class="badge bg-success ms-2">Enabled</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary ms-2">Disabled</span>
+                            }
+                            @if (Model.IsDestinationSweepEnabled && !Model.AllowSubDustAmounts)
+                            {
+                                <br /><span class="text-warning small">⚠️ Cannot enable while auto-sweep is configured</span>
+                            }
+                        </div>
+                    </div>
+                    <button type="submit" name="command" value="toggle-subdust" 
+                            class="btn btn-sm @(Model.AllowSubDustAmounts ? "btn-outline-secondary" : "btn-primary")"
+                            @(Model.IsDestinationSweepEnabled && !Model.AllowSubDustAmounts ? "disabled" : "")>
+                        @(Model.AllowSubDustAmounts ? "Disable" : "Enable")
+                    </button>
+                </div>
+            </div>
         </form>
     </div>
 </div>

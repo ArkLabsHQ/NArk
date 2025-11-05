@@ -1,7 +1,15 @@
 @using BTCPayServer.Components.TruncateCenter
 @using BTCPayServer.Abstractions.TagHelpers
 @using BTCPayServer.Plugins.ArkPayServer
+@using BTCPayServer.Plugins.ArkPayServer.Lightning
+@inject BoltzService BoltzService
 @model BTCPayServer.Models.InvoicingModels.CheckoutModel
+
+@{
+    var boltzLimits = await BoltzService.GetLimitsAsync(CancellationToken.None);
+    var boltzMinSats = boltzLimits?.ReverseMinAmount ?? 0;
+    var boltzMaxSats = boltzLimits?.ReverseMaxAmount ?? long.MaxValue;
+}
 
 <template id="@ArkadePlugin.CheckoutBodyComponentName">
     <div class="payment-box">
@@ -23,7 +31,7 @@
                 <label>Bitcoin Address</label>
             </div>
         </div>
-        <div v-if="lightning" class="input-group mt-3">
+        <div v-if="lightning && shouldShowLightning" class="input-group mt-3">
             <div class="form-floating" id="Lightning_@Model.PaymentMethodId">
                 <vc:truncate-center text="lightning" is-vue="true" padding="15" elastic="true" classes="form-control-plaintext" />
                 <label v-t="'lightning'"></label>
@@ -54,7 +62,9 @@
                 currentTab: undefined,
                 nfcUrl: @Safe.Json(Url.ActionAbsolute(Context.Request, "SubmitLNURLWithdrawForInvoice", "NFC").ToString()),
                 nfcAmount: 0,
-                nfcSubmitting: false
+                nfcSubmitting: false,
+                boltzMinSats: @boltzMinSats,
+                boltzMaxSats: @boltzMaxSats
             };
         },
         computed: {
@@ -67,10 +77,30 @@
                 const match = this.model.invoiceBitcoinUrl?.match(/[&?]lightning=(.*)&?/i);
                 return match ? match[1].toLowerCase() : null;
             },
+            shouldShowLightning () {
+                // Always show if no Boltz limits configured
+                if (!this.boltzMinSats || !this.boltzMaxSats) {
+                    return true;
+                }
+                
+                // Always show for top-up invoices (amount = 0)
+                if (!this.model.due || this.model.due === '0') {
+                    return true;
+                }
+                
+                // Convert BTC to sats
+                const amountSats = parseFloat(this.model.due) * 100000000;
+                
+                if(amountSats == 0){
+                    return true;
+                }
+                // Show if within Boltz limits
+                return amountSats >= this.boltzMinSats && amountSats <= this.boltzMaxSats;
+            },
             nfcDisplay () {
                 // Enable NFC for ARKADE payment method
                 const isArkade = this.model.paymentMethodId === 'ARKADE';
-                const hasLightning = !!this.lightning;
+                const hasLightning = !!this.lightning && this.shouldShowLightning;
                 return isArkade && hasLightning && (this.nfcSupported || this.nfcTestFallback);
             },
             nfcTestFallback () {

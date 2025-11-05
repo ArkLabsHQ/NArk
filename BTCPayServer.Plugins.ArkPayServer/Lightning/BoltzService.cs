@@ -164,12 +164,17 @@ public class BoltzService(
         {
             logger.LogError(ex, "Error processing WebSocket event {@response}", response);
         }
-
+ 
         return Task.CompletedTask;
     }
     
     private readonly ConcurrentDictionary<string,string> _activeSwaps = new();
     private readonly SemaphoreSlim _pollLock = new(1, 1);
+    
+    // Cached Boltz limits
+    private BoltzLimitsCache? _limitsCache;
+    private readonly SemaphoreSlim _limitsCacheLock = new(1, 1);
+    private static readonly TimeSpan LimitsCacheExpiry = TimeSpan.FromMinutes(15);
 
     public IReadOnlyDictionary<string, string> GetActiveSwapsCache() => _activeSwaps;
 
@@ -392,6 +397,14 @@ public class BoltzService(
     public async Task<ArkSwap> CreateReverseSwap(string walletId, CreateInvoiceParams createInvoiceRequest,
         CancellationToken cancellationToken)
     {
+        // Validate amount against Boltz limits
+        var amountSats = (long)createInvoiceRequest.Amount.ToUnit(LightMoneyUnit.Satoshi);
+        var (isValid, errorMessage) = await ValidateAmountAsync(amountSats, isReverse: true, cancellationToken);
+        if (!isValid)
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+
         if (!await walletService.CanHandle(walletId, cancellationToken))
         {
              throw new InvalidOperationException("No signer found for wallet");
@@ -420,6 +433,27 @@ public class BoltzService(
             swapResult = await boltzSwapService.CreateReverseSwap(
                 createInvoiceRequest,
                 receiverKey, cancellationToken);
+            
+            // Verify the fee against cached limits
+            var limits = await GetLimitsAsync(cancellationToken);
+            if (limits != null)
+            {
+                var actualFee = amountSats - swapResult.Swap.OnchainAmount;
+                var expectedFeePercentage = limits.ReverseFeePercentage;
+                var expectedFee = (long)(amountSats * expectedFeePercentage);
+                var feeToleranceSats = 100; // Allow 100 sat tolerance for rounding
+                
+                if (Math.Abs(actualFee - expectedFee) > feeToleranceSats)
+                {
+                    logger.LogWarning("Reverse swap fee mismatch: expected ~{ExpectedFee} sats ({FeePercentage}%), got {ActualFee} sats", 
+                        expectedFee, expectedFeePercentage * 100, actualFee);
+                    throw new InvalidOperationException(
+                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({expectedFeePercentage * 100:F2}%), but swap would charge {actualFee} sats");
+                }
+                
+                logger.LogInformation("Reverse swap fee verified: {ActualFee} sats ({FeePercentage}%)", 
+                    actualFee, expectedFeePercentage * 100);
+            }
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
             arkWalletContract =new ArkWalletContract
@@ -460,6 +494,14 @@ public class BoltzService(
     }
     public async Task<ArkSwap> CreateSubmarineSwap(string walletId, BOLT11PaymentRequest paymentRequest, CancellationToken cancellationToken )
     {
+        // Validate amount against Boltz limits
+        var amountSats = (long)(paymentRequest.MinimumAmount?.ToUnit(LightMoneyUnit.Satoshi) ?? 0);
+        var (isValid, errorMessage) = await ValidateAmountAsync(amountSats, isReverse: false, cancellationToken);
+        if (!isValid)
+        {
+            throw new InvalidOperationException(errorMessage);
+        }
+
         if (!await walletService.CanHandle(walletId, cancellationToken))
         {
             throw new InvalidOperationException("No signer found for wallet");
@@ -487,6 +529,27 @@ public class BoltzService(
                 paymentRequest,
                 sender,
                 cancellationToken: cancellationToken);
+            
+            // Verify the fee against cached limits
+            var limits = await GetLimitsAsync(cancellationToken);
+            if (limits != null)
+            {
+                var actualFee = swapResult.Swap.ExpectedAmount - amountSats;
+                var expectedFeePercentage = limits.SubmarineFeePercentage;
+                var expectedFee = (long)(amountSats * expectedFeePercentage);
+                var feeToleranceSats = 100; // Allow 100 sat tolerance for rounding
+                
+                if (Math.Abs(actualFee - expectedFee) > feeToleranceSats)
+                {
+                    logger.LogWarning("Submarine swap fee mismatch: expected ~{ExpectedFee} sats ({FeePercentage}%), got {ActualFee} sats", 
+                        expectedFee, expectedFeePercentage * 100, actualFee);
+                    throw new InvalidOperationException(
+                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({expectedFeePercentage * 100:F2}%), but swap would charge {actualFee} sats");
+                }
+                
+                logger.LogInformation("Submarine swap fee verified: {ActualFee} sats ({FeePercentage}%)", 
+                    actualFee, expectedFeePercentage * 100);
+            }
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
             arkWalletContract = new ArkWalletContract
@@ -529,4 +592,103 @@ public class BoltzService(
         return submarineSwap;
     }
     
+    /// <summary>
+    /// Gets cached Boltz limits, fetching from API if cache is expired or empty
+    /// </summary>
+    public async Task<BoltzLimitsCache?> GetLimitsAsync(CancellationToken cancellationToken = default)
+    {
+        await _limitsCacheLock.WaitAsync(cancellationToken);
+        try
+        {
+            // Return cached limits if still valid
+            if (_limitsCache != null && DateTimeOffset.UtcNow < _limitsCache.ExpiresAt)
+            {
+                return _limitsCache;
+            }
+
+            // Fetch fresh limits from Boltz API
+            try
+            {
+                var submarinePairs = await boltzClient.GetSubmarinePairsAsync(cancellationToken);
+                var reversePairs = await boltzClient.GetReversePairsAsync(cancellationToken);
+
+                if (submarinePairs?.ARK?.BTC != null && reversePairs?.BTC?.ARK != null)
+                {
+                    _limitsCache = new BoltzLimitsCache
+                    {
+                        // Submarine: Ark → Lightning (sending)
+                        SubmarineMinAmount = submarinePairs.ARK.BTC.Limits?.Minimal ?? 0,
+                        SubmarineMaxAmount = submarinePairs.ARK.BTC.Limits?.Maximal ?? long.MaxValue,
+                        SubmarineFeePercentage = submarinePairs.ARK.BTC.Fees?.Percentage ?? 0,
+                        
+                        // Reverse: Lightning → Ark (receiving)
+                        ReverseMinAmount = reversePairs.BTC.ARK.Limits?.Minimal ?? 0,
+                        ReverseMaxAmount = reversePairs.BTC.ARK.Limits?.Maximal ?? long.MaxValue,
+                        ReverseFeePercentage = reversePairs.BTC.ARK.Fees?.Percentage ?? 0,
+                        
+                        FetchedAt = DateTimeOffset.UtcNow,
+                        ExpiresAt = DateTimeOffset.UtcNow.Add(LimitsCacheExpiry)
+                    };
+
+                    logger.LogInformation("Fetched Boltz limits - Submarine: {SubMin}-{SubMax} sats, Reverse: {RevMin}-{RevMax} sats",
+                        _limitsCache.SubmarineMinAmount, _limitsCache.SubmarineMaxAmount,
+                        _limitsCache.ReverseMinAmount, _limitsCache.ReverseMaxAmount);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to fetch Boltz limits");
+            }
+
+            return _limitsCache;
+        }
+        finally
+        {
+            _limitsCacheLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Validates if an amount is within Boltz limits for the specified swap type
+    /// </summary>
+    public async Task<(bool IsValid, string? ErrorMessage)> ValidateAmountAsync(long amountSats, bool isReverse, CancellationToken cancellationToken = default)
+    {
+        var limits = await GetLimitsAsync(cancellationToken);
+        if (limits == null)
+        {
+            return (false, "Unable to fetch Boltz limits");
+        }
+
+        var (minAmount, maxAmount, swapType) = isReverse 
+            ? (limits.ReverseMinAmount, limits.ReverseMaxAmount, "receiving")
+            : (limits.SubmarineMinAmount, limits.SubmarineMaxAmount, "sending");
+
+        if (amountSats < minAmount)
+        {
+            return (false, $"Amount {amountSats} sats is below minimum {minAmount} sats for {swapType} Lightning");
+        }
+
+        if (amountSats > maxAmount)
+        {
+            return (false, $"Amount {amountSats} sats exceeds maximum {maxAmount} sats for {swapType} Lightning");
+        }
+
+        return (true, null);
+    }
+}
+
+public class BoltzLimitsCache
+{
+    // Submarine swap limits (Ark → Lightning, sending)
+    public long SubmarineMinAmount { get; set; }
+    public long SubmarineMaxAmount { get; set; }
+    public decimal SubmarineFeePercentage { get; set; }
+    
+    // Reverse swap limits (Lightning → Ark, receiving)
+    public long ReverseMinAmount { get; set; }
+    public long ReverseMaxAmount { get; set; }
+    public decimal ReverseFeePercentage { get; set; }
+    
+    public DateTimeOffset FetchedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
 }

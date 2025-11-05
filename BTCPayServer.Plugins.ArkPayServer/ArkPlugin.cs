@@ -146,6 +146,10 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
             serviceCollection.AddSingleton<BoltzService>();
             serviceCollection.AddHostedService<BoltzService>(provider => provider.GetRequiredService<BoltzService>());
             serviceCollection.AddUIExtension("ln-payment-method-setup-tabhead", "/Views/OldArk/ArkLNSetupTabhead.cshtml");
+            
+            // Register LNURL filter to apply Boltz limits
+            serviceCollection.AddSingleton<ArkadeLNURLPayRequestFilter>();
+            serviceCollection.AddSingleton<IPluginHookFilter>(provider => provider.GetRequiredService<ArkadeLNURLPayRequestFilter>());
         }
         else
         {
