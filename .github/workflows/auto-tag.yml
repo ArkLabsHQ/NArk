@@ -7,7 +7,7 @@ on:
       - 'BTCPayServer.Plugins.ArkPayServer/BTCPayServer.Plugins.ArkPayServer.csproj'
 
 jobs:
-  tag:
+  build-and-tag:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -33,6 +33,76 @@ jobs:
           echo "exists=false" >> $GITHUB_OUTPUT
           echo "Tag v${{ steps.version.outputs.version }} does not exist"
         fi
+    
+    - name: Trigger BTCPay Plugin Builder
+      id: build
+      if: steps.tag_check.outputs.exists == 'false'
+      env:
+        BTCPAY_EMAIL: ${{ secrets.BTCPAY_BUILDER_EMAIL }}
+        BTCPAY_PASSWORD: ${{ secrets.BTCPAY_BUILDER_PASSWORD }}
+      run: |
+        # Create build request
+        BUILD_RESPONSE=$(curl -s --user "$BTCPAY_EMAIL:$BTCPAY_PASSWORD" \
+          -X POST \
+          -H "Content-Type: application/json" \
+          -d "{\"gitRepository\": \"https://github.com/${{ github.repository }}\", \"gitRef\": \"${{ github.sha }}\", \"pluginDirectory\": \"BTCPayServer.Plugins.ArkPayServer\", \"buildConfig\": \"Release\"}" \
+          "https://plugin-builder.btcpayserver.org/api/v1/plugins/arkade/builds")
+        
+        echo "Build response: $BUILD_RESPONSE"
+        
+        # Extract build ID
+        BUILD_ID=$(echo $BUILD_RESPONSE | jq -r '.buildId')
+        BUILD_URL=$(echo $BUILD_RESPONSE | jq -r '.buildUrl')
+        
+        if [ "$BUILD_ID" == "null" ] || [ -z "$BUILD_ID" ]; then
+          echo "❌ Failed to create build"
+          echo "$BUILD_RESPONSE"
+          exit 1
+        fi
+        
+        echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+        echo "build_url=$BUILD_URL" >> $GITHUB_OUTPUT
+        echo "✅ Build created: $BUILD_URL"
+        
+    - name: Wait for build completion
+      if: steps.tag_check.outputs.exists == 'false'
+      env:
+        BTCPAY_EMAIL: ${{ secrets.BTCPAY_BUILDER_EMAIL }}
+        BTCPAY_PASSWORD: ${{ secrets.BTCPAY_BUILDER_PASSWORD }}
+      run: |
+        BUILD_ID="${{ steps.build.outputs.build_id }}"
+        MAX_WAIT=600  # 10 minutes
+        ELAPSED=0
+        
+        echo "Waiting for build $BUILD_ID to complete..."
+        
+        while [ $ELAPSED -lt $MAX_WAIT ]; do
+          BUILD_STATUS=$(curl -s --user "$BTCPAY_EMAIL:$BTCPAY_PASSWORD" \
+            "https://plugin-builder.btcpayserver.org/api/v1/plugins/arkade/builds/$BUILD_ID")
+          
+          ERROR=$(echo $BUILD_STATUS | jq -r '.buildInfo.error')
+          DOWNLOAD_LINK=$(echo $BUILD_STATUS | jq -r '.downloadLink')
+          
+          if [ "$ERROR" != "null" ] && [ "$ERROR" != "" ]; then
+            echo "❌ Build failed with error: $ERROR"
+            exit 1
+          fi
+          
+          if [ "$DOWNLOAD_LINK" != "null" ] && [ "$DOWNLOAD_LINK" != "" ]; then
+            echo "✅ Build completed successfully!"
+            echo "Download: $DOWNLOAD_LINK"
+            break
+          fi
+          
+          echo "Build still in progress... (${ELAPSED}s elapsed)"
+          sleep 10
+          ELAPSED=$((ELAPSED + 10))
+        done
+        
+        if [ $ELAPSED -ge $MAX_WAIT ]; then
+          echo "❌ Build timed out after ${MAX_WAIT}s"
+          exit 1
+        fi
         
     - name: Create and push tag
       if: steps.tag_check.outputs.exists == 'false'
@@ -40,3 +110,4 @@ jobs:
         git tag "v${{ steps.version.outputs.version }}"
         git push origin "v${{ steps.version.outputs.version }}"
         echo "✅ Created and pushed tag v${{ steps.version.outputs.version }}"
+        echo "🔗 Build URL: ${{ steps.build.outputs.build_url }}"
