@@ -41,11 +41,12 @@ jobs:
         BTCPAY_EMAIL: ${{ secrets.BTCPAY_BUILDER_EMAIL }}
         BTCPAY_PASSWORD: ${{ secrets.BTCPAY_BUILDER_PASSWORD }}
       run: |
-        # Create build request
+      
+      
         BUILD_RESPONSE=$(curl -s --user "$BTCPAY_EMAIL:$BTCPAY_PASSWORD" \
           -X POST \
           -H "Content-Type: application/json" \
-          -d "{\"gitRepository\": \"https://github.com/${{ github.repository }}\", \"gitRef\": \"${{ github.sha }}\", \"pluginDirectory\": \"BTCPayServer.Plugins.ArkPayServer\", \"buildConfig\": \"Release\"}" \
+          -d "{\"gitRepository\": \"https://github.com/${{ github.repository }}\", \"gitRef\": \"${{ github.ref_name }}\", \"pluginDirectory\": \"BTCPayServer.Plugins.ArkPayServer\", \"buildConfig\": \"Release\"}" \
           "https://plugin-builder.btcpayserver.org/api/v1/plugins/arkade/builds")
         
         echo "Build response: $BUILD_RESPONSE"
