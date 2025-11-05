@@ -119,16 +119,26 @@ IAuthorizationService authorizationService,
             store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[ArkadePlugin.ArkadePaymentMethodId], config);
 
             // Enable Lightning by default if not already configured
-            var existingLnConfig = store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(GetLightningPaymentMethod(), paymentMethodHandlerDictionary);
+            var lightningPaymentMethodId = GetLightningPaymentMethod();
+            var existingLnConfig = store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(lightningPaymentMethodId, paymentMethodHandlerDictionary);
             if (existingLnConfig == null)
             {
+                var lnurlPaymentMethodId = PaymentTypes.LNURL.GetPaymentMethodId("BTC");
+                
                 var lnConfig = new LightningPaymentMethodConfig()
                 {
                     ConnectionString = $"type=arkade;wallet-id={config.WalletId}",
                 };
-                store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[GetLightningPaymentMethod()], lnConfig);
+                
+                store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lightningPaymentMethodId], lnConfig);
+                store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lnurlPaymentMethodId], new LNURLPaymentMethodConfig
+                {
+                    UseBech32Scheme = true,
+                    LUD12Enabled = false
+                });
+                
                 var blob = store.GetStoreBlob();
-                blob.SetExcluded(GetLightningPaymentMethod(), false);
+                blob.SetExcluded(lightningPaymentMethodId, false);
                 blob.OnChainWithLnInvoiceFallback = true;
                 store.SetStoreBlob(blob);
             }
@@ -797,13 +807,23 @@ IAuthorizationService authorizationService,
         if (config?.WalletId is null)
             return RedirectToAction("InitialSetup", new { storeId });
 
+        var lightningPaymentMethodId = GetLightningPaymentMethod();
+        var lnurlPaymentMethodId = PaymentTypes.LNURL.GetPaymentMethodId("BTC");
+        
         var lnConfig = new LightningPaymentMethodConfig()
         {
             ConnectionString = $"type=arkade;wallet-id={config.WalletId}",
         };
-        store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[GetLightningPaymentMethod()], lnConfig);
+        
+        store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lightningPaymentMethodId], lnConfig);
+        store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lnurlPaymentMethodId], new LNURLPaymentMethodConfig
+        {
+            UseBech32Scheme = true,
+            LUD12Enabled = false
+        });
+        
         var blob = store.GetStoreBlob();
-        blob.SetExcluded(GetLightningPaymentMethod(), false);
+        blob.SetExcluded(lightningPaymentMethodId, false);
         blob.OnChainWithLnInvoiceFallback = true;
         store.SetStoreBlob(blob);
         await storeRepository.UpdateStore(store);
