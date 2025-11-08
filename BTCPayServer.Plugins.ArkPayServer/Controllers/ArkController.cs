@@ -231,9 +231,11 @@ IAuthorizationService authorizationService,
         long? boltzReverseMinAmount = null;
         long? boltzReverseMaxAmount = null;
         decimal? boltzReverseFeePercentage = null;
+        long? boltzReverseMinerFee = null;
         long? boltzSubmarineMinAmount = null;
         long? boltzSubmarineMaxAmount = null;
         decimal? boltzSubmarineFeePercentage = null;
+        long? boltzSubmarineMinerFee = null;
         
         try
         {
@@ -247,9 +249,11 @@ IAuthorizationService authorizationService,
                     boltzReverseMinAmount = limits.ReverseMinAmount;
                     boltzReverseMaxAmount = limits.ReverseMaxAmount;
                     boltzReverseFeePercentage = limits.ReverseFeePercentage;
+                    boltzReverseMinerFee = limits.ReverseMinerFee;
                     boltzSubmarineMinAmount = limits.SubmarineMinAmount;
                     boltzSubmarineMaxAmount = limits.SubmarineMaxAmount;
                     boltzSubmarineFeePercentage = limits.SubmarineFeePercentage;
+                    boltzSubmarineMinerFee = limits.SubmarineMinerFee;
                 }
             }
         }
@@ -278,9 +282,11 @@ IAuthorizationService authorizationService,
             BoltzReverseMinAmount = boltzReverseMinAmount,
             BoltzReverseMaxAmount = boltzReverseMaxAmount,
             BoltzReverseFeePercentage = boltzReverseFeePercentage,
+            BoltzReverseMinerFee = boltzReverseMinerFee,
             BoltzSubmarineMinAmount = boltzSubmarineMinAmount,
             BoltzSubmarineMaxAmount = boltzSubmarineMaxAmount,
-            BoltzSubmarineFeePercentage = boltzSubmarineFeePercentage
+            BoltzSubmarineFeePercentage = boltzSubmarineFeePercentage,
+            BoltzSubmarineMinerFee = boltzSubmarineMinerFee
         });
     }
 

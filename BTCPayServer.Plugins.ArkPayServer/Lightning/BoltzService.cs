@@ -439,20 +439,27 @@ public class BoltzService(
             if (limits != null)
             {
                 var actualFee = amountSats - swapResult.Swap.OnchainAmount;
-                var expectedFeePercentage = limits.ReverseFeePercentage;
-                var expectedFee = (long)(amountSats * expectedFeePercentage);
+                // Boltz fee = (amount × percentage) + miner claim fee
+                var expectedFee = (long)(amountSats * limits.ReverseFeePercentage) + limits.ReverseMinerFee;
                 var feeToleranceSats = 100; // Allow 100 sat tolerance for rounding
                 
-                if (Math.Abs(actualFee - expectedFee) > feeToleranceSats)
+                // Only fail if actual fee is HIGHER than expected (allow lower fees)
+                if (actualFee > expectedFee + feeToleranceSats)
                 {
-                    logger.LogWarning("Reverse swap fee mismatch: expected ~{ExpectedFee} sats ({FeePercentage}%), got {ActualFee} sats", 
-                        expectedFee, expectedFeePercentage * 100, actualFee);
+                    logger.LogWarning("Reverse swap fee too high: expected ~{ExpectedFee} sats ({FeePercentage}% + {MinerFee} sats miner fee), got {ActualFee} sats", 
+                        expectedFee, limits.ReverseFeePercentage * 100, limits.ReverseMinerFee, actualFee);
                     throw new InvalidOperationException(
-                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({expectedFeePercentage * 100:F2}%), but swap would charge {actualFee} sats");
+                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({limits.ReverseFeePercentage * 100:F2}% + {limits.ReverseMinerFee} sats miner fee), but swap would charge {actualFee} sats");
                 }
                 
-                logger.LogInformation("Reverse swap fee verified: {ActualFee} sats ({FeePercentage}%)", 
-                    actualFee, expectedFeePercentage * 100);
+                if (actualFee < expectedFee - feeToleranceSats)
+                {
+                    logger.LogInformation("Reverse swap fee lower than expected: {ActualFee} sats vs expected {ExpectedFee} sats - accepting", 
+                        actualFee, expectedFee);
+                }
+                
+                logger.LogInformation("Reverse swap fee verified: {ActualFee} sats ({FeePercentage}% + {MinerFee} sats miner fee)", 
+                    actualFee, limits.ReverseFeePercentage * 100, limits.ReverseMinerFee);
             }
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
@@ -535,20 +542,27 @@ public class BoltzService(
             if (limits != null)
             {
                 var actualFee = swapResult.Swap.ExpectedAmount - amountSats;
-                var expectedFeePercentage = limits.SubmarineFeePercentage;
-                var expectedFee = (long)(amountSats * expectedFeePercentage);
+                // Boltz fee = (amount × percentage) + miner lockup fee
+                var expectedFee = (long)(amountSats * limits.SubmarineFeePercentage) + limits.SubmarineMinerFee;
                 var feeToleranceSats = 100; // Allow 100 sat tolerance for rounding
                 
-                if (Math.Abs(actualFee - expectedFee) > feeToleranceSats)
+                // Only fail if actual fee is HIGHER than expected (allow lower fees)
+                if (actualFee > expectedFee + feeToleranceSats)
                 {
-                    logger.LogWarning("Submarine swap fee mismatch: expected ~{ExpectedFee} sats ({FeePercentage}%), got {ActualFee} sats", 
-                        expectedFee, expectedFeePercentage * 100, actualFee);
+                    logger.LogWarning("Submarine swap fee too high: expected ~{ExpectedFee} sats ({FeePercentage}% + {MinerFee} sats miner fee), got {ActualFee} sats", 
+                        expectedFee, limits.SubmarineFeePercentage * 100, limits.SubmarineMinerFee, actualFee);
                     throw new InvalidOperationException(
-                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({expectedFeePercentage * 100:F2}%), but swap would charge {actualFee} sats");
+                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({limits.SubmarineFeePercentage * 100:F2}% + {limits.SubmarineMinerFee} sats miner fee), but swap would charge {actualFee} sats");
                 }
                 
-                logger.LogInformation("Submarine swap fee verified: {ActualFee} sats ({FeePercentage}%)", 
-                    actualFee, expectedFeePercentage * 100);
+                if (actualFee < expectedFee - feeToleranceSats)
+                {
+                    logger.LogInformation("Submarine swap fee lower than expected: {ActualFee} sats vs expected {ExpectedFee} sats - accepting", 
+                        actualFee, expectedFee);
+                }
+                
+                logger.LogInformation("Submarine swap fee verified: {ActualFee} sats ({FeePercentage}% + {MinerFee} sats miner fee)", 
+                    actualFee, limits.SubmarineFeePercentage * 100, limits.SubmarineMinerFee);
             }
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
@@ -619,12 +633,16 @@ public class BoltzService(
                         // Submarine: Ark → Lightning (sending)
                         SubmarineMinAmount = submarinePairs.ARK.BTC.Limits?.Minimal ?? 0,
                         SubmarineMaxAmount = submarinePairs.ARK.BTC.Limits?.Maximal ?? long.MaxValue,
-                        SubmarineFeePercentage = submarinePairs.ARK.BTC.Fees?.Percentage ?? 0,
+                        // Boltz API returns percentage as 0.01 for 0.01%, so divide by 100 to get decimal multiplier
+                        SubmarineFeePercentage = (submarinePairs.ARK.BTC.Fees?.Percentage ?? 0) / 100m,
+                        SubmarineMinerFee = submarinePairs.ARK.BTC.Fees?.MinerFeesValue ?? 0,
                         
                         // Reverse: Lightning → Ark (receiving)
                         ReverseMinAmount = reversePairs.BTC.ARK.Limits?.Minimal ?? 0,
                         ReverseMaxAmount = reversePairs.BTC.ARK.Limits?.Maximal ?? long.MaxValue,
-                        ReverseFeePercentage = reversePairs.BTC.ARK.Fees?.Percentage ?? 0,
+                        // Boltz API returns percentage as 0.01 for 0.01%, so divide by 100 to get decimal multiplier
+                        ReverseFeePercentage = (reversePairs.BTC.ARK.Fees?.Percentage ?? 0) / 100m,
+                        ReverseMinerFee = reversePairs.BTC.ARK.Fees?.MinerFees?.Claim ?? 0,
                         
                         FetchedAt = DateTimeOffset.UtcNow,
                         ExpiresAt = DateTimeOffset.UtcNow.Add(LimitsCacheExpiry)
@@ -683,11 +701,13 @@ public class BoltzLimitsCache
     public long SubmarineMinAmount { get; set; }
     public long SubmarineMaxAmount { get; set; }
     public decimal SubmarineFeePercentage { get; set; }
+    public long SubmarineMinerFee { get; set; }
     
     // Reverse swap limits (Lightning → Ark, receiving)
     public long ReverseMinAmount { get; set; }
     public long ReverseMaxAmount { get; set; }
     public decimal ReverseFeePercentage { get; set; }
+    public long ReverseMinerFee { get; set; }
     
     public DateTimeOffset FetchedAt { get; set; }
     public DateTimeOffset ExpiresAt { get; set; }

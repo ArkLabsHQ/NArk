@@ -77,9 +77,22 @@
                                             <div class="mt-1">
                                                 <span class="badge bg-secondary">Receive</span>
                                                 @Model.BoltzReverseMinAmount.Value - @Model.BoltzReverseMaxAmount.Value sats
-                                                @if (Model.BoltzReverseFeePercentage.HasValue)
+                                                @if (Model.BoltzReverseFeePercentage.HasValue || Model.BoltzReverseMinerFee.HasValue)
                                                 {
-                                                    <text>(@Model.BoltzReverseFeePercentage.Value%)</text>
+                                                    <text>(</text>
+                                                    @if (Model.BoltzReverseFeePercentage.HasValue)
+                                                    {
+                                                        <text>@((Model.BoltzReverseFeePercentage.Value * 100).ToString("0.##"))%</text>
+                                                    }
+                                                    @if (Model.BoltzReverseMinerFee.HasValue && Model.BoltzReverseMinerFee.Value > 0)
+                                                    {
+                                                        @if (Model.BoltzReverseFeePercentage.HasValue)
+                                                        {
+                                                            <text> + </text>
+                                                        }
+                                                        <text>@Model.BoltzReverseMinerFee.Value sats</text>
+                                                    }
+                                                    <text>)</text>
                                                 }
                                             </div>
                                         }
@@ -88,9 +101,22 @@
                                             <div class="mt-1">
                                                 <span class="badge bg-secondary">Send</span>
                                                 @Model.BoltzSubmarineMinAmount.Value - @Model.BoltzSubmarineMaxAmount.Value sats
-                                                @if (Model.BoltzSubmarineFeePercentage.HasValue)
+                                                @if (Model.BoltzSubmarineFeePercentage.HasValue || Model.BoltzSubmarineMinerFee.HasValue)
                                                 {
-                                                    <text>(@Model.BoltzSubmarineFeePercentage.Value%)</text>
+                                                    <text>(</text>
+                                                    @if (Model.BoltzSubmarineFeePercentage.HasValue)
+                                                    {
+                                                        <text>@((Model.BoltzSubmarineFeePercentage.Value * 100).ToString("0.##"))%</text>
+                                                    }
+                                                    @if (Model.BoltzSubmarineMinerFee.HasValue && Model.BoltzSubmarineMinerFee.Value > 0)
+                                                    {
+                                                        @if (Model.BoltzSubmarineFeePercentage.HasValue)
+                                                        {
+                                                            <text> + </text>
+                                                        }
+                                                        <text>@Model.BoltzSubmarineMinerFee.Value sats</text>
+                                                    }
+                                                    <text>)</text>
                                                 }
                                             </div>
                                         }

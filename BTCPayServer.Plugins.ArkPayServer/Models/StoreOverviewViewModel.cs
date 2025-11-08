@@ -25,9 +25,11 @@ public class StoreOverviewViewModel
     public long? BoltzReverseMinAmount { get; set; }
     public long? BoltzReverseMaxAmount { get; set; }
     public decimal? BoltzReverseFeePercentage { get; set; }
+    public long? BoltzReverseMinerFee { get; set; }
     
     // Boltz limits for Lightning - Submarine Swap (Sending Lightning)
     public long? BoltzSubmarineMinAmount { get; set; }
     public long? BoltzSubmarineMaxAmount { get; set; }
     public decimal? BoltzSubmarineFeePercentage { get; set; }
+    public long? BoltzSubmarineMinerFee { get; set; }
 }
