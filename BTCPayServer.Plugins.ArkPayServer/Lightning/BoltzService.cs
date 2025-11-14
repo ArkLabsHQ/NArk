@@ -434,32 +434,18 @@ public class BoltzService(
                 createInvoiceRequest,
                 receiverKey, cancellationToken);
             
-            // Verify the fee against cached limits
-            var limits = await GetLimitsAsync(cancellationToken);
-            if (limits != null)
+            try
             {
-                var actualFee = amountSats - swapResult.Swap.OnchainAmount;
-                // Boltz fee = (amount × percentage) + miner claim fee
-                var expectedFee = (long)(amountSats * limits.ReverseFeePercentage) + limits.ReverseMinerFee;
-                var feeToleranceSats = 100; // Allow 100 sat tolerance for rounding
-                
-                // Only fail if actual fee is HIGHER than expected (allow lower fees)
-                if (actualFee > expectedFee + feeToleranceSats)
+                var (isValid, errorMessage) = await ValidateFeesAsync(amountSats, swapResult.Swap.OnchainAmount, isReverse: true, cancellationToken);
+                if (!isValid)
                 {
-                    logger.LogWarning("Reverse swap fee too high: expected ~{ExpectedFee} sats ({FeePercentage}% + {MinerFee} sats miner fee), got {ActualFee} sats", 
-                        expectedFee, limits.ReverseFeePercentage * 100, limits.ReverseMinerFee, actualFee);
-                    throw new InvalidOperationException(
-                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({limits.ReverseFeePercentage * 100:F2}% + {limits.ReverseMinerFee} sats miner fee), but swap would charge {actualFee} sats");
+                    throw new InvalidOperationException(errorMessage);
                 }
-                
-                if (actualFee < expectedFee - feeToleranceSats)
-                {
-                    logger.LogInformation("Reverse swap fee lower than expected: {ActualFee} sats vs expected {ExpectedFee} sats - accepting", 
-                        actualFee, expectedFee);
-                }
-                
-                logger.LogInformation("Reverse swap fee verified: {ActualFee} sats ({FeePercentage}% + {MinerFee} sats miner fee)", 
-                    actualFee, limits.ReverseFeePercentage * 100, limits.ReverseMinerFee);
+            }
+            catch (Exception e) when (e is not InvalidOperationException)
+            {
+                // Log but don't fail if we can't validate fees (e.g., network issues)
+                logger.LogWarning(e, "Unable to validate reverse swap fees, proceeding anyway");
             }
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
@@ -499,6 +485,7 @@ public class BoltzService(
         PublishUpdates(new ArkSwapUpdated { Swap = reverseSwap });
         return reverseSwap;
     }
+
     public async Task<ArkSwap> CreateSubmarineSwap(string walletId, BOLT11PaymentRequest paymentRequest, CancellationToken cancellationToken )
     {
         // Validate amount against Boltz limits
@@ -537,32 +524,18 @@ public class BoltzService(
                 sender,
                 cancellationToken: cancellationToken);
             
-            // Verify the fee against cached limits
-            var limits = await GetLimitsAsync(cancellationToken);
-            if (limits != null)
+            try
             {
-                var actualFee = swapResult.Swap.ExpectedAmount - amountSats;
-                // Boltz fee = (amount × percentage) + miner lockup fee
-                var expectedFee = (long)(amountSats * limits.SubmarineFeePercentage) + limits.SubmarineMinerFee;
-                var feeToleranceSats = 100; // Allow 100 sat tolerance for rounding
-                
-                // Only fail if actual fee is HIGHER than expected (allow lower fees)
-                if (actualFee > expectedFee + feeToleranceSats)
+                var (isValid, errorMessage) = await ValidateFeesAsync(amountSats, swapResult.Swap.ExpectedAmount, isReverse: false, cancellationToken);
+                if (!isValid)
                 {
-                    logger.LogWarning("Submarine swap fee too high: expected ~{ExpectedFee} sats ({FeePercentage}% + {MinerFee} sats miner fee), got {ActualFee} sats", 
-                        expectedFee, limits.SubmarineFeePercentage * 100, limits.SubmarineMinerFee, actualFee);
-                    throw new InvalidOperationException(
-                        $"Boltz fee verification failed. Expected ~{expectedFee} sats ({limits.SubmarineFeePercentage * 100:F2}% + {limits.SubmarineMinerFee} sats miner fee), but swap would charge {actualFee} sats");
+                    throw new InvalidOperationException(errorMessage);
                 }
-                
-                if (actualFee < expectedFee - feeToleranceSats)
-                {
-                    logger.LogInformation("Submarine swap fee lower than expected: {ActualFee} sats vs expected {ExpectedFee} sats - accepting", 
-                        actualFee, expectedFee);
-                }
-                
-                logger.LogInformation("Submarine swap fee verified: {ActualFee} sats ({FeePercentage}% + {MinerFee} sats miner fee)", 
-                    actualFee, limits.SubmarineFeePercentage * 100, limits.SubmarineMinerFee);
+            }
+            catch (Exception e) when (e is not InvalidOperationException)
+            {
+                // Log but don't fail if we can't validate fees (e.g., network issues)
+                logger.LogWarning(e, "Unable to validate submarine swap fees, proceeding anyway");
             }
             
             var contractScript = swapResult.Contract.GetArkAddress().ScriptPubKey.ToHex();
@@ -609,23 +582,30 @@ public class BoltzService(
     /// <summary>
     /// Gets cached Boltz limits, fetching from API if cache is expired or empty
     /// </summary>
-    public async Task<BoltzLimitsCache?> GetLimitsAsync(CancellationToken cancellationToken = default)
+    public async Task<BoltzLimitsCache> GetLimitsAsync(CancellationToken cancellationToken = default)
     {
         await _limitsCacheLock.WaitAsync(cancellationToken);
         try
         {
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken,
+                new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
             // Return cached limits if still valid
             if (_limitsCache != null && DateTimeOffset.UtcNow < _limitsCache.ExpiresAt)
             {
                 return _limitsCache;
             }
-
+            _limitsCache = null;
             // Fetch fresh limits from Boltz API
             try
             {
-                var submarinePairs = await boltzClient.GetSubmarinePairsAsync(cancellationToken);
-                var reversePairs = await boltzClient.GetReversePairsAsync(cancellationToken);
+                var submarinePairsTask = boltzClient.GetSubmarinePairsAsync(cts.Token);
+                var reversePairsTask = boltzClient.GetReversePairsAsync(cts.Token);
 
+                await Task.WhenAll(submarinePairsTask, reversePairsTask);
+                
+                var submarinePairs = await submarinePairsTask;
+                var reversePairs = await reversePairsTask;
+                
                 if (submarinePairs?.ARK?.BTC != null && reversePairs?.BTC?.ARK != null)
                 {
                     _limitsCache = new BoltzLimitsCache
@@ -651,14 +631,20 @@ public class BoltzService(
                     logger.LogInformation("Fetched Boltz limits - Submarine: {SubMin}-{SubMax} sats, Reverse: {RevMin}-{RevMax} sats",
                         _limitsCache.SubmarineMinAmount, _limitsCache.SubmarineMaxAmount,
                         _limitsCache.ReverseMinAmount, _limitsCache.ReverseMaxAmount);
+                    
+                    return _limitsCache;
+                }
+                else
+                {
+                    throw new InvalidOperationException("Boltz instance does not support Ark");
                 }
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to fetch Boltz limits");
+                throw new InvalidOperationException("Failed to fetch Boltz limits");
             }
 
-            return _limitsCache;
         }
         finally
         {
@@ -690,6 +676,58 @@ public class BoltzService(
         {
             return (false, $"Amount {amountSats} sats exceeds maximum {maxAmount} sats for {swapType} Lightning");
         }
+
+        return (true, null);
+    }
+    
+    /// <summary>
+    /// Validates if the actual swap fee is within acceptable range compared to expected fee
+    /// </summary>
+    /// <param name="amountSats">The invoice/payment amount in satoshis</param>
+    /// <param name="actualSwapAmount">The actual onchain/expected amount from Boltz</param>
+    /// <param name="isReverse">True for reverse swap (Lightning → Ark), false for submarine (Ark → Lightning)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Tuple indicating if fees are valid and optional error message</returns>
+    public async Task<(bool IsValid, string? ErrorMessage)> ValidateFeesAsync(long amountSats, long actualSwapAmount, bool isReverse, CancellationToken cancellationToken = default)
+    {
+        var limits = await GetLimitsAsync(cancellationToken);
+        if (limits == null)
+        {
+            return (false, "Unable to fetch Boltz limits");
+        }
+
+        // Calculate actual fee based on swap type
+        // Reverse: user receives actualSwapAmount onchain, pays amountSats via Lightning
+        // Submarine: user pays actualSwapAmount onchain, receives amountSats via Lightning
+        var actualFee = isReverse 
+            ? amountSats - actualSwapAmount  // Reverse: Lightning amount - onchain amount
+            : actualSwapAmount - amountSats; // Submarine: onchain amount - Lightning amount
+        
+        var (feePercentage, minerFee, swapType) = isReverse
+            ? (limits.ReverseFeePercentage, limits.ReverseMinerFee, "Reverse")
+            : (limits.SubmarineFeePercentage, limits.SubmarineMinerFee, "Submarine");
+        
+        // Calculate expected fee: (amount × percentage) + miner fee
+        var expectedFee = (long)(amountSats * feePercentage) + minerFee;
+        var feeToleranceSats = 100; // Allow 100 sat tolerance for rounding
+        
+        // Only fail if actual fee is HIGHER than expected (allow lower fees)
+        if (actualFee > expectedFee + feeToleranceSats)
+        {
+            logger.LogWarning("{SwapType} swap fee too high: expected ~{ExpectedFee} sats ({FeePercentage}% + {MinerFee} sats miner fee), got {ActualFee} sats", 
+                swapType, expectedFee, feePercentage * 100, minerFee, actualFee);
+            return (false, 
+                $"Boltz fee verification failed. Expected ~{expectedFee} sats ({feePercentage * 100:F2}% + {minerFee} sats miner fee), but swap would charge {actualFee} sats");
+        }
+        
+        if (actualFee < expectedFee - feeToleranceSats)
+        {
+            logger.LogInformation("{SwapType} swap fee lower than expected: {ActualFee} sats vs expected {ExpectedFee} sats - accepting", 
+                swapType, actualFee, expectedFee);
+        }
+        
+        logger.LogInformation("{SwapType} swap fee verified: {ActualFee} sats ({FeePercentage}% + {MinerFee} sats miner fee)", 
+            swapType, actualFee, feePercentage * 100, minerFee);
 
         return (true, null);
     }

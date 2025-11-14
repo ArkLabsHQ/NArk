@@ -2,13 +2,15 @@
 @using BTCPayServer.Abstractions.TagHelpers
 @using BTCPayServer.Plugins.ArkPayServer
 @using BTCPayServer.Plugins.ArkPayServer.Lightning
-@inject BoltzService BoltzService
+@inject ArkadeLightningLimitsService LimitsService
 @model BTCPayServer.Models.InvoicingModels.CheckoutModel
 
+@using NBitcoin
 @{
-    var boltzLimits = await BoltzService.GetLimitsAsync(CancellationToken.None);
-    var boltzMinSats = boltzLimits?.ReverseMinAmount ?? 0;
-    var boltzMaxSats = boltzLimits?.ReverseMaxAmount ?? long.MaxValue;
+    // Check if Lightning should be shown for this store and invoice amount
+    // The limits service handles all validation logic (store config, Boltz limits, etc.)
+    var amountSats = (long)Money.Coins(decimal.Parse(Model.Due)).Satoshi;
+    var shouldShowLightning = await LimitsService.CanSupportLightningAsync(Model.StoreId, amountSats, CancellationToken.None);
 }
 
 <template id="@ArkadePlugin.CheckoutBodyComponentName">
@@ -63,8 +65,7 @@
                 nfcUrl: @Safe.Json(Url.ActionAbsolute(Context.Request, "SubmitLNURLWithdrawForInvoice", "NFC").ToString()),
                 nfcAmount: 0,
                 nfcSubmitting: false,
-                boltzMinSats: @boltzMinSats,
-                boltzMaxSats: @boltzMaxSats
+                shouldShowLightning: @Safe.Json(shouldShowLightning)
             };
         },
         computed: {
@@ -76,26 +77,6 @@
             lightning () {
                 const match = this.model.invoiceBitcoinUrl?.match(/[&?]lightning=(.*)&?/i);
                 return match ? match[1].toLowerCase() : null;
-            },
-            shouldShowLightning () {
-                // Always show if no Boltz limits configured
-                if (!this.boltzMinSats || !this.boltzMaxSats) {
-                    return true;
-                }
-                
-                // Always show for top-up invoices (amount = 0)
-                if (!this.model.due || this.model.due === '0') {
-                    return true;
-                }
-                
-                // Convert BTC to sats
-                const amountSats = parseFloat(this.model.due) * 100000000;
-                
-                if(amountSats == 0){
-                    return true;
-                }
-                // Show if within Boltz limits
-                return amountSats >= this.boltzMinSats && amountSats <= this.boltzMaxSats;
             },
             nfcDisplay () {
                 // Enable NFC for ARKADE payment method

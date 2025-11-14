@@ -11,10 +11,14 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 public class ArkadePaymentLinkExtension : IPaymentLinkExtension
 {
     private readonly IServiceProvider _serviceProvider;
+    private readonly ArkadeLightningLimitsService _limitsService;
 
-    public ArkadePaymentLinkExtension(IServiceProvider serviceProvider)
+    public ArkadePaymentLinkExtension(
+        IServiceProvider serviceProvider,
+        ArkadeLightningLimitsService limitsService)
     {
         _serviceProvider = serviceProvider;
+        _limitsService = limitsService;
     }
     public PaymentMethodId PaymentMethodId { get; } = ArkadePlugin.ArkadePaymentMethodId;
 
@@ -60,33 +64,14 @@ public class ArkadePaymentLinkExtension : IPaymentLinkExtension
 
     private async Task<bool> ShouldIncludeLightning(PaymentPrompt prompt)
     {
-
-        //TODO: cache storeids that use type-arkade LN connection strings and otherwise return true if not using arkade for ln
-        
         // Get the invoice amount in satoshis
         var amountSats = (long)Money.Coins(prompt.Calculate().Due).Satoshi;
 
-        // Allow top-up invoices (amount = 0)
-        if (amountSats == 0)
-        {
-            return true;
-        }
-
-        // Get Boltz limits
-        var boltzService = _serviceProvider.GetService<BoltzService>();
-        if (boltzService == null)
-        {
-            // No Boltz service, include Lightning
-            return true;
-        }
-
-        var boltzLimits = await boltzService.GetLimitsAsync(CancellationToken.None);
-        if (boltzLimits == null)
-        {
-            return true;
-        }
-
-        // Include Lightning only if within Boltz limits
-        return  amountSats >= boltzLimits.ReverseMinAmount && amountSats <= boltzLimits.ReverseMaxAmount;
+        // Use the centralized limits service to determine if Lightning should be included
+        // This handles caching of store configuration and Boltz limits validation
+        return await _limitsService.CanSupportLightningAsync(
+            prompt.ParentEntity.StoreId, 
+            amountSats, 
+            CancellationToken.None);
     }
 }

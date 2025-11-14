@@ -12,8 +12,7 @@ namespace BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 /// Plugin hook filter that validates Boltz limits for LNURL requests when Arkade Lightning is enabled
 /// </summary>
 public class ArkadeLNURLPayRequestFilter(
-    BoltzService boltzService,
-    PaymentMethodHandlerDictionary paymentMethodHandlerDictionary
+    ArkadeLightningLimitsService limitsService
 ) : PluginHookFilter<StoreLNURLPayRequest>
 {
     public override string Hook => "modify-lnurlp-request";
@@ -24,21 +23,14 @@ public class ArkadeLNURLPayRequestFilter(
             return request;
 
         // Check if Arkade Lightning is enabled for this store
-        var lnPaymentMethodId = PaymentTypes.LN.GetPaymentMethodId("BTC");
-        var lnConfig = request.Store.GetPaymentMethodConfig<LightningPaymentMethodConfig>(
-            lnPaymentMethodId,
-            paymentMethodHandlerDictionary);
-        var isArkadeLightningEnabled =
-            lnConfig?.ConnectionString?.StartsWith("type=arkade", StringComparison.InvariantCultureIgnoreCase) is true;
-
-        if (!isArkadeLightningEnabled)
+        if (!limitsService.IsStoreUsingArkadeLightning(request.Store))
         {
             // Not using Arkade Lightning, don't modify limits
             return request;
         }
         
-        // Get Boltz limits
-        var boltzLimits = await boltzService.GetLimitsAsync(CancellationToken.None);
+        // Get Boltz limits for this store
+        var boltzLimits = await limitsService.GetLimitsForStoreAsync(request.Store, CancellationToken.None);
         if (boltzLimits == null)
         {
             // Boltz unavailable - disable LNURL since we can't fulfill Lightning payments

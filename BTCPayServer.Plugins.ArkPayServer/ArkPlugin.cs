@@ -251,6 +251,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     {
         // Register ArkConnectionStringHandler so LightningClientFactoryService can create the client
         serviceCollection.AddSingleton<ILightningConnectionStringHandler, ArkLightningConnectionStringHandler>();
+        serviceCollection.AddSingleton<ArkadeLightningLimitsService>();
         serviceCollection.AddSingleton<ArkadePaymentLinkExtension>();
         serviceCollection.AddSingleton<IPaymentLinkExtension>(provider => provider.GetRequiredService<ArkadePaymentLinkExtension>());
         serviceCollection.AddSingleton<IPaymentMethodHandler>(provider => provider.GetRequiredService<ArkadePaymentMethodHandler>());
