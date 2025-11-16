@@ -540,7 +540,9 @@ public class ArkIntentService(
 
                 await foreach (var eventResponse in streamCall.ResponseStream.ReadAllAsync(_eventStreamCts.Token))
                 {
-                    await ProcessEventForAllIntentsAsync(eventResponse, cancellationToken);
+                    _eventStreamCts.Token.ThrowIfCancellationRequested();
+                    
+                    await ProcessEventForAllIntentsAsync(eventResponse, CancellationToken.None);
                 }
             }
             catch (OperationCanceledException) 
@@ -590,7 +592,6 @@ public class ArkIntentService(
                         _activeBatchSessions.TryRemove(intentId, out _);
                         _activeIntents.TryRemove(intentId, out _);
                         TriggerStreamUpdate();
-                        continue;
                     }
                 }
 
@@ -802,6 +803,7 @@ public class ArkIntentService(
         intent.State = ArkIntentState.BatchSucceeded;
         intent.CommitmentTransactionId = finalizedEvent.CommitmentTxid;
         intent.UpdatedAt = DateTimeOffset.UtcNow;
+        dbContext.Entry(intent).State = EntityState.Modified;
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 

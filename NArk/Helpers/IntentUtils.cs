@@ -86,7 +86,7 @@ public class IntentUtils
         
         foreach (var inCoin in inputs)
         {
-            await inCoin.SignAndFillPSBT(toSignTx, precomputedTransactionData, cancellationToken);
+            await inCoin.SignAndFillPSBT(toSignTx, precomputedTransactionData, cancellationToken: cancellationToken);
         }
         
         return toSignTx;

@@ -30,7 +30,7 @@ namespace NArk.Services
                 checkpointGtx.PrecomputeTransactionData([coin.TxOut]);
 
             receivedCheckpointTx.UpdateFrom(checkpointTx);
-            await coin.SignAndFillPSBT(receivedCheckpointTx, checkpointPrecomputedTransactionData, cancellationToken);
+            await coin.SignAndFillPSBT(receivedCheckpointTx, checkpointPrecomputedTransactionData, cancellationToken: cancellationToken);
 
             return receivedCheckpointTx;
         }
@@ -66,6 +66,7 @@ namespace NArk.Services
             txBuilder.SetVersion(3);
             txBuilder.SetFeeWeight(0);
             txBuilder.DustPrevention = false;
+            txBuilder.SetLockTime(coin.SpendingLockTime ?? LockTime.Zero);
             
             // Add VTXO input
             txBuilder.AddCoin(coin, new CoinOptions()
@@ -74,7 +75,7 @@ namespace NArk.Services
             });
             
             // Add connector input if provided
-            if (connector != null)
+            if (connector is not null)
             {
                 txBuilder.AddCoin(connector);
             }
@@ -92,49 +93,14 @@ namespace NArk.Services
             forfeitTx = PSBT.FromTransaction(gtx, terms.Network, PSBTVersion.PSBTv0);
             txBuilder.UpdatePSBT(forfeitTx);
             
-            // Fill PSBT input for the VTXO
-            coin.FillPSBTInput(forfeitTx);
-            
             // Sign the VTXO input with the appropriate sighash
-            var coins = connector != null 
+            var coins = connector is not null 
                 ? new[] { coin.TxOut, connector.TxOut } 
                 : new[] { coin.TxOut };
             
             var precomputedData = gtx.PrecomputeTransactionData(coins);
-            
-            // Sign with custom sighash
-            var vtxoInput = forfeitTx.Inputs.FindIndexedInput(coin.Outpoint)!;
-            var hash = gtx.GetSignatureHashTaproot(
-                precomputedData,
-                new TaprootExecutionData((int)vtxoInput.Index, coin.SpendingScriptBuilder?.Build()?.LeafHash)
-                {
-                    SigHash = sighash
-                });
-            
-            var (signature, _) = await coin.Signer.Sign(hash, cancellationToken);
-            
-            // Build witness
-            var witness = new List<Op>
-            {
-                Op.GetPushOp(signature.ToBytes())
-            };
-            
-            if (coin.SpendingConditionWitness is not null)
-            {
-                witness.AddRange(coin.SpendingConditionWitness.ToScript().ToOps());
-            }
-            
-            if (coin.SpendingScriptBuilder is not null)
-            {
-                var script = coin.SpendingScriptBuilder.Build();
-                var controlBlock = coin.Contract.GetTaprootSpendInfo().GetControlBlock(script);
-                witness.AddRange([
-                    Op.GetPushOp(script.Script.ToBytes()), 
-                    Op.GetPushOp(controlBlock.ToBytes())
-                ]);
-            }
-            
-            vtxoInput.FinalScriptWitness = new WitScript(witness.ToArray());
+
+            await coin.SignAndFillPSBT(forfeitTx, precomputedData, sighash, cancellationToken);
             
             logger.LogInformation("Forfeit transaction constructed successfully for coin {Outpoint}", coin.Outpoint);
             
@@ -181,7 +147,6 @@ namespace NArk.Services
             var (signature, pubKey) = await delegateSigner.Sign(hash, cancellationToken);
             
             vtxo.SetTaprootScriptSpendSignature(pubKey, leafScript.leafScript.LeafHash, signature);
-            
            
             logger.LogInformation("Existing Forfeit transaction finished successfully for coin {Outpoint}", vtxo.PrevOut);
             
@@ -405,7 +370,7 @@ namespace NArk.Services
             {
                 logger.LogDebug($"Signing Ark transaction for input {inputIndex}");
 
-                await coin.SignAndFillPSBT(tx, precomputedTransactionData, cancellationToken);
+                await coin.SignAndFillPSBT(tx, precomputedTransactionData, cancellationToken: cancellationToken);
 
             }
 

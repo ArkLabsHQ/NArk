@@ -86,7 +86,8 @@ public class SpendableArkCoinWithSigner : SpendableArkCoin
     public async Task SignAndFillPSBT(
         PSBT psbt,
         TaprootReadyPrecomputedTransactionData precomputedTransactionData,
-        CancellationToken cancellationToken)
+        TaprootSigHash sigHash = TaprootSigHash.Default,
+        CancellationToken cancellationToken = default)
     {
         var psbtInput = FillPSBTInput(psbt);
         if (psbtInput is null)
@@ -96,7 +97,10 @@ public class SpendableArkCoinWithSigner : SpendableArkCoin
 
         var gtx = psbt.GetGlobalTransaction();
         var hash = gtx.GetSignatureHashTaproot(precomputedTransactionData,
-            new TaprootExecutionData((int) psbtInput.Index, SpendingScript.LeafHash));
+            new TaprootExecutionData((int) psbtInput.Index, SpendingScript.LeafHash)
+            {
+                SigHash = sigHash
+            });
         var (sig, ourKey) = await Signer.Sign(hash, cancellationToken);
 
         psbtInput.SetTaprootScriptSpendSignature(ourKey, SpendingScript.LeafHash, sig);
