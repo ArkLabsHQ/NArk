@@ -258,7 +258,34 @@ public class BoltzService(
         {
             var response = await boltzClient.GetSwapStatusAsync(swap.SwapId, cancellationToken);
             var oldStatus = swap.Status;
-            if (Map(response.Status) is var newStatus && newStatus != oldStatus)
+            var newStatus = Map(response.Status);
+            
+            // Check if submarine swap should be marked as refundable
+            if (swap.SwapType == ArkSwapType.Submarine && !swap.Refunded)
+            {
+                // Mark as refundable if swap failed and can be cooperatively refunded
+                if (IsRefundableStatus(response.Status) && !swap.Refundable)
+                {
+                    swap.Refundable = true;
+                    logger.LogInformation("Submarine swap {SwapId} marked as refundable due to status: {Status}", 
+                        swap.SwapId, response.Status);
+                    
+                    // Trigger refund attempt
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await RefundSubmarineSwap(swap, cancellationToken);
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogError(ex, "Failed to refund submarine swap {SwapId}", swap.SwapId);
+                        }
+                    }, cancellationToken);
+                }
+            }
+            
+            if (newStatus != oldStatus)
             {
                 swap.UpdatedAt = DateTimeOffset.UtcNow;
                 swap.Status = newStatus;
@@ -285,6 +312,19 @@ public class BoltzService(
             return null;
         }
     }
+    
+    private bool IsRefundableStatus(string status)
+    {
+        // Statuses that indicate a submarine swap can be cooperatively refunded
+        return status switch
+        {
+            "invoice.failedToPay" => true,
+            "invoice.expired" => true,
+            "swap.expired" => true,
+            "transaction.lockupFailed" => true,
+            _ => false
+        };
+    }
 
     public ArkSwapStatus Map(string status)
     {
@@ -306,6 +346,157 @@ public class BoltzService(
                 logger.LogInformation("Unknown status {Status}", status);
                 return ArkSwapStatus.Unknown;
         }
+    }
+
+    /// <summary>
+    /// Attempts to cooperatively refund a failed submarine swap by building a refund transaction
+    /// and getting Boltz to co-sign it.
+    /// </summary>
+    private async Task RefundSubmarineSwap(ArkSwap swap, CancellationToken cancellationToken)
+    {
+        if (swap.SwapType != ArkSwapType.Submarine)
+        {
+            throw new InvalidOperationException("Only submarine swaps can be refunded");
+        }
+
+        if (swap.Refunded)
+        {
+            logger.LogInformation("Submarine swap {SwapId} already refunded", swap.SwapId);
+            return;
+        }
+
+        logger.LogInformation("Attempting cooperative refund for submarine swap {SwapId}", swap.SwapId);
+
+        await using var dbContext = dbContextFactory.CreateContext();
+        var swapEntity = await dbContext.Swaps
+            .Include(s => s.Contract)
+            .Include(s => s.Wallet)
+            .FirstOrDefaultAsync(s => s.SwapId == swap.SwapId && s.WalletId == swap.WalletId, cancellationToken);
+
+        if (swapEntity == null)
+        {
+            throw new InvalidOperationException($"Swap {swap.SwapId} not found in database");
+        }
+
+        // Parse the VHTLC contract
+        var contract = ArkContract.Parse(swapEntity.Contract.Type, swapEntity.Contract.ContractData) as VHTLCContract;
+        if (contract == null)
+        {
+            throw new InvalidOperationException("Failed to parse VHTLC contract for refund");
+        }
+
+        // Get the wallet signer
+        if (!await walletService.CanHandle(swap.WalletId, cancellationToken))
+        {
+            throw new InvalidOperationException("No signer found for wallet");
+        }
+
+        var signer = await walletService.CreateSigner(swap.WalletId, cancellationToken);
+        var userPubKey = await signer.GetPublicKey(cancellationToken);
+
+        // Get VTXOs for this contract
+        var vtxos = await arkVtxoSynchronizationService.GetVtxosForScript(swap.ContractScript, cancellationToken);
+        if (vtxos.Count == 0)
+        {
+            logger.LogWarning("No VTXOs found for submarine swap {SwapId} refund", swap.SwapId);
+            return;
+        }
+
+        // Use the first VTXO (should only be one for a swap)
+        var vtxo = vtxos[0];
+
+        // Get operator terms for checkpoint script
+        var operatorTerms = await boltzSwapService.GetOperatorTerms(cancellationToken);
+        
+        // Build the refund transaction using CreateCooperativeScript (sender + receiver + server)
+        // or CreateRefundWithoutReceiverScript if past refund locktime
+        var refundScript = contract.CreateCooperativeScript();
+        
+        // Get the user's wallet address for refund destination
+        var refundAddress = await walletService.GetAddress(swap.WalletId, cancellationToken);
+        if (refundAddress == null)
+        {
+            throw new InvalidOperationException("Failed to get refund address");
+        }
+
+        // Build the refund transaction
+        var refundTxBuilder = operatorTerms.Network.CreateTransactionBuilder();
+        refundTxBuilder.SetVersion(3);
+        refundTxBuilder.SetFeeWeight(0);
+        refundTxBuilder.DustPrevention = false;
+
+        // Add the VTXO as input
+        var coin = new Coin(new OutPoint(new uint256(vtxo.Txid), (uint)vtxo.Vout), new TxOut(Money.Satoshis(vtxo.Value), Script.FromHex(vtxo.Script)));
+        refundTxBuilder.AddCoin(coin);
+
+        // Send full amount back to user (minus any fees handled by Ark)
+        refundTxBuilder.Send(refundAddress, Money.Satoshis(vtxo.Value));
+
+        var refundPsbt = refundTxBuilder.BuildPSBT(false, PSBTVersion.PSBTv0);
+        
+        // Fill PSBT with taproot script information
+        var psbtInput = refundPsbt.Inputs[0];
+        psbtInput.WitnessUtxo = coin.TxOut;
+        
+        // Sign our part of the refund transaction
+        var signedRefundPsbt = await signer.SignPSBT(refundPsbt, cancellationToken);
+
+        // Build checkpoint transaction (required for Ark protocol)
+        var checkpointScript = CSVMultisigTapscript.Decode(Convert.FromHexString(operatorTerms.CheckpointTapscript));
+        var checkpointTxBuilder = operatorTerms.Network.CreateTransactionBuilder();
+        checkpointTxBuilder.SetVersion(3);
+        checkpointTxBuilder.AddCoin(coin);
+        checkpointTxBuilder.Send(refundAddress, Money.Satoshis(vtxo.Value));
+        var checkpointPsbt = checkpointTxBuilder.BuildPSBT(false, PSBTVersion.PSBTv0);
+        checkpointPsbt.Inputs[0].WitnessUtxo = coin.TxOut;
+
+        // Sign checkpoint
+        var signedCheckpointPsbt = await signer.SignPSBT(checkpointPsbt, cancellationToken);
+
+        // Request Boltz to co-sign the refund
+        var refundRequest = new NArk.Boltz.Models.Swaps.Submarine.SubmarineRefundRequest
+        {
+            Transaction = signedRefundPsbt.ToBase64(),
+            Checkpoint = signedCheckpointPsbt.ToBase64()
+        };
+
+        var refundResponse = await boltzClient.RefundSubmarineSwapAsync(swap.SwapId, refundRequest, cancellationToken);
+
+        // Parse Boltz-signed transactions
+        var boltzSignedRefundPsbt = PSBT.Parse(refundResponse.Transaction, operatorTerms.Network);
+        var boltzSignedCheckpointPsbt = PSBT.Parse(refundResponse.Checkpoint, operatorTerms.Network);
+
+        // Combine signatures
+        signedRefundPsbt.UpdateFrom(boltzSignedRefundPsbt);
+        signedCheckpointPsbt.UpdateFrom(boltzSignedCheckpointPsbt);
+
+        // Submit to Ark operator
+        var submitRequest = new SubmitTxRequest
+        {
+            Tx = signedRefundPsbt.ToBase64(),
+            Checkpoints = { signedCheckpointPsbt.ToBase64() }
+        };
+
+        var submitResponse = await boltzSwapService.SubmitTransaction(submitRequest, cancellationToken);
+
+        // Finalize with operator-signed checkpoints
+        var finalizeRequest = new FinalizeTxRequest
+        {
+            ArkTxid = submitResponse.ArkTxid,
+            Checkpoints = { submitResponse.SignedCheckpointTxs.ToArray() }
+        };
+
+        await boltzSwapService.FinalizeTransaction(finalizeRequest, cancellationToken);
+
+        // Mark swap as refunded
+        swapEntity.Refunded = true;
+        swapEntity.UpdatedAt = DateTimeOffset.UtcNow;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        logger.LogInformation("Successfully refunded submarine swap {SwapId} with Ark txid {ArkTxid}", 
+            swap.SwapId, submitResponse.ArkTxid);
+
+        PublishUpdates(new ArkSwapUpdated { Swap = swapEntity });
     }
 
     public Task StopAsync(CancellationToken cancellationToken)

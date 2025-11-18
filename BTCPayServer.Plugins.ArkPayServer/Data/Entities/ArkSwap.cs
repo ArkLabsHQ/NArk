@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Data.Entities;
@@ -24,6 +24,10 @@ public class ArkSwap
     public DateTimeOffset UpdatedAt { get; set; }= DateTimeOffset.UtcNow;
 
     public string Hash { get; set; }
+    
+    // Refund tracking for submarine swaps
+    public bool Refundable { get; set; }
+    public bool Refunded { get; set; }
 
 
     public static void OnModelCreating(ModelBuilder modelBuilder)
