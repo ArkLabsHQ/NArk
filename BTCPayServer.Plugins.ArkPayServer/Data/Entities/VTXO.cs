@@ -14,7 +14,8 @@ public class VTXO
     public DateTimeOffset SeenAt { get; set; }
     // public DateTimeOffset? SpentAt { get; set; }
     public bool Recoverable { get; set; }
-    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
+    public uint? ExpiresAtHeight { get; set; }
 
     public virtual ICollection<ArkIntentVtxo> IntentVtxos { get; set; } = null!;
 
@@ -34,7 +35,7 @@ public class VTXO
             Amount,
             Recoverable,
             SeenAt,
-            ExpiresAt,
+            ExpiresAt?.ToString() ?? ExpiresAtHeight?.ToString(),
             SpentByTransactionId,
             Script
         );

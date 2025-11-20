@@ -66,6 +66,8 @@ namespace NArk.Services
             txBuilder.SetVersion(3);
             txBuilder.SetFeeWeight(0);
             txBuilder.DustPrevention = false;
+            txBuilder.ShuffleInputs = false;
+            txBuilder.ShuffleOutputs = false;
             txBuilder.SetLockTime(coin.SpendingLockTime ?? LockTime.Zero);
             
             // Add VTXO input
@@ -98,9 +100,19 @@ namespace NArk.Services
                 ? new[] { coin.TxOut, connector.TxOut } 
                 : new[] { coin.TxOut };
             
-            var precomputedData = gtx.PrecomputeTransactionData(coins);
+            //sort the checkpoint coins based on the input index in arkTx
 
-            await coin.SignAndFillPSBT(forfeitTx, precomputedData, sighash, cancellationToken);
+            var sortedCheckpointCoins = new Dictionary<int, TxOut>();
+            foreach (var input in forfeitTx.Inputs)
+            {
+                sortedCheckpointCoins.Add((int)input.Index, coins.Single(x => x.ScriptPubKey == input.GetTxOut().ScriptPubKey));
+            }
+
+            // Sign each input in the Ark transaction
+            var precomputedTransactionData =
+                gtx.PrecomputeTransactionData(sortedCheckpointCoins.OrderBy(x => x.Key).Select(x=>x.Value).ToArray());
+            
+            await coin.SignAndFillPSBT(forfeitTx, precomputedTransactionData, sighash, cancellationToken);
             
             logger.LogInformation("Forfeit transaction constructed successfully for coin {Outpoint}", coin.Outpoint);
             
@@ -285,6 +297,7 @@ namespace NArk.Services
                     new SpendableArkCoinWithSigner(
                         checkpointContract,
                         coin.ExpiresAt,
+                        coin.ExpiresAtHeight,
                         outpoint,
                         txout.GetTxOut()!,
                         coin.Signer,

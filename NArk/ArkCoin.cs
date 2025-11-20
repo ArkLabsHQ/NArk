@@ -5,14 +5,17 @@ namespace NArk;
 
 public class ArkCoin : Coin
 {
-    public ArkCoin(ArkContract contract, OutPoint outpoint, TxOut txout, DateTimeOffset expiresAt) : base(outpoint, txout)
+    public ArkCoin(ArkContract contract, OutPoint outpoint, TxOut txout, DateTimeOffset? expiresAt, uint? expiresAtHeight) : base(outpoint, txout)
     {
         Contract = contract;
         ExpiresAt = expiresAt;
+        ExpiresAtHeight = expiresAtHeight;
     }
     public ArkContract Contract { get; set; }
 
-    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? ExpiresAt { get; set; }
+    
+    public uint? ExpiresAtHeight { get; set; }
 
     public override string ToString()
     {

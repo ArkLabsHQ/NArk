@@ -5,6 +5,8 @@ using Newtonsoft.Json;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Services;
 
+using BitcoinTimeChain = (long Timestamp, uint Height);
+
 public class BitcoinTimeChainProvider : EventHostedServiceBase
 {
     private readonly ExplorerClientProvider _explorerClientProvider;
@@ -34,9 +36,9 @@ public class BitcoinTimeChainProvider : EventHostedServiceBase
         return base.ProcessEvent(evt, cancellationToken);
     }
 
-    public async Task<(long Timestamp, uint Height)> Get(CancellationToken cancellationToken)
+    public async Task<BitcoinTimeChain> Get(CancellationToken cancellationToken)
     {
-        return await _cache.GetOrCreateAsync<(long Timestamp, uint Height)>(CacheKey, async entry =>
+        return await _cache.GetOrCreateAsync<BitcoinTimeChain>(CacheKey, async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
             var client = _explorerClientProvider.GetExplorerClient("BTC");

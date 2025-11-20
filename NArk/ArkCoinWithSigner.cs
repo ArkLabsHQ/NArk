@@ -17,13 +17,14 @@ public class SpendableArkCoin : ArkCoin
     public bool Recoverable { get; set; }
 
     public SpendableArkCoin(ArkContract contract,
-        DateTimeOffset expiresAt,
+        DateTimeOffset? expiresAt,
+        uint? expiresAtHeight,
         OutPoint outpoint,
         TxOut txout,
         ScriptBuilder spendingScriptBuilder,
         WitScript? spendingConditionWitness,
         LockTime? lockTime,
-        Sequence? sequence, bool recoverable) : base(contract, outpoint, txout, expiresAt)
+        Sequence? sequence, bool recoverable) : base(contract, outpoint, txout, expiresAt, expiresAtHeight)
     {
         SpendingScriptBuilder = spendingScriptBuilder;
         SpendingConditionWitness = spendingConditionWitness;
@@ -63,21 +64,22 @@ public class SpendableArkCoinWithSigner : SpendableArkCoin
 
 
     public SpendableArkCoinWithSigner(ArkContract contract,
-        DateTimeOffset expiresAt,
+        DateTimeOffset? expiresAt,
+        uint? expiresAtHeight,
         OutPoint outpoint,
         TxOut txout,
         IArkadeWalletSigner signer,
         ScriptBuilder spendingScriptBuilder,
         WitScript? spendingConditionWitness,
         LockTime? lockTime,
-        Sequence? sequence, bool recoverable) : base(contract, expiresAt, outpoint, txout, spendingScriptBuilder,
+        Sequence? sequence, bool recoverable) : base(contract, expiresAt, expiresAtHeight, outpoint, txout, spendingScriptBuilder,
         spendingConditionWitness, lockTime, sequence, recoverable)
     {
         Signer = signer;
     }
     
     internal SpendableArkCoinWithSigner(SpendableArkCoinWithSigner other) : this(
-        other.Contract, other.ExpiresAt, other.Outpoint.Clone(), other.TxOut.Clone(), other.Signer,
+        other.Contract, other.ExpiresAt, other.ExpiresAtHeight, other.Outpoint.Clone(), other.TxOut.Clone(), other.Signer,
         other.SpendingScriptBuilder, other.SpendingConditionWitness?.Clone(), other.SpendingLockTime, other.SpendingSequence,
         other.Recoverable)
     {
