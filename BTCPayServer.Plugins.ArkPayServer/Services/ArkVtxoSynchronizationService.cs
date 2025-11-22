@@ -393,7 +393,7 @@ public class ArkVtxoSynchronizationService(
         }
     }
 
-    private bool IsExpired(BitcoinTimeChain timeChain, IndexerVtxo vtxo)
+    private static bool IsExpired(BitcoinTimeChain timeChain, IndexerVtxo vtxo)
     {
         if (vtxo.ExpiresAt < MinAllowedTimestamp)
             return vtxo.ExpiresAt < timeChain.Height;
@@ -401,7 +401,7 @@ public class ArkVtxoSynchronizationService(
         return DateTimeOffset.FromUnixTimeSeconds(vtxo.ExpiresAt) < DateTimeOffset.UtcNow;
     }
     
-    public VTXO Map(BitcoinTimeChain timeChain, IndexerVtxo vtxo, VTXO? existing = null)
+    private static VTXO Map(BitcoinTimeChain timeChain, IndexerVtxo vtxo, VTXO? existing = null)
     {
         var isNew = existing == null;
         existing ??= new VTXO();

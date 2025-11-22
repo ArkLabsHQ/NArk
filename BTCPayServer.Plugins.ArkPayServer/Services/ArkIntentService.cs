@@ -32,13 +32,19 @@ public class ArkIntentService(
     ILogger<ArkIntentService> logger)
     : IHostedService, IDisposable
 {
+    private record BatchSessionWithConnection(
+        BatchSession BatchSession,
+        Task ConnectionTask,
+        CancellationTokenSource CancellationTokenSource);
+    
     // Polling intervals
     private static readonly TimeSpan SubmissionPollingInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan EventStreamRetryDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan DefaultIntentExpiry = TimeSpan.FromMinutes(5);
     
     private readonly ConcurrentDictionary<string, ArkIntent> _activeIntents = new();
-    private readonly ConcurrentDictionary<string, BatchSession> _activeBatchSessions = new();
+    private readonly ConcurrentDictionary<string, BatchSessionWithConnection> _activeBatchSessions = new();
+    
     private CancellationTokenSource? _serviceCts;
     private CancellationTokenSource? _eventStreamCts;
     private Task? _submissionTask;
@@ -52,7 +58,6 @@ public class ArkIntentService(
         logger.LogInformation("Starting ArkIntentService");
         
         _serviceCts = new CancellationTokenSource();
-        
         
         _submissionTask = AutoSubmitIntentsAsync(_serviceCts.Token);
         // Start automatic submission task
@@ -87,12 +92,27 @@ public class ArkIntentService(
         // Stop event stream
         if (_eventStreamCts != null)
             await _eventStreamCts.CancelAsync();
+
+        foreach (var (_, batchSessionWithConn) in _activeBatchSessions)
+        {
+            try
+            {
+                await batchSessionWithConn.CancellationTokenSource.CancelAsync();
+            }
+            catch
+            {
+                // ignored
+            }
+        }
         
         // Wait for tasks to complete
         if (_submissionTask != null)
             await _submissionTask;
         if (_eventStreamTask != null)
             await _eventStreamTask;
+
+        foreach (var (_, batchSessionWithConn) in _activeBatchSessions)
+            await batchSessionWithConn.ConnectionTask;
         
         _activeIntents.Clear();
         _activeBatchSessions.Clear();
@@ -141,7 +161,7 @@ public class ArkIntentService(
         {
             throw new InvalidOperationException($"Signer not available for wallet {walletId}");
         } 
-        var vtxoScripts = coins.Select(c => c.Contract.GetArkAddress().ScriptPubKey.ToHex()).ToList();
+        var vtxoScripts = coins.Select(c => c.Contract.GetArkAddress().ScriptPubKey.ToHex()).ToHashSet();
         // ensure the wallet has the contract of the vtxos in question
        
         var contracts =
@@ -179,7 +199,6 @@ public class ArkIntentService(
             Amount = coin.TxOut.Value.Satoshi,
             Script = coin.TxOut.ScriptPubKey.ToHex(),
             SeenAt = DateTimeOffset.UtcNow,
-            
             Recoverable = coin.Recoverable
         }).ToList();
         
@@ -586,7 +605,7 @@ public class ArkIntentService(
                 // If we have an active batch session, pass all events to it
                 if (_activeBatchSessions.TryGetValue(intentId, out var batchSession))
                 {
-                    var isComplete = await batchSession.ProcessEventAsync(eventResponse, cancellationToken);
+                    var isComplete = await batchSession.BatchSession.ProcessEventAsync(eventResponse, cancellationToken);
                     if (isComplete)
                     {
                         _activeBatchSessions.TryRemove(intentId, out _);
@@ -748,7 +767,14 @@ public class ArkIntentService(
                 await session.InitializeAsync(cancellationToken);
             
                 // Store the session so events can be passed to it
-                _activeBatchSessions[intent.IntentId!] = session;
+                _activeBatchSessions[intent.IntentId!] = new BatchSessionWithConnection(
+                    session,
+                    _eventStreamTask!,
+                    _eventStreamCts!
+                );
+                _eventStreamCts = null;
+                _eventStreamTask = null;
+                _ = RunSharedEventStreamController(_serviceCts!.Token);
             
                 logger.LogInformation("Batch session initialized for intent {IntentId}", intent.InternalId);
             }
