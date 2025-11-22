@@ -299,7 +299,7 @@ public class BatchSession
         var signedForfeits = new List<string>();
         
         // Get connector leaves for forfeit transactions
-        var connectorsLeaves = connectorsGraph?.Leaves().ToList() ?? new List<PSBT>();
+        var connectorsLeaves = connectorsGraph?.Leaves().ToList() ?? [];
         int connectorIndex = 0;
         
         var partialForfeits = _arkIntent.PartialForfeits.Select(p => PSBT.Parse(p, _network)).ToDictionary(psbt => psbt.Inputs[0].PrevOut);
@@ -329,7 +329,7 @@ public class BatchSession
             var connectorLeaf = connectorsLeaves[connectorIndex];
             var connectorOutput = connectorLeaf.Outputs.FirstOrDefault();
 
-            if (connectorOutput == null)
+            if (connectorOutput is null)
             {
                 throw new InvalidOperationException($"Connector leaf at index {connectorIndex} has no outputs");
             }
@@ -338,7 +338,7 @@ public class BatchSession
             var connectorTxId = connectorLeaf.GetGlobalTransaction().GetHash()!;
             var connectorCoin = new Coin(
                 new OutPoint(connectorTxId, 0),
-                connectorLeaf.Outputs[0].GetTxOut());
+                connectorOutput.GetTxOut());
 
             connectorIndex++;
 
@@ -362,7 +362,7 @@ public class BatchSession
                     connectorCoin,
                     operatorTerms.ForfeitAddress,
                     cancellationToken);
-
+                _logger.LogInformation(forfeitTx.ToHex());
                 signedForfeits.Add(forfeitTx.ToBase64());
                 _logger.LogDebug("Forfeit tx constructed for VTXO {Outpoint}", vtxoCoin.Outpoint);
             }

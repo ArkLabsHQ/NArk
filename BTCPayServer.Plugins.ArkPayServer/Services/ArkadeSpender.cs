@@ -188,7 +188,7 @@ public class ArkadeSpender(
                     continue;
                 }
 
-                var res = await GetSpendableCoin(signer, contract, vtxo.ToCoin(), vtxo.Recoverable, vtxo.ExpiresAt, cancellationToken);
+                var res = await GetSpendableCoin(signer, contract, vtxo.ToCoin(), vtxo.Recoverable, vtxo.ExpiresAt, vtxo.ExpiresAtHeight, cancellationToken);
                 if (res is not null)
                     coins.Add(res);
             }
@@ -198,7 +198,7 @@ public class ArkadeSpender(
     }
 
     private async Task<SpendableArkCoinWithSigner?> GetSpendableCoin(IArkadeWalletSigner signer,
-        ArkContract contract, ICoinable vtxo, bool recoverable, DateTimeOffset expiresAt, CancellationToken cancellationToken)
+        ArkContract contract, ICoinable vtxo, bool recoverable, DateTimeOffset? expiresAt, uint? expiresAtHeight, CancellationToken cancellationToken)
     {
         var user = await signer.GetXOnlyPublicKey(cancellationToken);
         switch (contract)
@@ -206,7 +206,7 @@ public class ArkadeSpender(
             case ArkPaymentContract arkPaymentContract:
                 if (arkPaymentContract.User.ToBytes().SequenceEqual(user.ToBytes()))
                 {
-                    return ToArkCoin(contract, vtxo, signer, arkPaymentContract.CollaborativePath(), null, null, null, recoverable, expiresAt);
+                    return ToArkCoin(contract, vtxo, signer, arkPaymentContract.CollaborativePath(), null, null, null, recoverable, expiresAt, expiresAtHeight);
                 }
 
                 break;
@@ -215,7 +215,7 @@ public class ArkadeSpender(
                 {
                     return ToArkCoin(contract, vtxo, signer,
                         hashLockedArkPaymentContract.CreateClaimScript(),
-                        new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null, null, recoverable,expiresAt);
+                        new WitScript(Op.GetPushOp(hashLockedArkPaymentContract.Preimage)), null, null, recoverable, expiresAt, expiresAtHeight);
                 }
 
                 break;
@@ -224,7 +224,7 @@ public class ArkadeSpender(
                 {
                     return ToArkCoin(contract, vtxo, signer,
                         htlc.CreateClaimScript(),
-                        new WitScript(Op.GetPushOp(htlc.Preimage!)), null, null, recoverable, expiresAt);
+                        new WitScript(Op.GetPushOp(htlc.Preimage!)), null, null, recoverable, expiresAt, expiresAtHeight);
                 }
                 
                 var (timestamp, height) = await bitcoinTimeChainProvider.Get(cancellationToken);
@@ -236,7 +236,7 @@ public class ArkadeSpender(
                         {
                             return ToArkCoin(contract, vtxo, signer,
                                 htlc.CreateRefundWithoutReceiverScript(),
-                                null, htlc.RefundLocktime, null, recoverable, expiresAt);
+                                null, htlc.RefundLocktime, null, recoverable, expiresAt, expiresAtHeight);
                         }
                         break;
                     case false:
@@ -244,7 +244,7 @@ public class ArkadeSpender(
                         {
                             return ToArkCoin(contract, vtxo, signer,
                                 htlc.CreateRefundWithoutReceiverScript(),
-                                null, htlc.RefundLocktime, null, recoverable, expiresAt);
+                                null, htlc.RefundLocktime, null, recoverable, expiresAt, expiresAtHeight);
                         }
                         break;
                 }
@@ -255,9 +255,9 @@ public class ArkadeSpender(
     }
 
     private static SpendableArkCoinWithSigner ToArkCoin(ArkContract c, ICoinable vtxo, IArkadeWalletSigner signer,
-        ScriptBuilder leaf, WitScript? witness, LockTime? lockTime, Sequence? sequence, bool recoverable, DateTimeOffset expiry )
+        ScriptBuilder leaf, WitScript? witness, LockTime? lockTime, Sequence? sequence, bool recoverable, DateTimeOffset? expiry, uint? expiryHeight)
     {
-        return new SpendableArkCoinWithSigner(c, expiry, vtxo.Outpoint, vtxo.TxOut, signer, leaf, witness, lockTime, sequence, recoverable);
+        return new SpendableArkCoinWithSigner(c, expiry, expiryHeight, vtxo.Outpoint, vtxo.TxOut, signer, leaf, witness, lockTime, sequence, recoverable);
     }
 
     public Task<ArkAddress> GetDestination(ArkWallet wallet, ArkOperatorTerms arkOperatorTerms)
