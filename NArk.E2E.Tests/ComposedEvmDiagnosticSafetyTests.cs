@@ -72,6 +72,7 @@ public sealed class ComposedEvmDiagnosticSafetyTests
                 ["INTENT_SOLVER_MNEMONIC"] = mnemonic,
                 ["SOLVER_WALLET_SEED"] = walletSeed,
                 ["ARKD_PASSWORD"] = shortPassword,
+                ["BITCOIN_RPC_PASSWORD"] = "123",
                 ["PUBLIC_ENDPOINT"] = "https://example.test"
             }).Select(pair => pair.Value).ToArray();
             var sanitized = ComposedEvmInfrastructureFixture.RedactDiagnosticContent(
@@ -82,6 +83,7 @@ public sealed class ComposedEvmDiagnosticSafetyTests
             Assert.DoesNotContain(mnemonic, sanitized, StringComparison.Ordinal);
             Assert.DoesNotContain(walletSeed, sanitized, StringComparison.Ordinal);
             Assert.DoesNotContain(shortPassword, sanitized, StringComparison.Ordinal);
+            Assert.DoesNotContain("123", detectedSecrets);
             Assert.DoesNotContain("https://example.test", detectedSecrets);
             Assert.Equal(4, sanitized.Split("[REDACTED]", StringSplitOptions.None).Length - 1);
         }

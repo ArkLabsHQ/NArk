@@ -890,6 +890,7 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
 
     internal static IEnumerable<KeyValuePair<string, string>> SensitiveEnvironmentValues(
         IEnumerable<KeyValuePair<string, string>> environment) => environment
+        .Where(pair => pair is not { Key: "BITCOIN_RPC_PASSWORD", Value: "123" })
         .Where(pair => !string.IsNullOrEmpty(pair.Value) &&
                        (pair.Key.Contains("PRIVATE", StringComparison.OrdinalIgnoreCase) ||
                         pair.Key.Contains("SECRET", StringComparison.OrdinalIgnoreCase) ||
