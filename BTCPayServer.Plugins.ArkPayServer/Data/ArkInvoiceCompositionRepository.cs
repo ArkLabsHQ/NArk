@@ -6,6 +6,14 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data;
 /// <param name="factory">Plugin database context factory.</param>
 public sealed class ArkInvoiceCompositionRepository(IDbContextFactory<ArkPluginDbContext> factory)
 {
+    internal async Task<bool> IsCompositionIntent(string walletId, string id, string? paymentHash, CancellationToken cancellationToken)
+    {
+        await using var context = await factory.CreateDbContextAsync(cancellationToken);
+        var hash = paymentHash?.ToLowerInvariant();
+        return await context.InvoiceCompositions.AnyAsync(r => r.WalletId == walletId &&
+            ((hash != null && r.PaymentHash == hash) || r.Legs.Any(l => l.RfqId == id)), cancellationToken);
+    }
+
     /// <summary>Loads one owned route and both public RFQ journals.</summary>
     public async Task<ArkInvoiceComposition?> Get(string storeId, Guid routeId, CancellationToken cancellationToken = default)
     {

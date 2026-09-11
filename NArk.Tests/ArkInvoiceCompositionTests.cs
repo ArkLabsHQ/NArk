@@ -31,7 +31,7 @@ public class ArkInvoiceCompositionTests
         Assert.True(entity.FindProperty("InvoiceId")!.IsConcurrencyToken);
         Assert.Contains(entity.GetIndexes(), i => i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(["PaymentHash"]));
         Assert.Contains(entity.GetIndexes(), i => !i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(["StoreId", "InvoiceId", "PaymentMethodId"]));
-        Assert.Equal(new[] { "AssetId", "BaseAmountSats", "CreatedAt", "Destination", "EvmAmount", "EvmClaimAddress",
+        Assert.Equal(new[] { "AssetId", "BaseAmountSats", "CheckoutExpiresAt", "CreatedAt", "CustomerDestination", "Destination", "EvmAmount", "EvmClaimAddress",
                 "EvmClaimTransactionId", "EvmLockTransactionId", "EvmObservedAtBlock", "EvmProvenAtBlock", "EvmProvenBlockTimestamp",
                 "EvmRefundAddress", "EvmTimeoutBlock", "EvmTokenAddress", "FailureCode", "IngressClaimTransactionId", "InvoiceId",
                 "PaymentHash", "PaymentMethodId", "Revision", "RouteId", "Status", "StoreId", "SwapContractAddress", "WalletId" },
@@ -55,7 +55,7 @@ public class ArkInvoiceCompositionTests
                 }
             }
         };
-        var createdAt = DateTimeOffset.UtcNow;
+        var createdAt = new DateTimeOffset(2026, 9, 11, 11, 0, 0, TimeSpan.FromHours(2)).AddTicks(1234567);
 
         var composition = ArkInvoiceComposition.Create(store, invoice, handlers, createdAt);
 
@@ -64,7 +64,7 @@ public class ArkInvoiceCompositionTests
         Assert.Equal("wallet-identifier-not-for-api", composition.WalletId);
         Assert.Equal(Asset, composition.AssetId);
         Assert.Equal(Destination, composition.Destination);
-        Assert.Equal(createdAt, composition.CreatedAt);
+        Assert.Equal(new DateTimeOffset(2026, 9, 11, 9, 0, 0, TimeSpan.Zero).AddTicks(1234560), composition.CreatedAt);
         Assert.Equal("PendingSdk", composition.Status);
         foreach (var json in new[] { JsonConvert.SerializeObject(composition), System.Text.Json.JsonSerializer.Serialize(composition) })
         {

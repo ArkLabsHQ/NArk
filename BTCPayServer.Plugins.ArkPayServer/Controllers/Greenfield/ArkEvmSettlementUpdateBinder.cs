@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using BTCPayServer.Plugins.ArkPayServer.Models.Api.Greenfield;
 using Microsoft.AspNetCore.Http;
@@ -26,43 +27,50 @@ internal sealed class ArkEvmSettlementUpdateBinder(IOptions<MvcNewtonsoftJsonOpt
         }
 
         var buffer = new byte[MaximumBytes + 1];
-        var length = 0;
-        while (length < buffer.Length)
-        {
-            var read = await request.Body.ReadAsync(buffer.AsMemory(length), cancellationToken);
-            if (read == 0) break;
-            length += read;
-        }
-        if (length > MaximumBytes)
-        {
-            Reject(bindingContext);
-            return;
-        }
-
         try
         {
-            var contentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(request.ContentType!);
-            var charset = contentType.CharSet?.Trim('"').ToLowerInvariant();
-            Encoding encoding = charset switch
+            var length = 0;
+            while (length < buffer.Length)
             {
-                null or "utf-8" => new UTF8Encoding(false, true),
-                "utf-16" => new UnicodeEncoding(false, true, true),
-                _ => throw new JsonSerializationException()
-            };
-            using var stream = new MemoryStream(buffer, 0, length, false);
-            using var textReader = new StreamReader(stream, encoding, true);
-            using var jsonReader = new JsonTextReader(textReader) { MaxDepth = MaximumDepth };
-            var serializer = JsonSerializer.Create(options.Value.SerializerSettings);
-            serializer.MaxDepth = Math.Min(serializer.MaxDepth ?? MaximumDepth, MaximumDepth);
-            serializer.CheckAdditionalContent = true;
-            cancellationToken.ThrowIfCancellationRequested();
-            var model = serializer.Deserialize<ArkEvmSettlementUpdateData>(jsonReader);
-            if (model is null) Reject(bindingContext);
-            else bindingContext.Result = ModelBindingResult.Success(model);
+                var read = await request.Body.ReadAsync(buffer.AsMemory(length), cancellationToken);
+                if (read == 0) break;
+                length += read;
+            }
+            if (length > MaximumBytes)
+            {
+                Reject(bindingContext);
+                return;
+            }
+
+            try
+            {
+                var contentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse(request.ContentType!);
+                var charset = contentType.CharSet?.Trim('"').ToLowerInvariant();
+                Encoding encoding = charset switch
+                {
+                    null or "utf-8" => new UTF8Encoding(false, true),
+                    "utf-16" => new UnicodeEncoding(false, true, true),
+                    _ => throw new JsonSerializationException()
+                };
+                using var stream = new MemoryStream(buffer, 0, length, false);
+                using var textReader = new StreamReader(stream, encoding, true);
+                using var jsonReader = new JsonTextReader(textReader) { MaxDepth = MaximumDepth };
+                var serializer = JsonSerializer.Create(options.Value.SerializerSettings);
+                serializer.MaxDepth = Math.Min(serializer.MaxDepth ?? MaximumDepth, MaximumDepth);
+                serializer.CheckAdditionalContent = true;
+                cancellationToken.ThrowIfCancellationRequested();
+                var model = serializer.Deserialize<ArkEvmSettlementUpdateData>(jsonReader);
+                if (model is null) Reject(bindingContext);
+                else bindingContext.Result = ModelBindingResult.Success(model);
+            }
+            catch (Exception error) when (error is JsonException or DecoderFallbackException or FormatException)
+            {
+                Reject(bindingContext);
+            }
         }
-        catch (Exception error) when (error is JsonException or DecoderFallbackException or FormatException)
+        finally
         {
-            Reject(bindingContext);
+            CryptographicOperations.ZeroMemory(buffer);
         }
     }
 

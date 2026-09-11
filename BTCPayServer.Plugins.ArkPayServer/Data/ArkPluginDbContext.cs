@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NArk.Storage.EfCore;
 using NArk.Storage.EfCore.Entities;
+using BTCPayServer.Plugins.ArkPayServer.Data.Legacy;
 
 namespace BTCPayServer.Plugins.ArkPayServer.Data;
 
@@ -12,7 +13,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
     public DbSet<ArkIntentEntity> Intents { get; set; }
     public DbSet<ArkIntentVtxoEntity> IntentVtxos { get; set; }
 
-    public DbSet<ArkSwapEntity> Swaps { get; set; }// todo - will be replaced with bottom one 
+    public DbSet<LegacySwap> Swaps { get; set; }
     public DbSet<ArkadeSwapIntentEntity> ArkadeIntentSwaps { get; set; }
     public DbSet<ArkInvoiceComposition> InvoiceCompositions { get; set; }
     /// <summary>Globally reserved composition RFQs and public leg facts.</summary>
@@ -26,6 +27,8 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
         {
             opts.Schema = "BTCPayServer.Plugins.Ark";
         });
+        modelBuilder.ConfigureArkadeEntities(opts => opts.Schema = "BTCPayServer.Plugins.Ark");
+        LegacySwap.Configure(modelBuilder.Entity<LegacySwap>());
         modelBuilder.Entity<ArkInvoiceComposition>(entity =>
         {
             entity.ToTable("InvoiceCompositions", "BTCPayServer.Plugins.Ark");
@@ -38,6 +41,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
             entity.Property(c => c.AssetId).HasMaxLength(88);
             entity.Property(c => c.Destination).HasMaxLength(42);
             entity.Property(c => c.Status).HasMaxLength(32);
+            entity.Property(c => c.CustomerDestination).HasMaxLength(8192);
             entity.Property(c => c.Revision).IsConcurrencyToken();
             entity.Property(c => c.SwapContractAddress).HasMaxLength(42);
             entity.Property(c => c.EvmAmount).HasMaxLength(78);

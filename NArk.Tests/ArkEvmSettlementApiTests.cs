@@ -7,6 +7,7 @@ using BTCPayServer;
 using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
 using BTCPayServer.Data;
+using BTCPayServer.Payments;
 using BTCPayServer.Plugins.ArkPayServer.Controllers;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
@@ -87,6 +88,53 @@ public partial class ArkEvmSettlementApiTests
         Assert.False(persisted.BoardingEnabled);
     }
 
+    [Fact]
+    public async Task SqliteExecutionLockBlocksRouteIssuanceAndReportsCapability()
+    {
+        await using var database = await CompositionDatabase.Create();
+        var executor = new PromptExecutor(database.Repository);
+        await using var app = CreateHost(new ArkadePaymentMethodConfig("private-wallet"), repository: database.Repository,
+            prompts: new ArkCompositionPromptService(database.Repository, executor), compositionExecutor: executor,
+            executionLock: new ArkCompositionPostgresExecutionLock(database));
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        client.DefaultRequestHeaders.Add("Test-Permission", Policies.CanModifyStoreSettings);
+        using (var configured = await PutConfiguration(client, CompleteConfiguration()))
+            Assert.Equal(HttpStatusCode.OK, configured.StatusCode);
+
+        client.DefaultRequestHeaders.Remove("Test-Permission");
+        client.DefaultRequestHeaders.Add("Test-Permission", Policies.CanViewStoreSettings);
+
+        var capabilities = JObject.Parse(await client.GetStringAsync("/api/v1/stores/store/arkade/evm-settlement/capabilities"));
+
+        Assert.True(capabilities.Value<bool>("sdkCompositionAvailable"));
+        Assert.False(capabilities.Value<bool>("executionAvailable"));
+        Assert.Contains("cross-process-execution-lock-unavailable", capabilities["missingConfiguration"]!.Values<string>());
+    }
+
+    [Fact]
+    public async Task RouteReportsExecutorReadinessWithoutTreatingIngressAsSettlement()
+    {
+        await using var database = await CompositionDatabase.Create();
+        var route = CompositionFixture.Prepared("BTC-LN");
+        route.RecordOutgoingQuote(CompositionFixture.OutgoingQuote(), CompositionFixture.EvmTerms());
+        route.RecordIngressQuote(CompositionFixture.IngressQuote());
+        route.RecordCustomerPrompt("lnbcrt1testpublicquote", 1800000030);
+        await database.Repository.Add("store", route);
+        var executor = new PromptExecutor(database.Repository);
+        await using var app = CreateHost(repository: database.Repository, compositionExecutor: executor,
+            executionLock: new SafeExecutionLock());
+        await app.StartAsync();
+        using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
+        client.DefaultRequestHeaders.Add("Test-Permission", Policies.CanViewInvoices);
+
+        var data = JObject.Parse(await client.GetStringAsync($"/api/v1/stores/store/arkade/evm-settlement/routes/{route.RouteId}"));
+
+        Assert.Equal("IngressQuoted", data.Value<string>("status"));
+        Assert.False(data.Value<bool>("settlementVerified"));
+        Assert.True(data.Value<bool>("executionAvailable"));
+    }
+
     [Theory]
     [InlineData("GET", "")]
     [InlineData("PUT", "")]
@@ -138,12 +186,19 @@ public partial class ArkEvmSettlementApiTests
     }
 
     private static WebApplication CreateHost(ArkadePaymentMethodConfig? initialConfiguration = null, bool newtonsoft = true,
-        TestLogSink? logSink = null, ArkInvoiceCompositionRepository? repository = null)
+        TestLogSink? logSink = null, ArkInvoiceCompositionRepository? repository = null,
+        ArkCompositionPromptService? prompts = null, bool onchainConfigured = true,
+        IArkCompositionExecutor? compositionExecutor = null, IArkCompositionExecutionLock? executionLock = null,
+        bool lightningConfigured = true)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         builder.Services.AddSingleton<ArkEvmRpcEndpointProtector>();
+        builder.Services.AddSingleton<ArkEvmGasPayerProtector>();
         if (repository is not null) builder.Services.AddSingleton(repository);
+        if (prompts is not null) builder.Services.AddSingleton(prompts);
+        if (compositionExecutor is not null) builder.Services.AddSingleton(compositionExecutor);
+        if (executionLock is not null) builder.Services.AddSingleton(executionLock);
         builder.Logging.ClearProviders();
         if (logSink is not null)
         {
@@ -165,13 +220,22 @@ public partial class ArkEvmSettlementApiTests
             authentication.AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(scheme, _ => { });
         builder.Services.AddAuthorization(options =>
         {
-            foreach (var policy in new[] { Policies.CanViewStoreSettings, Policies.CanModifyStoreSettings, Policies.CanViewInvoices })
+            foreach (var policy in new[] { Policies.CanViewStoreSettings, Policies.CanModifyStoreSettings, Policies.CanViewInvoices, Policies.CanCreateInvoice })
                 options.AddPolicy(policy, p => p.RequireAuthenticatedUser().RequireClaim("permission", policy));
         });
         var handler = new ArkadePaymentMethodHandler(null!, null!, null!, null!, null!);
         var handlers = new PaymentMethodHandlerDictionary([handler]);
         var store = new StoreData { Id = "store" };
         if (initialConfiguration is not null) store.SetPaymentMethodConfig(handler, initialConfiguration);
+        if (onchainConfigured)
+            store.SetPaymentMethodConfig(PaymentTypes.CHAIN.GetPaymentMethodId("BTC"), new JObject());
+        if (lightningConfigured)
+            store.SetPaymentMethodConfig(PaymentTypes.LN.GetPaymentMethodId("BTC"), JObject.FromObject(
+                new BTCPayServer.Payments.Lightning.LightningPaymentMethodConfig
+                {
+                    ConnectionString = BTCPayServer.Plugins.ArkPayServer.Lightning.ArkLightningSpendKeyService.BuildReceiveOnlyConnectionString(
+                        initialConfiguration?.WalletId ?? "wallet", store.Id)
+                }));
         builder.Services.AddSingleton(store);
         builder.Services.AddSingleton(TestProxy.Create<IArkEvmSettlementStore>((method, args) => method.Name switch
         {
@@ -221,6 +285,18 @@ public partial class ArkEvmSettlementApiTests
     private sealed class SettlementPart : ApplicationPart, IApplicationPartTypeProvider
     {
         public override string Name => nameof(SettlementPart);
-        public IEnumerable<TypeInfo> Types => [typeof(ArkEvmSettlementController).GetTypeInfo(), typeof(ArkCompositionRoutesController).GetTypeInfo()];
+        public IEnumerable<TypeInfo> Types => [typeof(ArkEvmSettlementController).GetTypeInfo(), typeof(ArkCompositionRoutesController).GetTypeInfo(), typeof(ArkCompositionPromptsController).GetTypeInfo()];
+    }
+
+    private sealed class SafeExecutionLock : IArkCompositionExecutionLock
+    {
+        public bool SupportsCrossProcessExecution => true;
+        public ValueTask<IAsyncDisposable> AcquireAsync(string scope, CancellationToken cancellationToken) =>
+            ValueTask.FromResult<IAsyncDisposable>(new Lease());
+
+        private sealed class Lease : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 }

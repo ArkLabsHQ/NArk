@@ -59,11 +59,15 @@ public sealed partial class ArkInvoiceComposition
     /// <summary>Creates a distinct inert route, snapshotting only public store policy and wallet ownership.</summary>
     public static ArkInvoiceComposition Create(StoreData store, InvoiceEntity? invoice,
         PaymentMethodHandlerDictionary handlers, DateTimeOffset createdAt, PaymentMethodId? paymentMethodId = null)
+        => Create(store, invoice, store.GetPaymentMethodConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, handlers),
+            createdAt, paymentMethodId);
+
+    internal static ArkInvoiceComposition Create(StoreData store, InvoiceEntity? invoice,
+        ArkadePaymentMethodConfig? configuration, DateTimeOffset createdAt, PaymentMethodId? paymentMethodId = null)
     {
         if (string.IsNullOrWhiteSpace(store.Id) || invoice is not null &&
             (string.IsNullOrWhiteSpace(invoice.Id) || !string.Equals(store.Id, invoice.StoreId, StringComparison.Ordinal)))
             throw new InvalidOperationException("Invoice does not belong to this store.");
-        var configuration = store.GetPaymentMethodConfig<ArkadePaymentMethodConfig>(ArkadePlugin.ArkadePaymentMethodId, handlers);
         if (string.IsNullOrWhiteSpace(configuration?.WalletId) || configuration.EvmSettlement?.Enabled != true)
             throw new InvalidOperationException("EVM settlement is not enabled for this store.");
         var settings = configuration.EvmSettlement.Validate();
@@ -80,7 +84,7 @@ public sealed partial class ArkInvoiceComposition
             AssetId = settings.AssetId,
             Destination = settings.Destination,
             SwapContractAddress = settings.RoutePolicy?.SwapContractAddress,
-            CreatedAt = createdAt.ToUniversalTime()
+            CreatedAt = new DateTimeOffset(createdAt.UtcTicks - createdAt.UtcTicks % TimeSpan.TicksPerMicrosecond, TimeSpan.Zero)
         };
     }
 

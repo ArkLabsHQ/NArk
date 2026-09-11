@@ -25,17 +25,15 @@ public sealed record ArkCompositionRouteData(Guid RouteId, string StoreId, strin
     string? PaymentHash, string AssetId, string Destination, DateTimeOffset CreatedAt, long Revision, string Status,
     long? BaseAmountSats, long IngressFeeSats, string? FailureCode, ArkCompositionLegData[] Legs,
     ArkCompositionEvmTerms? EvmTerms, string? IngressClaimTransactionId, ArkCompositionEvmLockProof? EvmLockProof,
-    string? EvmClaimTransactionId)
+    string? EvmClaimTransactionId, string? CustomerDestination, long? CheckoutExpiresAt, bool ExecutionAvailable)
 {
     /// <summary>Ingress payment never constitutes completion.</summary>
     public bool SettlementVerified => Status == "EvmClaimVerified";
-    /// <summary>The combined SDK adapter is not wired.</summary>
-    public bool ExecutionAvailable => false;
     /// <summary>Fixed merchant-delivery completion policy.</summary>
     public string PaymentCompletionCondition => "evm-settlement";
 
     /// <summary>Projects only explicitly allowlisted public lifecycle fields.</summary>
-    public static ArkCompositionRouteData From(ArkInvoiceComposition route) => new(route.RouteId, route.StoreId,
+    public static ArkCompositionRouteData From(ArkInvoiceComposition route, bool executionAvailable) => new(route.RouteId, route.StoreId,
         route.InvoiceId, route.PaymentMethodId, route.PaymentHash, route.AssetId, route.Destination, route.CreatedAt,
         route.Revision, route.Status, route.BaseAmountSats, route.IngressFeeSats, route.FailureCode?.ToString(),
         route.Legs.OrderBy(l => l.Kind).Select(l => new ArkCompositionLegData(l.RfqId, l.Kind,
@@ -44,7 +42,7 @@ public sealed record ArkCompositionRouteData(Guid RouteId, string StoreId, strin
             route.EvmTokenAddress!, route.EvmClaimAddress!, route.EvmRefundAddress!, route.EvmTimeoutBlock!, route.SwapContractAddress!),
         route.IngressClaimTransactionId, route.EvmObservedAtBlock is null ? null : new ArkCompositionEvmLockProof(
             route.EvmLockTransactionId, route.EvmObservedAtBlock, route.EvmProvenAtBlock!, route.EvmProvenBlockTimestamp!.Value),
-        route.EvmClaimTransactionId);
+        route.EvmClaimTransactionId, route.CustomerDestination, route.CheckoutExpiresAt, executionAvailable);
 }
 
 /// <summary>Public prepared RFQ, optional quote and observed Arkade funding.</summary>

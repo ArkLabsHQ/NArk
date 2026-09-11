@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Reflection;
 using BTCPayServer.Tests;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace NArk.E2E.Tests;
@@ -64,6 +66,44 @@ public class SharedPluginTestFixture : IDisposable
             throw new TimeoutException(
                 "BTCPay startup didn't complete within 3 minutes. The plugin's hosted services or IStartupTask are likely blocking. Run the test locally with debugger attached to inspect.");
         }
+    }
+
+    public async Task RestartAsync(Func<CancellationToken, Task> whileStopped,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(whileStopped);
+        var payTester = ServerTester?.PayTester
+            ?? throw new InvalidOperationException("BTCPay has not started.");
+        var hostField = typeof(BTCPayServerTester).GetField("_Host",
+            BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("BTCPay's test host field is unavailable.");
+        var host = hostField.GetValue(payTester) as IHost
+            ?? throw new InvalidOperationException("BTCPay's test host is not running.");
+
+        await host.StopAsync(cancellationToken);
+        host.Dispose();
+        hostField.SetValue(payTester, null);
+
+        Exception? stoppedFailure = null;
+        try
+        {
+            await whileStopped(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            stoppedFailure = ex;
+        }
+
+        try
+        {
+            await payTester.StartAsync().WaitAsync(TimeSpan.FromMinutes(3), cancellationToken);
+        }
+        catch (Exception restartFailure) when (stoppedFailure is not null)
+        {
+            throw new AggregateException(stoppedFailure, restartFailure);
+        }
+
+        if (stoppedFailure is not null) throw stoppedFailure;
     }
 
     /// <summary>

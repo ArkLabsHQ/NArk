@@ -1,7 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
-using NArk.Swaps.Abstractions;
-using NArk.Swaps.Models;
+using BTCPayServer.Plugins.ArkPayServer.Data.Legacy;
 using NArk.Tests.End2End.Common;
 using Xunit;
 
@@ -77,16 +76,16 @@ public class SwapsTests : PlaywrightBaseTest
         // The submarine swap is created synchronously during the spend;
         // poll the in-process swap storage briefly for it.
         var swapStorage = _fixture.ServerTester!.PayTester.ServiceProvider
-            .GetRequiredService<ISwapStorage>();
+            .GetRequiredService<LegacySwapRepository>();
         var deadline = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(1);
         while (DateTimeOffset.UtcNow < deadline)
         {
             var swaps = await swapStorage.GetSwaps(
                 walletIds: [walletId!],
-                swapTypes: [ArkSwapType.Submarine]);
+                swapTypes: [LegacySwapType.Submarine]);
             if (swaps.Count > 0)
             {
-                Assert.Contains(swaps, s => s.SwapType == ArkSwapType.Submarine);
+                Assert.Contains(swaps, s => s.SwapType == LegacySwapType.Submarine);
                 return;
             }
             await Task.Delay(2_000);

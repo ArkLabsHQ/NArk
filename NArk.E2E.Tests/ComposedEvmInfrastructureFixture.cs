@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.AccessControl;
@@ -6,6 +7,7 @@ using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CliWrap;
 using CliWrap.Buffered;
 
@@ -46,17 +48,193 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
     private bool _started;
     private bool _startAttempted;
     private bool _disposed;
+    private bool _preserveDiagnostics;
 
     public bool IsEnabled => string.Equals(
         Environment.GetEnvironmentVariable(EnableVariable), "1", StringComparison.Ordinal);
 
     public string? ProjectName { get; private set; }
     public string? StartupLogPath { get; private set; }
+    public string? RuntimeLogPath { get; private set; }
+    public string? RuntimeRoutePath { get; private set; }
+    public string? RuntimeSolverAdminPath { get; private set; }
+    public string? RuntimeIngressSolverAdminPath { get; private set; }
+    public string? RuntimeLightningPath { get; private set; }
     public Uri? ArkadeUri { get; private set; }
     public Uri? IntentSolverUri { get; private set; }
     public Uri? EvmSendSolverUri { get; private set; }
+    public Uri? EvmSendSolverAdminUri { get; private set; }
     public Uri? EvmReceiveSolverUri { get; private set; }
     public Uri? EvmRpcUri { get; private set; }
+    public string MerchantEvmAddress => _childEnvironment?["EVM_CLIENT_ADDRESS"]
+        ?? throw new InvalidOperationException("The composed EVM stack has not started.");
+
+    public async Task ConfigureMerchantSettlementAsync(HttpClient client, string storeId,
+        IReadOnlyCollection<string> sourceRails, CancellationToken cancellationToken = default)
+    {
+        RequireStarted();
+        var source = sourceRails.ToArray();
+        if (source.Length == 0 || source.Except(["ARKADE", "BTC-LN", "BTC-CHAIN"]).Any())
+            throw new ArgumentException("Specify one or more supported composed source rails.", nameof(sourceRails));
+
+        var policy = new
+        {
+            enabledSourceRails = source,
+            outgoingSolver = new { mode = "explicit", endpoint = EvmSendSolverUri!.AbsoluteUri },
+            lightningIngressSolver = source.Contains("BTC-LN", StringComparer.Ordinal)
+                ? new { mode = "explicit", endpoint = IntentSolverUri!.AbsoluteUri } : null,
+            onchainIngressSolver = source.Contains("BTC-CHAIN", StringComparer.Ordinal)
+                ? new { mode = "explicit", endpoint = IntentSolverUri!.AbsoluteUri } : null,
+            swapContractAddress = SwapAddress,
+            fastestSecondsPerBlock = 1,
+            slowestSecondsPerBlock = 1,
+            minConfirmations = 1,
+            minAgeSeconds = 1,
+            minimumClaimWindowSeconds = 30,
+            arkadeRefundMarginSeconds = 30,
+            requireEmulatorRefundPath = true
+        };
+        var update = new
+        {
+            assetId = $"eip155:31337/erc20:{TokenAddress}",
+            destination = MerchantEvmAddress,
+            enabled = true,
+            routePolicy = policy,
+            rpcEndpoint = new { action = "replace", uri = EvmRpcUri!.AbsoluteUri },
+            expectedSenderAddress = MerchantEvmAddress,
+            maxFeePerGasWei = "100000000000",
+            maxPriorityFeePerGasWei = "1000000000",
+            maxGasLimit = "500000",
+            gasPayerPrivateKey = new { action = "replace", privateKey = _childEnvironment!["EVM_CLIENT_PRIVATE_KEY"] }
+        };
+        using var response = await client.PutAsync($"api/v1/stores/{storeId}/arkade/evm-settlement",
+            new StringContent(JsonSerializer.Serialize(update), Encoding.UTF8, "application/json"), cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        AssertPublicProjectionSafe(body);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"The composed EVM merchant configuration was rejected with HTTP {(int)response.StatusCode}.");
+    }
+
+    public async Task SendArkadePaymentAsync(string destination, long amountSats,
+        CancellationToken cancellationToken = default)
+    {
+        RequireStarted();
+        if (string.IsNullOrWhiteSpace(destination) || amountSats <= 0)
+            throw new ArgumentException("A nonempty destination and positive amount are required.");
+        var result = await RunAsync("docker", ["exec", $"{ProjectName}-arkd", "ark", "send", "--to", destination,
+            "--amount", amountSats.ToString(CultureInfo.InvariantCulture), "--password", _childEnvironment!["ARKD_PASSWORD"]],
+            _regtestRoot!, cancellationToken);
+        if (result.ExitCode != 0) throw new InvalidOperationException("The live Arkade customer payment failed.");
+    }
+
+    public async Task PayLightningInvoiceAsync(string bolt11, CancellationToken cancellationToken = default)
+    {
+        RequireStarted();
+        if (string.IsNullOrWhiteSpace(bolt11)) throw new ArgumentException("A BOLT11 invoice is required.", nameof(bolt11));
+        var result = await RunAsync("docker", ["exec", $"{ProjectName}-lnd-peer", "lncli", "--network=regtest", "payinvoice",
+            "--force", bolt11], _regtestRoot!, cancellationToken);
+        if (result.ExitCode == 0) return;
+        await PreserveDiagnosticsAsync();
+        await PreserveLightningFailureDiagnosticsAsync(bolt11, result);
+        throw new InvalidOperationException($"The live Lightning customer payment failed. Runtime logs: {RuntimeLogPath}; " +
+                                            $"ingress solver admin: {RuntimeIngressSolverAdminPath}; LND diagnostics: {RuntimeLightningPath}");
+    }
+
+    public async Task WaitForLightningInvoiceAcceptedAsync(string bolt11, Task payment,
+        CancellationToken cancellationToken = default)
+    {
+        RequireStarted();
+        if (string.IsNullOrWhiteSpace(bolt11)) throw new ArgumentException("A BOLT11 invoice is required.", nameof(bolt11));
+        ArgumentNullException.ThrowIfNull(payment);
+
+        await PollAsync("recipient Lightning invoice acceptance", async ct =>
+        {
+            if (payment.IsCompleted)
+            {
+                await payment;
+                throw new InvalidOperationException("The Lightning payment completed before the BTCPay restart checkpoint.");
+            }
+
+            var result = await RunAsync("docker",
+                ["exec", $"{ProjectName}-lnd", "lncli", "--network=regtest", "listinvoices", "--pending_only"],
+                _regtestRoot!, ct);
+            if (result.ExitCode != 0) return false;
+            try
+            {
+                using var invoices = JsonDocument.Parse(result.StandardOutput);
+                return invoices.RootElement.GetProperty("invoices").EnumerateArray().Any(invoice =>
+                    invoice.GetProperty("payment_request").GetString() == bolt11 &&
+                    invoice.GetProperty("state").GetString() == "ACCEPTED" &&
+                    long.TryParse(invoice.GetProperty("amt_paid_sat").GetString(), NumberStyles.None,
+                        CultureInfo.InvariantCulture, out var paidSats) && paidSats > 0);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }, cancellationToken);
+    }
+
+    public async Task SendOnchainPaymentAsync(string destination, long amountSats, CancellationToken cancellationToken = default)
+    {
+        RequireStarted();
+        if (string.IsNullOrWhiteSpace(destination) || amountSats <= 0)
+            throw new ArgumentException("A nonempty destination and positive amount are required.");
+        var bitcoin = $"{ProjectName}-bitcoin";
+        var send = await RunAsync("docker", ["exec", bitcoin, "bitcoin-cli", "-regtest", "-rpcuser=admin1",
+            "-rpcpassword=123", "sendtoaddress", destination,
+            (amountSats / 100_000_000m).ToString("0.00000000", CultureInfo.InvariantCulture)], _regtestRoot!, cancellationToken);
+        if (send.ExitCode != 0) throw new InvalidOperationException("The live onchain customer payment failed.");
+        var address = await RunAsync("docker", ["exec", bitcoin, "bitcoin-cli", "-regtest", "-rpcuser=admin1",
+            "-rpcpassword=123", "getnewaddress"], _regtestRoot!, cancellationToken);
+        if (address.ExitCode != 0 || string.IsNullOrWhiteSpace(address.StandardOutput))
+            throw new InvalidOperationException("Could not obtain a regtest mining address.");
+        var mine = await RunAsync("docker", ["exec", bitcoin, "bitcoin-cli", "-regtest", "-rpcuser=admin1",
+            "-rpcpassword=123", "generatetoaddress", "1", address.StandardOutput.Trim()], _regtestRoot!, cancellationToken);
+        if (mine.ExitCode != 0) throw new InvalidOperationException("Could not confirm the live onchain customer payment.");
+    }
+
+    public async Task<BigInteger> GetErc20BalanceAsync(string address, CancellationToken cancellationToken = default)
+    {
+        RequireStarted();
+        var addressHex = NormalizeAddress(address);
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var value = await RpcAsync(client, "eth_call", [new
+        {
+            to = TokenAddress,
+            data = "0x70a08231" + addressHex.PadLeft(64, '0')
+        }, "latest"], cancellationToken);
+        return ParseQuantity(value.GetString());
+    }
+
+    public async Task AssertExactErc20ReceiptAsync(string transactionId, string destination, BigInteger amount,
+        CancellationToken cancellationToken = default)
+    {
+        RequireStarted();
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        var receipt = await RpcAsync(client, "eth_getTransactionReceipt", [transactionId], cancellationToken);
+        if (receipt.ValueKind == JsonValueKind.Null || receipt.GetProperty("status").GetString() != "0x1")
+            throw new InvalidOperationException("The EVM claim transaction has no successful receipt.");
+        var expectedDestination = "0x" + NormalizeAddress(destination).PadLeft(64, '0');
+        var transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+        var exact = receipt.GetProperty("logs").EnumerateArray().Any(log =>
+            string.Equals(log.GetProperty("address").GetString(), TokenAddress, StringComparison.OrdinalIgnoreCase) &&
+            log.GetProperty("topics").GetArrayLength() >= 3 &&
+            string.Equals(log.GetProperty("topics")[0].GetString(), transferTopic, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(log.GetProperty("topics")[2].GetString(), expectedDestination, StringComparison.OrdinalIgnoreCase) &&
+            ParseQuantity(log.GetProperty("data").GetString()) == amount);
+        if (!exact) throw new InvalidOperationException("The EVM receipt does not prove the exact configured ERC20 delivery.");
+    }
+
+    public void AssertPublicProjectionSafe(string body)
+    {
+        RequireStarted();
+        foreach (var secret in PrivateEnvironmentValues())
+            if (body.Contains(secret.Value, StringComparison.Ordinal))
+                throw new InvalidOperationException($"A composed EVM public projection exposed {secret.Key}.");
+        using var json = JsonDocument.Parse(body);
+        AssertNoPrivateFields(json.RootElement);
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -68,8 +246,10 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         RequireFile(Path.Combine(_regtestRoot, "regtest.mjs"));
         RequireFile(Path.Combine(_regtestRoot, "docker", "compose.evm.yml"));
         var profile = ReadDotEnv(RequireFile(Path.Combine(_regtestRoot, ".env.evm-e2e")));
-        var secretsPath = RequireFile(Environment.GetEnvironmentVariable(SecretsFileVariable), SecretsFileVariable);
-        var secrets = ReadDotEnv(secretsPath);
+        var secrets = ReadRegtestDefaults(_regtestRoot);
+        var secretsPath = Environment.GetEnvironmentVariable(SecretsFileVariable);
+        if (!string.IsNullOrWhiteSpace(secretsPath))
+            foreach (var setting in ReadDotEnv(RequireFile(secretsPath, SecretsFileVariable))) secrets[setting.Key] = setting.Value;
         var missing = RequiredSecrets.Where(key => !secrets.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value)).ToArray();
         if (missing.Length != 0)
             throw new InvalidOperationException($"{SecretsFileVariable} is missing required names: {string.Join(", ", missing)}.");
@@ -92,8 +272,16 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         _startAttempted = true;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(20));
-        var result = await RunAsync("node", ["regtest.mjs", "start", "--env", generatedEnvironment,
-            "--profile", "covclaimd,intent-solver,evm-e2e"], _regtestRoot, timeout.Token);
+        BufferedCommandResult result;
+        try
+        {
+            result = await RunAsync("node", ["regtest.mjs", "start", "--env", generatedEnvironment,
+                "--profile", "covclaimd,intent-solver,evm-e2e"], _regtestRoot, timeout.Token);
+        }
+        finally
+        {
+            RemoveGeneratedEnvironmentForDiagnostics(_tempDirectory);
+        }
         var diagnostics = Redact(result.StandardOutput + Environment.NewLine + result.StandardError, secrets.Values);
         await File.WriteAllTextAsync(StartupLogPath, diagnostics, cancellationToken);
         ProtectFile(StartupLogPath);
@@ -118,6 +306,34 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         }, cancellationToken);
     }
 
+    public async Task PreserveDiagnosticsAsync(string? routeJson = null)
+    {
+        if (!_startAttempted || _regtestRoot is null || ProjectName is null || _tempDirectory is null) return;
+        RemoveGeneratedEnvironmentForDiagnostics(_tempDirectory);
+        var docker = Path.Combine(_regtestRoot, "docker");
+        var result = await RunAsync("docker",
+            ["compose", "-p", ProjectName, "-f", Path.Combine(docker, "compose.base.yml"),
+                "-f", Path.Combine(docker, "compose.ark.yml"), "-f", Path.Combine(docker, "compose.evm.yml"),
+                "--profile", "base", "--profile", "ark", "--profile", "lightning", "--profile", "emulator",
+                "--profile", "covclaimd", "--profile", "intent-solver", "--profile", "nostr", "--profile", "evm-e2e",
+                "logs", "--no-color", "--tail", "1000"], _regtestRoot, CancellationToken.None);
+        RuntimeLogPath = Path.Combine(_tempDirectory, "runtime.log");
+        var secrets = _childEnvironment is null ? [] : PrivateEnvironmentValues().Select(pair => pair.Value).ToArray();
+        await File.WriteAllTextAsync(RuntimeLogPath,
+            Redact(result.StandardOutput + Environment.NewLine + result.StandardError, secrets), CancellationToken.None);
+        ProtectFile(RuntimeLogPath);
+        await PreserveEvmSendSolverAdminAsync(secrets);
+        await PreserveIngressSolverAdminAsync(secrets);
+        if (!string.IsNullOrWhiteSpace(routeJson))
+        {
+            AssertPublicProjectionSafe(routeJson);
+            RuntimeRoutePath = Path.Combine(_tempDirectory, "route.json");
+            await File.WriteAllTextAsync(RuntimeRoutePath, routeJson, CancellationToken.None);
+            ProtectFile(RuntimeRoutePath);
+        }
+        _preserveDiagnostics = true;
+    }
+
     private async Task AssertExternalReadinessAsync(CancellationToken cancellationToken)
     {
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
@@ -129,7 +345,6 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         var covclaimd = new Uri(Environment.GetEnvironmentVariable("ARKADE_E2E_COVCLAIMD_URL")!);
         await RequireOkAsync(client, new Uri(covclaimd, "v1/preimage/covclaimd-pubkey"), "covclaimd", cancellationToken);
         await AssertEvmChainAndContractsAsync(client, cancellationToken);
-        await AssertEvmRfqAsync(client, cancellationToken);
     }
 
     private async Task AssertEvmChainAndContractsAsync(HttpClient client, CancellationToken cancellationToken)
@@ -139,8 +354,8 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
 
         var swapCode = await RpcAsync(client, "eth_getCode", [SwapAddress, "latest"], cancellationToken);
         var tokenCode = await RpcAsync(client, "eth_getCode", [TokenAddress, "latest"], cancellationToken);
-        var expectedSwap = "0x" + (await File.ReadAllTextAsync(Path.Combine(_regtestRoot!, "docker", "evm", "erc20swap.runtime.hex"), cancellationToken)).Trim();
-        var expectedToken = "0x" + (await File.ReadAllTextAsync(Path.Combine(_regtestRoot!, "docker", "evm", "weth9.runtime.hex"), cancellationToken)).Trim();
+        var expectedSwap = NormalizeHexPrefix((await File.ReadAllTextAsync(Path.Combine(_regtestRoot!, "docker", "evm", "erc20swap.runtime.hex"), cancellationToken)).Trim());
+        var expectedToken = NormalizeHexPrefix((await File.ReadAllTextAsync(Path.Combine(_regtestRoot!, "docker", "evm", "weth9.runtime.hex"), cancellationToken)).Trim());
         if (!string.Equals(swapCode.GetString(), expectedSwap, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(tokenCode.GetString(), expectedToken, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Anvil contract runtime does not match the pinned fixtures.");
@@ -168,7 +383,14 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
             }
         };
         using var response = await PostJsonAsync(client, new Uri(EvmSendSolverUri!, "v1/swap"), request, cancellationToken);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException("The EVM send solver refused its readiness RFQ.");
+        if (!response.IsSuccessStatusCode)
+        {
+            var detail = await response.Content.ReadAsStringAsync(cancellationToken);
+            foreach (var secret in PrivateEnvironmentValues())
+                detail = detail.Replace(secret.Value, "[redacted]", StringComparison.Ordinal);
+            throw new InvalidOperationException(
+                $"The EVM send solver refused its readiness RFQ: HTTP {(int)response.StatusCode} {detail[..Math.Min(detail.Length, 2_000)]}");
+        }
         using var body = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
         var root = body.RootElement;
         if (root.GetProperty("type").GetString() != "rfq_quote" ||
@@ -260,6 +482,7 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         ArkadeUri = Loopback(settings["ARKD_PORT"]);
         IntentSolverUri = Loopback(settings["INTENT_SOLVER_PORT"]);
         EvmSendSolverUri = Loopback(settings["EVM_SEND_SOLVER_PORT"]);
+        EvmSendSolverAdminUri = Loopback(settings["EVM_SEND_SOLVER_ADMIN_PORT"]);
         EvmReceiveSolverUri = Loopback(settings["EVM_RECEIVE_SOLVER_PORT"]);
         EvmRpcUri = Loopback(settings["EVM_RPC_PORT"]);
     }
@@ -380,6 +603,30 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         return result;
     }
 
+    private static Dictionary<string, string> ReadRegtestDefaults(string regtestRoot)
+    {
+        var values = ReadDotEnv(Path.Combine(regtestRoot, ".env.defaults"));
+        foreach (var name in RequiredSecrets.Where(name => !values.ContainsKey(name)))
+        {
+            var fallback = name switch
+            {
+                "BITCOIN_RPC_USER" => "admin1",
+                "BITCOIN_RPC_PASSWORD" => "123",
+                _ => ReadComposeDefault(Path.Combine(regtestRoot, "docker", "compose.ark.yml"), name)
+                     ?? ReadComposeDefault(Path.Combine(regtestRoot, "docker", "compose.evm.yml"), name)
+            };
+            if (fallback is not null) values[name] = fallback;
+        }
+        return values;
+    }
+
+    private static string? ReadComposeDefault(string path, string name)
+    {
+        var text = File.ReadAllText(path);
+        var match = Regex.Match(text, @"\$\{" + Regex.Escape(name) + @":-([^}]+)\}", RegexOptions.CultureInvariant);
+        return match.Success ? match.Groups[1].Value.Trim().Trim('\'', '"') : null;
+    }
+
     private static void ValidateSecrets(IReadOnlyDictionary<string, string> secrets)
     {
         foreach (var name in new[]
@@ -461,6 +708,14 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         return value;
     }
 
+    internal static string RedactDiagnosticContent(string value, IEnumerable<string> secrets) => Redact(value, secrets);
+
+    internal static void RemoveGeneratedEnvironmentForDiagnostics(string directory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+        File.Delete(Path.Combine(directory, "regtest.env"));
+    }
+
     private static string CreateProjectName() =>
         $"btcpay-composed-evm-{Environment.ProcessId}-{RandomNumberGenerator.GetHexString(4).ToLowerInvariant()}";
 
@@ -474,6 +729,195 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
     }
 
     private static Uri Loopback(string port) => new($"http://127.0.0.1:{port}/");
+
+    private async Task PreserveEvmSendSolverAdminAsync(IReadOnlyCollection<string> secrets)
+    {
+        if (_tempDirectory is null || EvmSendSolverAdminUri is null) return;
+        RuntimeSolverAdminPath = Path.Combine(_tempDirectory, "evm-send-solver-admin.log");
+        var output = new StringBuilder();
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        try
+        {
+            var listUri = new Uri(EvmSendSolverAdminUri, "api/swaps?limit=100");
+            using var listResponse = await client.GetAsync(listUri, CancellationToken.None);
+            var listBody = await listResponse.Content.ReadAsStringAsync(CancellationToken.None);
+            output.AppendLine($"GET {listUri.PathAndQuery} HTTP {(int)listResponse.StatusCode}");
+            output.AppendLine(listBody);
+            if (listResponse.IsSuccessStatusCode)
+            {
+                using var document = JsonDocument.Parse(listBody);
+                if (document.RootElement.TryGetProperty("swaps", out var swaps) && swaps.ValueKind == JsonValueKind.Array)
+                    foreach (var swap in swaps.EnumerateArray())
+                    {
+                        if (!swap.TryGetProperty("corridor", out var corridor) || !swap.TryGetProperty("id", out var id) ||
+                            string.IsNullOrWhiteSpace(corridor.GetString()) || string.IsNullOrWhiteSpace(id.GetString())) continue;
+                        var detailUri = new Uri(EvmSendSolverAdminUri,
+                            $"api/swaps/{Uri.EscapeDataString(corridor.GetString()!)}/{Uri.EscapeDataString(id.GetString()!)}");
+                        using var detailResponse = await client.GetAsync(detailUri, CancellationToken.None);
+                        output.AppendLine($"GET {detailUri.PathAndQuery} HTTP {(int)detailResponse.StatusCode}");
+                        output.AppendLine(await detailResponse.Content.ReadAsStringAsync(CancellationToken.None));
+                    }
+            }
+        }
+        catch (Exception exception)
+        {
+            output.AppendLine($"admin capture exception: {exception.GetType().Name}: {exception.Message}");
+        }
+        await File.WriteAllTextAsync(RuntimeSolverAdminPath, Redact(output.ToString(), secrets), CancellationToken.None);
+        ProtectFile(RuntimeSolverAdminPath);
+    }
+
+    private async Task PreserveIngressSolverAdminAsync(IReadOnlyCollection<string> secrets)
+    {
+        if (_tempDirectory is null || IntentSolverUri is null) return;
+        RuntimeIngressSolverAdminPath = Path.Combine(_tempDirectory, "ingress-solver-admin.log");
+        await PreserveSolverAdminAsync(IntentSolverUri, RuntimeIngressSolverAdminPath, secrets);
+    }
+
+    private async Task PreserveSolverAdminAsync(Uri endpoint, string path, IReadOnlyCollection<string> secrets)
+    {
+        var output = new StringBuilder();
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+        try
+        {
+            var listUri = new Uri(endpoint, "api/swaps?limit=100");
+            using var listResponse = await client.GetAsync(listUri, CancellationToken.None);
+            var listBody = await listResponse.Content.ReadAsStringAsync(CancellationToken.None);
+            output.AppendLine($"GET {listUri.PathAndQuery} HTTP {(int)listResponse.StatusCode}");
+            output.AppendLine(listBody);
+            if (listResponse.IsSuccessStatusCode)
+            {
+                using var document = JsonDocument.Parse(listBody);
+                if (document.RootElement.TryGetProperty("swaps", out var swaps) && swaps.ValueKind == JsonValueKind.Array)
+                    foreach (var swap in swaps.EnumerateArray())
+                    {
+                        if (!swap.TryGetProperty("corridor", out var corridor) || !swap.TryGetProperty("id", out var id) ||
+                            string.IsNullOrWhiteSpace(corridor.GetString()) || string.IsNullOrWhiteSpace(id.GetString())) continue;
+                        var detailUri = new Uri(endpoint,
+                            $"api/swaps/{Uri.EscapeDataString(corridor.GetString()!)}/{Uri.EscapeDataString(id.GetString()!)}");
+                        using var detailResponse = await client.GetAsync(detailUri, CancellationToken.None);
+                        output.AppendLine($"GET {detailUri.PathAndQuery} HTTP {(int)detailResponse.StatusCode}");
+                        output.AppendLine(await detailResponse.Content.ReadAsStringAsync(CancellationToken.None));
+                    }
+            }
+        }
+        catch (Exception exception)
+        {
+            output.AppendLine($"admin capture exception: {exception.GetType().Name}: {exception.Message}");
+        }
+        await File.WriteAllTextAsync(path, Redact(output.ToString(), secrets), CancellationToken.None);
+        ProtectFile(path);
+    }
+
+    private async Task PreserveLightningFailureDiagnosticsAsync(string bolt11, BufferedCommandResult payment)
+    {
+        if (_tempDirectory is null || ProjectName is null || _regtestRoot is null) return;
+        RuntimeLightningPath = Path.Combine(_tempDirectory, "lightning-payment.log");
+        var output = new StringBuilder();
+        output.AppendLine($"[lnd-peer] payinvoice exit {payment.ExitCode}");
+        output.AppendLine(payment.StandardOutput);
+        output.AppendLine(payment.StandardError);
+        var decoded = await CaptureLncliAsync(output, "lnd", "decodepayreq", ["--network=regtest", "decodepayreq", bolt11]);
+        foreach (var node in new[] { "lnd", "lnd-peer" })
+        {
+            await CaptureLncliAsync(output, node, "getinfo", ["--network=regtest", "getinfo"]);
+            await CaptureLncliAsync(output, node, "channelbalance", ["--network=regtest", "channelbalance"]);
+            await CaptureLncliAsync(output, node, "listchannels", ["--network=regtest", "listchannels"]);
+        }
+        if (decoded.ExitCode == 0)
+            await TryAppendRouteDiagnosticsAsync(output, decoded.StandardOutput);
+        var secrets = PrivateEnvironmentValues().Select(pair => pair.Value).ToArray();
+        await File.WriteAllTextAsync(RuntimeLightningPath, Redact(output.ToString(), secrets), CancellationToken.None);
+        ProtectFile(RuntimeLightningPath);
+    }
+
+    private async Task<BufferedCommandResult> CaptureLncliAsync(StringBuilder output, string node, string label,
+        IReadOnlyList<string> arguments)
+    {
+        var result = await RunAsync("docker", ["exec", $"{ProjectName}-{node}", "lncli", .. arguments], _regtestRoot!,
+            CancellationToken.None);
+        output.AppendLine($"[{node}] {label} exit {result.ExitCode}");
+        output.AppendLine(result.StandardOutput);
+        output.AppendLine(result.StandardError);
+        return result;
+    }
+
+    private async Task TryAppendRouteDiagnosticsAsync(StringBuilder output, string decoded)
+    {
+        try
+        {
+            using var invoice = JsonDocument.Parse(decoded);
+            var destination = invoice.RootElement.GetProperty("destination").GetString();
+            var amount = invoice.RootElement.GetProperty("num_satoshis").GetString();
+            if (destination is null || destination.Length != 66 || destination.Any(c => !Uri.IsHexDigit(c)) ||
+                !long.TryParse(amount, NumberStyles.None, CultureInfo.InvariantCulture, out var sats) || sats <= 0) return;
+            await CaptureLncliAsync(output, "lnd", "queryroutes", ["--network=regtest", "queryroutes", destination, sats.ToString(CultureInfo.InvariantCulture)]);
+            await CaptureLncliAsync(output, "lnd-peer", "queryroutes", ["--network=regtest", "queryroutes", destination, sats.ToString(CultureInfo.InvariantCulture)]);
+        }
+        catch (JsonException)
+        {
+        }
+    }
+
+    private void RequireStarted()
+    {
+        if (!_started || _childEnvironment is null || _regtestRoot is null)
+            throw new InvalidOperationException("The composed EVM stack has not started.");
+    }
+
+    private static string NormalizeAddress(string value)
+    {
+        if (value.Length != 42 || !value.StartsWith("0x", StringComparison.Ordinal) ||
+            value[2..].Any(character => !Uri.IsHexDigit(character)))
+            throw new ArgumentException("Specify a 20-byte EVM address.", nameof(value));
+        return value[2..].ToLowerInvariant();
+    }
+
+    private static BigInteger ParseQuantity(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !value.StartsWith("0x", StringComparison.Ordinal) ||
+            value[2..].Any(character => !Uri.IsHexDigit(character)))
+            throw new InvalidOperationException("The EVM RPC returned a malformed quantity.");
+        return BigInteger.Parse("0" + value[2..], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+    }
+
+    private static string NormalizeHexPrefix(string value) => value.StartsWith("0x", StringComparison.OrdinalIgnoreCase)
+        ? value : "0x" + value;
+
+    private IEnumerable<KeyValuePair<string, string>> PrivateEnvironmentValues() =>
+        SensitiveEnvironmentValues(_childEnvironment!);
+
+    internal static IEnumerable<KeyValuePair<string, string>> SensitiveEnvironmentValues(
+        IEnumerable<KeyValuePair<string, string>> environment) => environment
+        .Where(pair => !string.IsNullOrEmpty(pair.Value) &&
+                       (pair.Key.Contains("PRIVATE", StringComparison.OrdinalIgnoreCase) ||
+                        pair.Key.Contains("SECRET", StringComparison.OrdinalIgnoreCase) ||
+                        pair.Key.Contains("PASSWORD", StringComparison.OrdinalIgnoreCase) ||
+                        pair.Key.Contains("MNEMONIC", StringComparison.OrdinalIgnoreCase) ||
+                        pair.Key.Contains("SIGNER_KEY", StringComparison.OrdinalIgnoreCase) ||
+                        pair.Key.Contains("SEED", StringComparison.OrdinalIgnoreCase) ||
+                        pair.Key.Contains("TOKEN", StringComparison.OrdinalIgnoreCase) ||
+                        pair.Key.Contains("CREDENTIAL", StringComparison.OrdinalIgnoreCase)));
+
+    private static void AssertNoPrivateFields(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                {
+                    if (property.Name.Contains("preimage", StringComparison.OrdinalIgnoreCase) ||
+                        property.Name.Contains("privatekey", StringComparison.OrdinalIgnoreCase) ||
+                        property.Name.Contains("protected", StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("A composed EVM public projection exposed a private field.");
+                    AssertNoPrivateFields(property.Value);
+                }
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray()) AssertNoPrivateFields(item);
+                break;
+        }
+    }
 
     private static string RequireDirectory(string variable)
     {
@@ -500,7 +944,9 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
         {
             foreach (var original in _originalEnvironment)
                 Environment.SetEnvironmentVariable(original.Key, original.Value);
-            if (cleanupError is null && _tempDirectory is not null && Directory.Exists(_tempDirectory))
+            if (_tempDirectory is not null)
+                RemoveGeneratedEnvironmentForDiagnostics(_tempDirectory);
+            if (cleanupError is null && !_preserveDiagnostics && _tempDirectory is not null && Directory.Exists(_tempDirectory))
                 Directory.Delete(_tempDirectory, recursive: true);
             _disposed = true;
         }

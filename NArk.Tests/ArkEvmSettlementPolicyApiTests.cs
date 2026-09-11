@@ -196,6 +196,7 @@ public partial class ArkEvmSettlementApiTests
         var saved = store.GetPaymentMethodConfigs().ToString();
         var preserve = CompleteConfiguration();
         preserve["rpcEndpoint"] = JObject.Parse("{\"action\":\"preserve\"}");
+        preserve["gasPayerPrivateKey"] = JObject.Parse("{\"action\":\"preserve\"}");
 
         using var preserved = await PutConfiguration(client, preserve);
 
@@ -335,6 +336,139 @@ public partial class ArkEvmSettlementApiTests
         Assert.False(capabilities.Value<bool>("configurationComplete"));
         Assert.Contains("arkade-wallet-missing", capabilities["missingConfiguration"]!.Values<string>());
         Assert.Contains("settlement-settings-missing", capabilities["missingConfiguration"]!.Values<string>());
+    }
+
+    [Theory]
+    [InlineData("absent", false)]
+    [InlineData("excluded", false)]
+    [InlineData("enabled", true)]
+    public async Task ArkadeCompositionRequiresAnEnabledPaymentMethod(string configuration, bool expectedReady)
+    {
+        var initial = configuration == "absent" ? null : new ArkadePaymentMethodConfig("wallet");
+        await using var app = CreateHost(initial);
+        if (configuration == "excluded")
+            app.Services.GetRequiredService<StoreData>().StoreBlob =
+                "{\"excludedPaymentMethods\":[\"ARKADE\"]}";
+        await app.StartAsync();
+        using var client = AuthorizedClient(app.Urls.Single());
+
+        if (configuration != "absent")
+        {
+            using var response = await PutConfiguration(client, CompleteConfiguration());
+            Assert.Equal(expectedReady ? HttpStatusCode.OK : HttpStatusCode.BadRequest, response.StatusCode);
+            if (!expectedReady)
+            {
+                var disabled = CompleteConfiguration();
+                disabled["enabled"] = false;
+                using var saved = await PutConfiguration(client, disabled);
+                Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+            }
+        }
+
+        client.DefaultRequestHeaders.Remove("Test-Permission");
+        client.DefaultRequestHeaders.Add("Test-Permission", Policies.CanViewStoreSettings);
+        var capabilities = JObject.Parse(await client.GetStringAsync(Endpoint + "/capabilities"));
+        Assert.Equal(expectedReady, capabilities.Value<bool>("configurationComplete"));
+        if (!expectedReady)
+            Assert.Contains("arkade-payment-method-missing", capabilities["missingConfiguration"]!.Values<string>());
+    }
+
+    [Fact]
+    public async Task OnchainCompositionReportsMissingCorePaymentMethod()
+    {
+        var configuration = new ArkadePaymentMethodConfig("wallet")
+        {
+            EvmSettlement = new ArkEvmSettlementSettings(Asset, Destination)
+            {
+                RoutePolicy = CompleteConfiguration()["routePolicy"]!.ToObject<ArkEvmRoutePolicy>()
+            }
+        };
+        await using var app = CreateHost(configuration, onchainConfigured: false);
+        await app.StartAsync();
+        using var client = AuthorizedClient(app.Urls.Single(), Policies.CanViewStoreSettings);
+
+        var capabilities = JObject.Parse(await client.GetStringAsync(Endpoint + "/capabilities"));
+
+        Assert.Contains("onchain-payment-method-missing", capabilities["missingConfiguration"]!.Values<string>());
+        Assert.False(capabilities.Value<bool>("configurationComplete"));
+    }
+
+    [Theory]
+    [InlineData("excluded", false)]
+    [InlineData("enabled", true)]
+    public async Task OnchainCompositionRequiresAnEnabledCorePaymentMethod(string configuration, bool expectedReady)
+    {
+        await using var app = CreateHost(new ArkadePaymentMethodConfig("wallet"));
+        if (configuration == "excluded")
+            app.Services.GetRequiredService<StoreData>().StoreBlob =
+                "{\"excludedPaymentMethods\":[\"BTC-CHAIN\"]}";
+        await app.StartAsync();
+        using var client = AuthorizedClient(app.Urls.Single());
+        var input = CompleteConfiguration();
+        input["routePolicy"]!["enabledSourceRails"] = new JArray("BTC-CHAIN");
+        input["routePolicy"]!["lightningIngressSolver"] = null;
+
+        using var response = await PutConfiguration(client, input);
+
+        Assert.Equal(expectedReady ? HttpStatusCode.OK : HttpStatusCode.BadRequest, response.StatusCode);
+        if (expectedReady) return;
+        input["enabled"] = false;
+        using var saved = await PutConfiguration(client, input);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        client.DefaultRequestHeaders.Remove("Test-Permission");
+        client.DefaultRequestHeaders.Add("Test-Permission", Policies.CanViewStoreSettings);
+        var capabilities = JObject.Parse(await client.GetStringAsync(Endpoint + "/capabilities"));
+        Assert.False(capabilities.Value<bool>("configurationComplete"));
+        Assert.Contains("onchain-payment-method-missing", capabilities["missingConfiguration"]!.Values<string>());
+    }
+
+    [Theory]
+    [InlineData("missing", false)]
+    [InlineData("excluded", false)]
+    [InlineData("wrong-wallet", false)]
+    [InlineData("wrong-store", false)]
+    [InlineData("unscoped-store", false)]
+    [InlineData("exact", true)]
+    public async Task LightningCompositionRequiresAnEnabledExactArkadePaymentMethod(string configuration, bool expectedReady)
+    {
+        await using var app = CreateHost(new ArkadePaymentMethodConfig("wallet"), lightningConfigured: false);
+        var store = app.Services.GetRequiredService<StoreData>();
+        var lightning = BTCPayServer.Payments.PaymentTypes.LN.GetPaymentMethodId("BTC");
+        var connectionString = configuration switch
+        {
+            "wrong-wallet" => BTCPayServer.Plugins.ArkPayServer.Lightning.ArkLightningSpendKeyService
+                .BuildReceiveOnlyConnectionString("other-wallet", store.Id),
+            "wrong-store" => BTCPayServer.Plugins.ArkPayServer.Lightning.ArkLightningSpendKeyService
+                .BuildReceiveOnlyConnectionString("wallet", "other-store"),
+            "unscoped-store" => BTCPayServer.Plugins.ArkPayServer.Lightning.ArkLightningSpendKeyService
+                .BuildReceiveOnlyConnectionString("wallet"),
+            "missing" => null,
+            _ => BTCPayServer.Plugins.ArkPayServer.Lightning.ArkLightningSpendKeyService
+                .BuildReceiveOnlyConnectionString("wallet", store.Id)
+        };
+        if (connectionString is not null)
+            store.SetPaymentMethodConfig(lightning, JObject.FromObject(
+                new BTCPayServer.Payments.Lightning.LightningPaymentMethodConfig { ConnectionString = connectionString }));
+        if (configuration == "excluded")
+            store.StoreBlob = "{\"excludedPaymentMethods\":[\"BTC-LN\"]}";
+        await app.StartAsync();
+        using var client = AuthorizedClient(app.Urls.Single());
+        var input = CompleteConfiguration();
+        input["routePolicy"]!["enabledSourceRails"] = new JArray("BTC-LN");
+        input["routePolicy"]!["onchainIngressSolver"] = null;
+
+        using var response = await PutConfiguration(client, input);
+
+        Assert.Equal(expectedReady ? HttpStatusCode.OK : HttpStatusCode.BadRequest, response.StatusCode);
+        if (expectedReady) return;
+        input["enabled"] = false;
+        using var saved = await PutConfiguration(client, input);
+        Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+        client.DefaultRequestHeaders.Remove("Test-Permission");
+        client.DefaultRequestHeaders.Add("Test-Permission", Policies.CanViewStoreSettings);
+        var capabilities = JObject.Parse(await client.GetStringAsync(Endpoint + "/capabilities"));
+        Assert.False(capabilities.Value<bool>("configurationComplete"));
+        Assert.Contains("lightning-payment-method-missing", capabilities["missingConfiguration"]!.Values<string>());
     }
 
     [Fact]
@@ -514,7 +648,12 @@ public partial class ArkEvmSettlementApiTests
             "arkadeRefundMarginSeconds": 7200,
             "requireEmulatorRefundPath": true
           },
-          "rpcEndpoint": {"action": "replace", "uri": "https://secret-user:secret-pass@rpc.example/secret-path?key=secret-query"}
+          "rpcEndpoint": {"action": "replace", "uri": "https://secret-user:secret-pass@rpc.example/secret-path?key=secret-query"},
+          "expectedSenderAddress": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+          "maxFeePerGasWei": "100000000000",
+          "maxPriorityFeePerGasWei": "2000000000",
+          "maxGasLimit": "500000",
+          "gasPayerPrivateKey": {"action": "replace", "privateKey": "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"}
         }
         """);
 
