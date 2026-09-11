@@ -3,6 +3,7 @@ using System;
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
 {
     [DbContext(typeof(ArkPluginDbContext))]
-    partial class ArkPluginDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260911051418_AlignPinnedSdkModel")]
+    partial class AlignPinnedSdkModel
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -22,41 +25,6 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.ArkInvoiceComposition", b =>
-                {
-                    b.Property<string>("StoreId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("InvoiceId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("AssetId")
-                        .IsRequired()
-                        .HasMaxLength(88)
-                        .HasColumnType("character varying(88)");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Destination")
-                        .IsRequired()
-                        .HasMaxLength(42)
-                        .HasColumnType("character varying(42)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)");
-
-                    b.Property<string>("WalletId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.HasKey("StoreId", "InvoiceId");
-
-                    b.ToTable("InvoiceCompositions", "BTCPayServer.Plugins.Ark");
-                });
 
             modelBuilder.Entity("NArk.Storage.EfCore.Entities.ArkIntentEntity", b =>
                 {

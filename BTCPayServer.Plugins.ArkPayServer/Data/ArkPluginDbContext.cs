@@ -14,6 +14,7 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
     
     public DbSet<ArkSwapEntity> Swaps { get; set; }// todo - will be replaced with bottom one 
     public DbSet<ArkadeSwapIntentEntity> ArkadeIntentSwaps { get; set; }
+    public DbSet<ArkInvoiceComposition> InvoiceCompositions { get; set; }
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -22,6 +23,14 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
         modelBuilder.ConfigureArkEntities(opts =>
         {
             opts.Schema = "BTCPayServer.Plugins.Ark";
+        });
+        modelBuilder.Entity<ArkInvoiceComposition>(entity =>
+        {
+            entity.ToTable("InvoiceCompositions", "BTCPayServer.Plugins.Ark");
+            entity.HasKey(c => new { c.StoreId, c.InvoiceId });
+            entity.Property(c => c.AssetId).HasMaxLength(88);
+            entity.Property(c => c.Destination).HasMaxLength(42);
+            entity.Property(c => c.Status).HasMaxLength(32);
         });
     }
 }

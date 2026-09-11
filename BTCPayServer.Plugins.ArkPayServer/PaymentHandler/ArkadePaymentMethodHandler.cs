@@ -129,8 +129,9 @@ public class ArkadePaymentMethodHandler(
 
     public object ParsePaymentMethodConfig(JToken config)
     {
-        return config.ToObject<ArkadePaymentMethodConfig>(Serializer) ??
-               throw new FormatException($"Invalid {nameof(ArkadePaymentMethodHandler)}");
+        var parsed = config.ToObject<ArkadePaymentMethodConfig>(Serializer) ??
+                     throw new FormatException($"Invalid {nameof(ArkadePaymentMethodHandler)}");
+        return parsed with { EvmSettlement = parsed.EvmSettlement?.Validate() };
     }
 
     public ArkadePaymentData ParsePaymentDetails(JToken details)

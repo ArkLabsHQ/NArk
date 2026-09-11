@@ -84,7 +84,7 @@ public class ArkGreenfieldController(
         if (error != null) return error;
 
         var wallet = await walletStorage.GetWalletById(config!.WalletId!, cancellationToken);
-        var signerAvailable = await walletProvider.GetAddressProviderAsync(config.WalletId!, cancellationToken) != null;
+        var signerAvailable = await walletProvider.GetSignerAsync(config.WalletId!, cancellationToken) != null;
 
         string? defaultAddress = null;
         if (wallet?.WalletType == WalletType.SingleKey)
