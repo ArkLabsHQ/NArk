@@ -27,7 +27,12 @@ public class ArkPluginDbContext(DbContextOptions<ArkPluginDbContext> options) : 
         modelBuilder.Entity<ArkInvoiceComposition>(entity =>
         {
             entity.ToTable("InvoiceCompositions", "BTCPayServer.Plugins.Ark");
-            entity.HasKey(c => new { c.StoreId, c.InvoiceId });
+            entity.HasKey(c => c.RouteId);
+            entity.HasIndex(c => c.PaymentHash).IsUnique();
+            entity.HasIndex(c => new { c.StoreId, c.InvoiceId, c.PaymentMethodId });
+            entity.Property(c => c.PaymentHash).HasMaxLength(64).IsConcurrencyToken();
+            entity.Property(c => c.InvoiceId).IsConcurrencyToken();
+            entity.Property(c => c.PaymentMethodId).HasMaxLength(50);
             entity.Property(c => c.AssetId).HasMaxLength(88);
             entity.Property(c => c.Destination).HasMaxLength(42);
             entity.Property(c => c.Status).HasMaxLength(32);

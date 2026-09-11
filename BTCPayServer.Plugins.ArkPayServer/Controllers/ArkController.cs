@@ -128,7 +128,7 @@ public partial class ArkController(
         if (lnConfig?.ConnectionString?.StartsWith("type=arkade", StringComparison.InvariantCultureIgnoreCase) is true)
         {
             lnConfig.ConnectionString = await spendKeyService.BuildConnectionStringAsync(
-                config.WalletId, HttpContext.RequestAborted);
+                config.WalletId, HttpContext.RequestAborted, store.Id);
             store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lightningPaymentMethodId], lnConfig);
             await storeRepository.UpdateStore(store);
         }

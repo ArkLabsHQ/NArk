@@ -371,8 +371,8 @@ public partial class ArkController
         store!.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lightningPaymentMethodId], new LightningPaymentMethodConfig
         {
             ConnectionString = config!.GeneratedByStore
-                ? await spendKeyService.BuildConnectionStringAsync(config.WalletId)
-                : ArkLightningSpendKeyService.BuildReceiveOnlyConnectionString(config.WalletId),
+                ? await spendKeyService.BuildConnectionStringAsync(config.WalletId, storeId: store!.Id)
+                : ArkLightningSpendKeyService.BuildReceiveOnlyConnectionString(config.WalletId, store!.Id),
         });
         store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lnurlPaymentMethodId], new LNURLPaymentMethodConfig
         {

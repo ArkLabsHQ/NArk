@@ -44,7 +44,8 @@ public class ArkLightningClient(
     ArkLightningSpendKeyService spendKeyService,
     ArkadeIntentsService? intents = null,
     ArkadeSolverService? solver = null,
-    IArkadeIntentStorage? intentStorage = null) : IExtendedLightningClient
+    IArkadeIntentStorage? intentStorage = null,
+    ArkLightningStoreContext? storeContext = null) : IExtendedLightningClient
 {
     /// <summary>
     /// Wallet-level metadata key holding the Lightning spend capability.
@@ -347,5 +348,5 @@ public class ArkLightningClient(
     public string DisplayName => "Arkade Lightning";
     public Uri? ServerUri => null;
 
-    public override string ToString() => $"type=arkade;wallet-id={walletId}";
+    public override string ToString() => ArkLightningSpendKeyService.BuildReceiveOnlyConnectionString(walletId, storeContext?.StoreId);
 }

@@ -77,6 +77,7 @@ public class ArkEvmSettlementApiTests
         Assert.False(capabilities.Value<bool>("executionAvailable"));
         Assert.True(capabilities.Value<bool>("configurationEnabled"));
         Assert.Equal("sdk-composition-unavailable", capabilities.Value<string>("blockedReason"));
+        Assert.Equal("evm-settlement", capabilities.Value<string>("paymentCompletionCondition"));
         var store = app.Services.GetRequiredService<StoreData>();
         var persisted = app.Services.GetRequiredService<IArkEvmSettlementStore>().GetConfiguration(store)!;
         Assert.Equal(configuration.WalletId, persisted.WalletId);

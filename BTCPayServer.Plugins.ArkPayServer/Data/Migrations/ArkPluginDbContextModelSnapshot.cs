@@ -25,11 +25,9 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
 
             modelBuilder.Entity("BTCPayServer.Plugins.ArkPayServer.Data.ArkInvoiceComposition", b =>
                 {
-                    b.Property<string>("StoreId")
-                        .HasColumnType("text");
-
-                    b.Property<string>("InvoiceId")
-                        .HasColumnType("text");
+                    b.Property<Guid>("RouteId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
 
                     b.Property<string>("AssetId")
                         .IsRequired()
@@ -44,16 +42,39 @@ namespace BTCPayServer.Plugins.ArkPayServer.Data.Migrations
                         .HasMaxLength(42)
                         .HasColumnType("character varying(42)");
 
+                    b.Property<string>("InvoiceId")
+                        .IsConcurrencyToken()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PaymentHash")
+                        .IsConcurrencyToken()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PaymentMethodId")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("StoreId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<string>("WalletId")
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.HasKey("StoreId", "InvoiceId");
+                    b.HasKey("RouteId");
+
+                    b.HasIndex("PaymentHash")
+                        .IsUnique();
+
+                    b.HasIndex("StoreId", "InvoiceId", "PaymentMethodId");
 
                     b.ToTable("InvoiceCompositions", "BTCPayServer.Plugins.Ark");
                 });

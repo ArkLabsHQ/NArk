@@ -5,4 +5,5 @@ public sealed record ArkEvmSettlementCapabilitiesData(
 {
     public bool ExecutionAvailable => false;
     public string BlockedReason => "sdk-composition-unavailable";
+    public string PaymentCompletionCondition => "evm-settlement";
 }

@@ -1,5 +1,6 @@
 using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Data;
+using BTCPayServer.Payments;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Services.Invoices;
 using Microsoft.EntityFrameworkCore;
@@ -16,15 +17,21 @@ public class ArkInvoiceCompositionTests
     private const string Destination = "0x2222222222222222222222222222222222222222";
 
     [Fact]
-    public void CompositionIsDurableAndKeyedByStoreAndInvoiceWithoutSecretColumns()
+    public void CompositionAllowsIndependentRoutesAndExactHashAttachmentWithoutSecretColumns()
     {
         using var context = new DesignTimeDbContextFactory().CreateDbContext([]);
         var entity = context.Model.FindEntityType(typeof(ArkInvoiceComposition));
 
         Assert.NotNull(entity);
         Assert.Equal("BTCPayServer.Plugins.Ark", entity.GetSchema());
-        Assert.Equal(["StoreId", "InvoiceId"], entity.FindPrimaryKey()!.Properties.Select(p => p.Name));
-        Assert.Equal(new[] { "AssetId", "CreatedAt", "Destination", "InvoiceId", "Status", "StoreId", "WalletId" },
+        Assert.Equal(["RouteId"], entity.FindPrimaryKey()!.Properties.Select(p => p.Name));
+        Assert.True(entity.FindProperty("InvoiceId")!.IsNullable);
+        Assert.True(entity.FindProperty("PaymentHash")!.IsNullable);
+        Assert.True(entity.FindProperty("PaymentHash")!.IsConcurrencyToken);
+        Assert.True(entity.FindProperty("InvoiceId")!.IsConcurrencyToken);
+        Assert.Contains(entity.GetIndexes(), i => i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(["PaymentHash"]));
+        Assert.Contains(entity.GetIndexes(), i => !i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(["StoreId", "InvoiceId", "PaymentMethodId"]));
+        Assert.Equal(new[] { "AssetId", "CreatedAt", "Destination", "InvoiceId", "PaymentHash", "PaymentMethodId", "RouteId", "Status", "StoreId", "WalletId" },
             entity.GetProperties().Select(p => p.Name).Order());
     }
 
@@ -84,6 +91,124 @@ public class ArkInvoiceCompositionTests
 
         Assert.Throws<InvalidOperationException>(() => ArkInvoiceComposition.Create(store,
             new InvoiceEntity { Id = "invoice", StoreId = store.Id }, new PaymentMethodHandlerDictionary([handler]), DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void AlternativeRailsAndRenewalsHaveIndependentRouteIdentities()
+    {
+        var (store, handlers) = ConfiguredStore();
+        var invoice = new InvoiceEntity { Id = "invoice", StoreId = store.Id };
+        using var context = new DesignTimeDbContextFactory().CreateDbContext([]);
+        var routes = new[] { "ARKADE", "BTC-LN", "BTC-CHAIN", "BTC-LN" }.Select(rail =>
+            ArkInvoiceComposition.Create(store, invoice, handlers, DateTimeOffset.UtcNow, PaymentMethodId.Parse(rail))).ToArray();
+
+        context.InvoiceCompositions.AddRange(routes);
+
+        Assert.Equal(4, routes.Select(r => r.RouteId).Distinct().Count());
+        Assert.All(routes, route => Assert.Null(route.PaymentHash));
+        Assert.Equal(new[] { "ARKADE", "BTC-LN", "BTC-CHAIN", "BTC-LN" }, routes.Select(r => r.PaymentMethodId));
+    }
+
+    [Fact]
+    public void LightningRouteCanExistBeforeBtcpayPersistsItsInvoice()
+    {
+        var (store, handlers) = ConfiguredStore();
+
+        var route = ArkInvoiceComposition.Create(store, null, handlers, DateTimeOffset.UtcNow, PaymentMethodId.Parse("BTC-LN"));
+
+        Assert.Null(route.InvoiceId);
+        Assert.Equal(store.Id, route.StoreId);
+        Assert.Equal("PendingSdk", route.Status);
+    }
+
+    [Fact]
+    public void HashAssignmentIsCanonicalAndImmutable()
+    {
+        var (store, handlers) = ConfiguredStore();
+        var route = ArkInvoiceComposition.Create(store, null, handlers, DateTimeOffset.UtcNow);
+        var hash = new string('a', 64);
+
+        route.AssignPaymentHash(hash.ToUpperInvariant());
+        route.AssignPaymentHash(hash);
+
+        Assert.Equal(hash, route.PaymentHash);
+        Assert.Throws<InvalidOperationException>(() => route.AssignPaymentHash(new string('b', 64)));
+        Assert.Equal(hash, route.PaymentHash);
+        Assert.Equal("PendingSdk", route.Status);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("secret-preimage")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    public void HashAssignmentRejectsMalformedInputWithoutEchoingIt(string? input)
+    {
+        var (store, handlers) = ConfiguredStore();
+        var route = ArkInvoiceComposition.Create(store, null, handlers, DateTimeOffset.UtcNow);
+
+        var error = Assert.Throws<ArgumentException>(() => route.AssignPaymentHash(input!));
+
+        Assert.Null(route.PaymentHash);
+        Assert.DoesNotContain("secret", error.Message);
+    }
+
+    [Fact]
+    public void ExactInvoiceAttachmentIsIdempotentAndDoesNotCompletePayment()
+    {
+        var (store, handlers) = ConfiguredStore();
+        var rail = PaymentMethodId.Parse("BTC-LN");
+        var route = ArkInvoiceComposition.Create(store, null, handlers, DateTimeOffset.UtcNow, rail);
+        var hash = new string('a', 64);
+        route.AssignPaymentHash(hash);
+        var invoice = new InvoiceEntity { Id = "invoice", StoreId = store.Id };
+
+        route.AttachInvoice(invoice, rail, hash);
+        route.AttachInvoice(invoice, rail, hash.ToUpperInvariant());
+
+        Assert.Equal(invoice.Id, route.InvoiceId);
+        Assert.Equal("PendingSdk", route.Status);
+    }
+
+    [Theory]
+    [InlineData("other-store", "BTC-LN", "a", "invoice")]
+    [InlineData("store", "BTC-CHAIN", "a", "invoice")]
+    [InlineData("store", "BTC-LN", "b", "invoice")]
+    [InlineData("store", "BTC-LN", "a", "replacement-invoice")]
+    public void AttachmentCannotChangeStoreRailHashOrExistingInvoice(string storeId, string rail, string hashCharacter, string invoiceId)
+    {
+        var (store, handlers) = ConfiguredStore();
+        var route = ArkInvoiceComposition.Create(store, new InvoiceEntity { Id = "invoice", StoreId = store.Id },
+            handlers, DateTimeOffset.UtcNow, PaymentMethodId.Parse("BTC-LN"));
+        route.AssignPaymentHash(new string('a', 64));
+
+        Assert.Throws<InvalidOperationException>(() => route.AttachInvoice(
+            new InvoiceEntity { Id = invoiceId, StoreId = storeId }, PaymentMethodId.Parse(rail), new string(hashCharacter[0], 64)));
+
+        Assert.Equal("invoice", route.InvoiceId);
+    }
+
+    [Fact]
+    public void AttachmentRequiresAnAssignedHash()
+    {
+        var (store, handlers) = ConfiguredStore();
+        var route = ArkInvoiceComposition.Create(store, null, handlers, DateTimeOffset.UtcNow);
+
+        Assert.Throws<InvalidOperationException>(() => route.AttachInvoice(
+            new InvoiceEntity { Id = "invoice", StoreId = store.Id }, PaymentMethodId.Parse("ARKADE"), new string('a', 64)));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("secret invalid rail")]
+    public void RouteRejectsMalformedPaymentMethodIdentity(string rail)
+    {
+        var (store, handlers) = ConfiguredStore();
+
+        var error = Assert.Throws<ArgumentException>(() => ArkInvoiceComposition.Create(
+            store, null, handlers, DateTimeOffset.UtcNow, new PaymentMethodId(rail)));
+
+        Assert.DoesNotContain("secret", error.Message);
     }
 
     private static (StoreData Store, PaymentMethodHandlerDictionary Handlers) ConfiguredStore()

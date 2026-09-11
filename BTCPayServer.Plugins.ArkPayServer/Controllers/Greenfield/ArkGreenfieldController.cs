@@ -1378,8 +1378,8 @@ public class ArkGreenfieldController(
         var lnConfig = new LightningPaymentMethodConfig
         {
             ConnectionString = generatedByStore
-                ? await spendKeyService.BuildConnectionStringAsync(walletId, cancellationToken)
-                : ArkLightningSpendKeyService.BuildReceiveOnlyConnectionString(walletId),
+                ? await spendKeyService.BuildConnectionStringAsync(walletId, cancellationToken, store.Id)
+                : ArkLightningSpendKeyService.BuildReceiveOnlyConnectionString(walletId, store.Id),
         };
 
         store.SetPaymentMethodConfig(paymentMethodHandlerDictionary[lightningPaymentMethodId], lnConfig);
