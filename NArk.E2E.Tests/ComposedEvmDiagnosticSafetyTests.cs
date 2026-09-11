@@ -37,6 +37,15 @@ public sealed class ComposedEvmDiagnosticSafetyTests
     }
 
     [Fact]
+    public void General_e2e_workflow_uses_the_supported_ark_profile()
+    {
+        var workflow = File.ReadAllText(FindRepositoryFile(".github", "workflows", "e2e.yml"));
+
+        Assert.Contains("regtest.mjs start --profile ark", workflow, StringComparison.Ordinal);
+        Assert.DoesNotContain("boltz", workflow, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Retained_diagnostics_remove_environment_and_redact_private_values()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"nark-diagnostic-safety-{Guid.NewGuid():N}");
