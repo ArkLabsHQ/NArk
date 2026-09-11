@@ -493,6 +493,7 @@ public sealed class ComposedEvmInfrastructureFixture : IDisposable
             $"server=http://127.0.0.1:{settings["BITCOIN_RPC_PORT"]};{_childEnvironment!["BITCOIN_RPC_USER"]}:{_childEnvironment["BITCOIN_RPC_PASSWORD"]}");
         SetEnvironment("TESTS_BTCNBXPLORERURL", $"http://127.0.0.1:{settings["NBXPLORER_PORT"]}/");
         SetEnvironment("TESTS_POSTGRES", $"Host=127.0.0.1;Port={settings["POSTGRES_PORT"]};Database=btcpay_composed_evm;Username=postgres");
+        SetEnvironment("TESTS_EXPLORER_POSTGRES", $"Host=127.0.0.1;Port={settings["POSTGRES_PORT"]};Database=nbxplorer;Username=postgres");
         SetEnvironment("TESTS_HOSTNAME", "127.0.0.1");
         SetEnvironment(SharedPluginTestFixture.SolverUrlVariable, IntentSolverUri!.ToString());
         SetEnvironment("ARKADE_E2E_COVCLAIMD_URL", Loopback(settings["COVCLAIMD_HTTP_PORT"]).ToString());

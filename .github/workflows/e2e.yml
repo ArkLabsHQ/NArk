@@ -49,6 +49,13 @@ jobs:
         # BTCPay's test ServerTester is pointed at the bitcoin/nbxplorer
         # endpoints via TESTS_BTCRPCCONNECTION and TESTS_BTCNBXPLORERURL
         # below; the GHA postgres service container supplies BTCPay's DB.
+        env:
+          # Keep the CLI float spendable and all delay values time-based.
+          ARKD_VTXO_TREE_EXPIRY: "21600"
+          ARKD_UNILATERAL_EXIT_DELAY: "512"
+          ARKD_PUBLIC_UNILATERAL_EXIT_DELAY: "512"
+          ARKD_BOARDING_EXIT_DELAY: "2048"
+          ARKD_CHECKPOINT_EXIT_DELAY: "1536"
         run: node submodules/NNark/regtest/regtest.mjs start --profile ark
         timeout-minutes: 20
 

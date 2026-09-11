@@ -25,6 +25,7 @@ public sealed class ComposedEvmDiagnosticSafetyTests
         Assert.DoesNotContain("regtest.env", workflow, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("NArk.E2E.Tests/TestResults/", workflowLines);
         Assert.Contains("  pull_request:\n  workflow_dispatch:", normalizedWorkflow, StringComparison.Ordinal);
+        Assert.Contains("ref: 76572b31a90bfe7daa619a7656bb044bfeade6d6", workflow, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -43,6 +44,8 @@ public sealed class ComposedEvmDiagnosticSafetyTests
         var workflow = File.ReadAllText(FindRepositoryFile(".github", "workflows", "e2e.yml"));
 
         Assert.Contains("regtest.mjs start --profile ark", workflow, StringComparison.Ordinal);
+        Assert.Contains("ARKD_VTXO_TREE_EXPIRY: \"21600\"", workflow, StringComparison.Ordinal);
+        Assert.Contains("ARKD_CHECKPOINT_EXIT_DELAY: \"1536\"", workflow, StringComparison.Ordinal);
         Assert.DoesNotContain("boltz", workflow, StringComparison.OrdinalIgnoreCase);
     }
 

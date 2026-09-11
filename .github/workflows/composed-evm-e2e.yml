@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ArkLabsHQ/arkade-regtest
-          ref: 0cdf6c271070f4abd32d01ab1db43ff38cbb4419
+          ref: 76572b31a90bfe7daa619a7656bb044bfeade6d6
           path: arkade-regtest
 
       - name: Setup .NET
