@@ -9,6 +9,7 @@ on:
 env:
   ARKADE_COMPOSED_EVM_E2E: "1"
   ARKADE_COMPOSED_EVM_REGTEST_ROOT: ${{ github.workspace }}/arkade-regtest
+  INTENT_SOLVER_EVM_IMAGE: intent-solver:evm-policy-ci
 
 jobs:
   composed-evm-e2e:
@@ -29,6 +30,10 @@ jobs:
           repository: ArkLabsHQ/arkade-regtest
           ref: 76572b31a90bfe7daa619a7656bb044bfeade6d6
           path: arkade-regtest
+
+      - name: Build intent-solver EVM policy image
+        run: docker build -f packages/solver-app/Dockerfile -t intent-solver:evm-policy-ci "https://github.com/arkade-os/intent-solver.git#fbe2935c49009041de4f19ea2ea8643aa5820e6b"
+        timeout-minutes: 10
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
