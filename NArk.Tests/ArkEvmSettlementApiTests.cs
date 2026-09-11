@@ -8,6 +8,7 @@ using BTCPayServer.Abstractions.Constants;
 using BTCPayServer.Client;
 using BTCPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.Controllers;
+using BTCPayServer.Plugins.ArkPayServer.Data;
 using BTCPayServer.Plugins.ArkPayServer.PaymentHandler;
 using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Services.Invoices;
@@ -137,11 +138,12 @@ public partial class ArkEvmSettlementApiTests
     }
 
     private static WebApplication CreateHost(ArkadePaymentMethodConfig? initialConfiguration = null, bool newtonsoft = true,
-        TestLogSink? logSink = null)
+        TestLogSink? logSink = null, ArkInvoiceCompositionRepository? repository = null)
     {
         var builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         builder.Services.AddSingleton<ArkEvmRpcEndpointProtector>();
+        if (repository is not null) builder.Services.AddSingleton(repository);
         builder.Logging.ClearProviders();
         if (logSink is not null)
         {
@@ -163,7 +165,7 @@ public partial class ArkEvmSettlementApiTests
             authentication.AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(scheme, _ => { });
         builder.Services.AddAuthorization(options =>
         {
-            foreach (var policy in new[] { Policies.CanViewStoreSettings, Policies.CanModifyStoreSettings })
+            foreach (var policy in new[] { Policies.CanViewStoreSettings, Policies.CanModifyStoreSettings, Policies.CanViewInvoices })
                 options.AddPolicy(policy, p => p.RequireAuthenticatedUser().RequireClaim("permission", policy));
         });
         var handler = new ArkadePaymentMethodHandler(null!, null!, null!, null!, null!);
@@ -219,6 +221,6 @@ public partial class ArkEvmSettlementApiTests
     private sealed class SettlementPart : ApplicationPart, IApplicationPartTypeProvider
     {
         public override string Name => nameof(SettlementPart);
-        public IEnumerable<TypeInfo> Types => [typeof(ArkEvmSettlementController).GetTypeInfo()];
+        public IEnumerable<TypeInfo> Types => [typeof(ArkEvmSettlementController).GetTypeInfo(), typeof(ArkCompositionRoutesController).GetTypeInfo()];
     }
 }

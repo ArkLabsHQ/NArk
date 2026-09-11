@@ -31,7 +31,10 @@ public class ArkInvoiceCompositionTests
         Assert.True(entity.FindProperty("InvoiceId")!.IsConcurrencyToken);
         Assert.Contains(entity.GetIndexes(), i => i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(["PaymentHash"]));
         Assert.Contains(entity.GetIndexes(), i => !i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(["StoreId", "InvoiceId", "PaymentMethodId"]));
-        Assert.Equal(new[] { "AssetId", "CreatedAt", "Destination", "InvoiceId", "PaymentHash", "PaymentMethodId", "RouteId", "Status", "StoreId", "WalletId" },
+        Assert.Equal(new[] { "AssetId", "BaseAmountSats", "CreatedAt", "Destination", "EvmAmount", "EvmClaimAddress",
+                "EvmClaimTransactionId", "EvmLockTransactionId", "EvmObservedAtBlock", "EvmProvenAtBlock", "EvmProvenBlockTimestamp",
+                "EvmRefundAddress", "EvmTimeoutBlock", "EvmTokenAddress", "FailureCode", "IngressClaimTransactionId", "InvoiceId",
+                "PaymentHash", "PaymentMethodId", "Revision", "RouteId", "Status", "StoreId", "SwapContractAddress", "WalletId" },
             entity.GetProperties().Select(p => p.Name).Order());
     }
 
