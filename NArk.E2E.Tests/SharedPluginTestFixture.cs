@@ -95,6 +95,12 @@ public class SharedPluginTestFixture : IDisposable
         // also needs the solver's key to address it on. Both are passed through as given.
         var config = new Dictionary<string, string?>
         {
+            ["ark"] = Environment.GetEnvironmentVariable("ARKADE_E2E_ARK_URL"),
+            ["arkade-wallet"] = Environment.GetEnvironmentVariable("ARKADE_E2E_ARKADE_WALLET_URL"),
+            ["explorer"] = Environment.GetEnvironmentVariable("ARKADE_E2E_EXPLORER_URL"),
+            ["esplora"] = Environment.GetEnvironmentVariable("ARKADE_E2E_ESPLORA_URL"),
+            ["electrum-ws"] = Environment.GetEnvironmentVariable("ARKADE_E2E_ELECTRUM_WS_URL"),
+            ["electrum-tcp"] = Environment.GetEnvironmentVariable("ARKADE_E2E_ELECTRUM_TCP_URL"),
             ["solver-relay"] = solverUrl,
             ["solver-pubkey"] = Environment.GetEnvironmentVariable("ARKADE_E2E_SOLVER_PUBKEY"),
             ["covclaimd"] = Environment.GetEnvironmentVariable("ARKADE_E2E_COVCLAIMD_URL")
