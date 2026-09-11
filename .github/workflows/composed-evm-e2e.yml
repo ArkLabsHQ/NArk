@@ -32,7 +32,7 @@ jobs:
           path: arkade-regtest
 
       - name: Build intent-solver EVM policy image
-        run: docker build -f packages/solver-app/Dockerfile -t intent-solver:evm-policy-ci "https://github.com/arkade-os/intent-solver.git#bc0a7f32a33f4a51b4b8408e469eeceba02ba016"
+        run: docker build -f packages/solver-app/Dockerfile -t intent-solver:evm-policy-ci "https://github.com/arkade-os/intent-solver.git#fe249505fe6d852ffb85db0249640e8b49c33f4e"
         timeout-minutes: 10
 
       - name: Setup .NET
