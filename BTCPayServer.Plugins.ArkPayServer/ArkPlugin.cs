@@ -256,6 +256,7 @@ public class ArkadePlugin : BaseBTCPayServerPlugin
     private static void RegisterPluginServices(IServiceCollection services)
     {
         services.AddSingleton<IArkEvmSettlementStore, ArkEvmSettlementStore>();
+        services.AddSingleton<ArkEvmRpcEndpointProtector>();
 
         // Tracks the background wallet-recovery job per wallet (import-triggered + manual Rescan).
         services.AddSingleton<RecoveryStatusTracker>();

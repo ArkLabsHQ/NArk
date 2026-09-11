@@ -13,6 +13,7 @@ using BTCPayServer.Plugins.ArkPayServer.Services;
 using BTCPayServer.Services.Invoices;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ApplicationParts;
@@ -26,7 +27,7 @@ using AuthenticationSchemes = BTCPayServer.Abstractions.Constants.Authentication
 
 namespace NArk.Tests;
 
-public class ArkEvmSettlementApiTests
+public partial class ArkEvmSettlementApiTests
 {
     private const string Asset = "eip155:42161/erc20:0x1111111111111111111111111111111111111111";
     private const string Destination = "0x2222222222222222222222222222222222222222";
@@ -60,8 +61,9 @@ public class ArkEvmSettlementApiTests
         await app.StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         client.DefaultRequestHeaders.Add("Test-Permission", Policies.CanModifyStoreSettings);
-        using var response = await HttpClientJsonExtensions.PutAsJsonAsync(client, "/api/v1/stores/store/arkade/evm-settlement",
-            new { assetId = Asset, destination = Destination, enabled = true, preimage = "secret-must-not-survive" });
+        var input = CompleteConfiguration();
+        input["preimage"] = "secret-must-not-survive";
+        using var response = await PutConfiguration(client, input);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.DoesNotContain("secret-must-not-survive", await response.Content.ReadAsStringAsync());
 
@@ -134,16 +136,26 @@ public class ArkEvmSettlementApiTests
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
-    private static WebApplication CreateHost(ArkadePaymentMethodConfig? initialConfiguration = null)
+    private static WebApplication CreateHost(ArkadePaymentMethodConfig? initialConfiguration = null, bool newtonsoft = true,
+        TestLogSink? logSink = null)
     {
         var builder = WebApplication.CreateBuilder();
+        builder.Services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        builder.Services.AddSingleton<ArkEvmRpcEndpointProtector>();
         builder.Logging.ClearProviders();
+        if (logSink is not null)
+        {
+            builder.Logging.AddProvider(logSink);
+            builder.Logging.AddFilter<TestLogSink>(null, LogLevel.Trace);
+        }
         builder.WebHost.UseUrls("http://127.0.0.1:0");
-        builder.Services.AddControllers().ConfigureApplicationPartManager(parts =>
+        var mvc = builder.Services.AddControllers(options => options.Filters.Add<InjectedModelState>())
+            .ConfigureApplicationPartManager(parts =>
         {
             parts.ApplicationParts.Clear();
             parts.ApplicationParts.Add(new SettlementPart());
         });
+        if (newtonsoft) mvc.AddNewtonsoftJson();
         builder.Services.AddCors(options => options.AddPolicy(CorsPolicies.All, policy => policy.AllowAnyOrigin()));
         var schemes = AuthenticationSchemes.Greenfield.Split(',');
         var authentication = builder.Services.AddAuthentication(schemes[0]);
