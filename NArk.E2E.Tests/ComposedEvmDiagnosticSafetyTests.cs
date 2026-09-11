@@ -34,6 +34,7 @@ public sealed class ComposedEvmDiagnosticSafetyTests
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("  pull_request:\n\njobs:", workflow, StringComparison.Ordinal);
+        Assert.Contains("realpath \"$PACKAGE\"", workflow, StringComparison.Ordinal);
     }
 
     [Fact]

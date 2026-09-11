@@ -31,5 +31,6 @@ jobs:
         dotnet publish BTCPayServer.Plugins.ArkPayServer -c Release -m:1 -o BTCPayServer.Plugins.ArkPayServer/bin/plugin-host/publish
         dotnet build submodules/btcpayserver/BTCPayServer.PluginPacker -c Release -m:1
         dotnet run --project submodules/btcpayserver/BTCPayServer.PluginPacker -c Release --no-build -- BTCPayServer.Plugins.ArkPayServer/bin/plugin-host/publish BTCPayServer.Plugins.ArkPayServer BTCPayServer.Plugins.ArkPayServer/bin/plugin-host/packages
-        export ARKADE_PLUGIN_PACKAGE="$(find BTCPayServer.Plugins.ArkPayServer/bin/plugin-host/packages -name '*.btcpay' -print -quit)"
+        PACKAGE="$(find BTCPayServer.Plugins.ArkPayServer/bin/plugin-host/packages -name '*.btcpay' -print -quit)"
+        export ARKADE_PLUGIN_PACKAGE="$(realpath "$PACKAGE")"
         dotnet test NArk.PluginHost.Tests -c Release -m:1 --logger 'console;verbosity=normal'
