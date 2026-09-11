@@ -28,6 +28,15 @@ public sealed class ComposedEvmDiagnosticSafetyTests
     }
 
     [Fact]
+    public void Build_workflow_runs_for_stacked_pull_request_bases()
+    {
+        var workflow = File.ReadAllText(FindRepositoryFile(".github", "workflows", "dotnet.yml"))
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("  pull_request:\n\njobs:", workflow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Retained_diagnostics_remove_environment_and_redact_private_values()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"nark-diagnostic-safety-{Guid.NewGuid():N}");
